@@ -1,0 +1,11 @@
+# Keep the build context small and free of secrets / your project files.
+.git
+workspace/
+.env
+.devcontainer/
+*.md
+run.sh
+run.ps1
+shell.sh
+shell.ps1
+allow-domain.sh

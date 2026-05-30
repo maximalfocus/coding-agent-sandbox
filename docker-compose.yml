@@ -1,0 +1,43 @@
+services:
+  claude-sandbox:
+    build:
+      context: .
+    image: claude-container-sandbox:latest
+    container_name: claude-sandbox
+    # NET_ADMIN lets the entrypoint install iptables egress rules. Explicitly DROP NET_RAW —
+    # it's in Docker's default set, so cap_add alone wouldn't remove it (raw/packet sockets are
+    # not needed here; dropping shrinks the post-compromise capability surface).
+    cap_add:
+      - NET_ADMIN
+    cap_drop:
+      - NET_RAW
+    # Block privilege escalation via setuid binaries (Claude runs as the unprivileged `node`).
+    security_opt:
+      - "no-new-privileges:true"
+    # Cap blast radius of a runaway build/agent so it can't exhaust the host.
+    mem_limit: "${MEM_LIMIT:-6g}"
+    pids_limit: ${PIDS_LIMIT:-4096}
+    # Web terminal, bound to localhost only — never exposed to your LAN.
+    ports:
+      - "127.0.0.1:${TTYD_PORT:-7681}:7681"
+    environment:
+      TTYD_USER: "${TTYD_USER:-coder}"
+      TTYD_PASS: "${TTYD_PASS:-changeme}"
+      EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      # (Proxy env, CLAUDE_CONFIG_DIR and telemetry-off are baked into the image so every
+      #  launch — compose, exec, or the claude-safe `docker run` — inherits them.)
+    volumes:
+      # The ONLY host files Claude can see or edit.
+      - "${WORKSPACE_DIR:-./workspace}:/workspace"
+      # Persists the subscription login + Claude settings across restarts.
+      - "claude-config:/home/node/.claude"
+      # Audit trail: every host the proxy was asked to reach (allowed + refused).
+      - "claude-audit:/var/log/tinyproxy"
+    restart: unless-stopped
+
+volumes:
+  # Explicit, project-name-independent names so renaming the folder never orphans your login.
+  claude-config:
+    name: claude-sandbox-config
+  claude-audit:
+    name: claude-sandbox-audit
