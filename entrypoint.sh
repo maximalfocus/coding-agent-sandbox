@@ -9,14 +9,24 @@ PROXY="http://127.0.0.1:8888"
 FILTER_FILE="/etc/tinyproxy/filter"
 say() { [ -n "${SANDBOX_QUIET:-}" ] || echo "$@"; }
 
-# Domains every sandbox needs. Hostname filtering lets us use clean parent domains:
-# a single entry covers all subdomains (e.g. github.com -> api/codeload/raw.githubusercontent).
+# Domains every sandbox needs to FUNCTION. Hostname filtering lets us use clean parent domains:
+# a single entry covers all subdomains (e.g. claude.com -> platform/downloads.*). These are not
+# optional — without them Claude Code can't authenticate, infer, or install itself.
 BASE_DOMAINS=(
     "anthropic.com"          # api.anthropic.com, console.anthropic.com (inference + auth)
     "claude.ai"              # subscription OAuth login
     "claude.com"             # platform.claude.com, downloads.claude.ai
     "npmjs.org"              # npm registry + tarballs
     "npmjs.com"
+)
+
+# GitHub is a CAPABILITY GRANT, not just a destination. It's the most powerful host that would
+# otherwise be on by default: a general bidirectional channel — clone a payload IN, push/gist
+# data OUT — so a prompt-injected agent could exfiltrate through it entirely within policy. The
+# containment write-up's point is that "every function reachable through an allowlisted domain is
+# now attack surface," so GitHub is a separate, deliberate toggle. Default ON (most coding wants
+# git); set ALLOW_GITHUB=false for analysis-only or untrusted-workspace runs to drop it.
+GITHUB_DOMAINS=(
     "github.com"             # git/gh over HTTPS
     "githubusercontent.com"  # raw/objects/codeload
 )
@@ -24,6 +34,11 @@ BASE_DOMAINS=(
 build_filter() {
     : > "$FILTER_FILE"
     local domains=("${BASE_DOMAINS[@]}")
+    # GitHub only when explicitly allowed (default on). Anything in {false,0,no,off} drops it.
+    case "$(printf '%s' "${ALLOW_GITHUB:-true}" | tr '[:upper:]' '[:lower:]')" in
+        false|0|no|off) say "  (GitHub egress OFF — ALLOW_GITHUB=${ALLOW_GITHUB})" ;;
+        *)              domains+=("${GITHUB_DOMAINS[@]}") ;;
+    esac
     if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
         local OLDIFS=$IFS; IFS=','
         for d in $EXTRA_ALLOWED_DOMAINS; do

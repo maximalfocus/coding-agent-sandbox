@@ -4,8 +4,8 @@ Run the **real Claude Code CLI** — on your **Claude subscription**, with the s
 experience you have now — but locked inside a Docker container that can only:
 
 - **see/edit one folder** you choose (everything else on your machine is invisible), and
-- **reach the network only where it's allowed**, filtered by **hostname** (Anthropic + GitHub
-  + npm + domains you add). All egress is forced through an in-container allowlist proxy, and the
+- **reach the network only where it's allowed**, filtered by **hostname** (Anthropic + npm,
+  GitHub when `ALLOW_GITHUB` is on, + domains you add). All egress is forced through an in-container allowlist proxy, and the
   kernel firewall drops any attempt to go around it (direct IPs, DNS, IPv6, private ranges) — so a
   confused or prompt-injected agent **can't beacon to an arbitrary server or quietly phone home**.
   (It can still reach the *allowlisted* hosts, so those remain trust boundaries — see `SECURITY.md`.)
@@ -133,7 +133,13 @@ docker compose up -d --build
 
 Anything not on the allowlist is refused by the proxy (`403 Filtered`); anything trying to
 skip the proxy is dropped by the firewall. Note: git/npm must use **HTTPS** remotes (SSH
-egress on port 22 is not opened). Bare TLDs (`com`) and IP literals are rejected, but **public
+egress on port 22 is not opened).
+
+**GitHub is a deliberate capability, not a default destination.** `github.com` /
+`githubusercontent.com` are a general bidirectional channel (pull a payload in, push or gist data
+out), so they're governed by their own switch — `ALLOW_GITHUB` (default `true`). For
+analysis-only or untrusted-workspace runs, set `ALLOW_GITHUB=false` in `.env` to drop GitHub while
+keeping Anthropic + npm. Anthropic endpoints and the npm registry are always on. Bare TLDs (`com`) and IP literals are rejected, but **public
 suffixes are not PSL-checked** — adding `co.uk` or `github.io` would allow *all* their subdomains,
 so add specific registrable domains (`yourco.co.uk`), not the suffix.
 

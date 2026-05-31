@@ -4,16 +4,28 @@ services:
       context: .
     image: claude-container-sandbox:latest
     container_name: claude-sandbox
-    # NET_ADMIN lets the entrypoint install iptables egress rules. Explicitly DROP NET_RAW —
-    # it's in Docker's default set, so cap_add alone wouldn't remove it (raw/packet sockets are
-    # not needed here; dropping shrinks the post-compromise capability surface).
-    cap_add:
-      - NET_ADMIN
+    # Least privilege: drop the WHOLE default capability set, then add back only the five caps
+    # this sandbox actually exercises. The article's recurring lesson is to lean on battle-tested
+    # primitives and minimize your own surface — a dropped cap is one the agent can't abuse even
+    # after a compromise. NET_RAW, SYS_ADMIN, MKNOD, etc. are all gone with ALL.
     cap_drop:
-      - NET_RAW
+      - ALL
+    cap_add:
+      - NET_ADMIN     # entrypoint installs the iptables egress firewall
+      - SETUID        # gosu drops root->node; tinyproxy drops root->tinyproxy
+      - SETGID        # ditto (setgroups/setgid on privilege drop)
+      - CHOWN         # entrypoint owns the config volume for the node user
+      - KILL          # hot-reload: signal tinyproxy on allowlist change (allow-domain.sh)
+      - DAC_OVERRIDE  # tinyproxy (root) writes its pid/log into tinyproxy-owned dirs at startup
     # Block privilege escalation via setuid binaries (Claude runs as the unprivileged `node`).
     security_opt:
       - "no-new-privileges:true"
+    # Kernel-escape resistance (optional). Docker shares the host kernel, so this is defense-in-
+    # depth, not a VM boundary (see SECURITY.md). If you've installed gVisor, uncomment to run the
+    # container under the runsc sandbox — a user-space kernel that intercepts syscalls — which is
+    # the same class of primitive the containment write-up uses for claude.ai. No other change
+    # needed; everything below still applies.
+    # runtime: runsc
     # Cap blast radius of a runaway build/agent so it can't exhaust the host.
     mem_limit: "${MEM_LIMIT:-6g}"
     pids_limit: ${PIDS_LIMIT:-4096}
@@ -24,6 +36,9 @@ services:
       TTYD_USER: "${TTYD_USER:-coder}"
       TTYD_PASS: "${TTYD_PASS:-changeme}"
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      # GitHub egress is a capability grant (read payloads in / push data out). On by default;
+      # set ALLOW_GITHUB=false in .env for analysis-only or untrusted-workspace runs.
+      ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
       # (Proxy env, CLAUDE_CONFIG_DIR and telemetry-off are baked into the image so every
       #  launch — compose, exec, or the claude-safe `docker run` — inherits them.)
     volumes:
