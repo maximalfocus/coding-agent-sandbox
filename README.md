@@ -170,11 +170,17 @@ terminates TLS it can mediate on request *content*:
 
 - **GitHub read-only** — clone/fetch allowed, `git push` (and other write methods) blocked, so GitHub
   can't be an exfil channel even while allowlisted. Toggle with `GITHUB_READONLY` (default `true`).
+- **Anthropic API hardening** — on `api.anthropic.com`, upload/exfil endpoints are blocked
+  (`ANTHROPIC_BLOCK_PATHS`, default the Files API `/v1/files` — the channel the write-up's red team
+  abused), an injected `x-api-key` is stripped when an OAuth bearer is in use so data can't be routed
+  to a different account (`ANTHROPIC_SINGLE_CRED`), and you can optionally **pin** the call to one
+  token's sha256 (`ANTHROPIC_PIN_TOKEN`, e.g. a `claude setup-token` value).
 - **Credential containment** — `Authorization`/`Cookie` headers are stripped from any host outside the
   first-party + GitHub set, so a sanctioned extra domain can't harvest tokens.
 - **Domain-fronting defeat** — the allowlist is checked against the *decrypted* Host, not just the
   CONNECT target.
-- **Request logging** — every decision (`ALLOW`/`DENY`/`STRIP`) is logged: `docker logs claude-sandbox-mitm`.
+- **Request logging** — every decision (`ALLOW`/`DENY`/`STRIP`) is persisted to the audit trail:
+  `./audit.sh --mitm` (live), `--mitm --refused` (only blocked/stripped), `--mitm --dump`.
 
 ```bash
 docker compose build                                   # base image first (once)
@@ -183,12 +189,14 @@ docker compose -f docker-compose.mitm.yml up -d --build # start the mediated var
 
 It shares your saved login volume, so log in once and use either stack. It's heavier (pulls Python +
 mitmproxy) and intentionally a **prototype** — the rules live in `mitm/filter_addon.py`, meant to be
-extended (e.g. per-path API rules, pinning the Anthropic call to your own token). The default stack is
-unchanged; run whichever fits the task.
+extended further. The default stack is unchanged; run whichever fits the task.
 
 ## Audit trail & resource limits
 
 Every host the proxy was asked to reach (allowed *and* refused) is logged to a persisted volume:
+
+For the mitm variant, add `--mitm` to read its richer per-request decision log instead
+(`./audit.sh --mitm`, `--mitm --refused`, `--mitm --dump`).
 
 ```bash
 ./audit.sh            # follow live
