@@ -9,28 +9,32 @@ flowchart TB
   subgraph BOX["🛡️ Docker sandbox — trust boundary (contains the blast radius)"]
     direction TB
     AGENT["🤖 Claude Code CLI<br/>unprivileged 'node' user · capabilities dropped<br/>no-new-privileges · memory / PID limits"]
-    WS["📂 /workspace<br/>= your project folder — the ONLY files it can see"]
-    PROXY["🚦 Allowlist egress proxy<br/>Default: filter by hostname (tinyproxy)<br/>Opt-in: TLS-intercept + content rules (mitmproxy)"]
-    FW["🧱 Kernel firewall — FAIL-CLOSED<br/>only the proxy may reach the internet<br/>DNS · IPv6 · private and cloud-metadata ranges dropped"]
+    WS["📂 /workspace<br/>= your project folder — the only part of<br/>your machine mounted in"]
+    PROXY["🚦 Allowlist egress proxy — decides allow / deny by hostname<br/>Run ONE mode:<br/>Default: hostname filter (tinyproxy)<br/>Opt-in: TLS-intercept + content rules (mitmproxy)"]
+    FW["🧱 Kernel firewall — FAIL-CLOSED<br/>only the proxy's traffic may exit (service-account gate)<br/>agent's direct DNS · IPv6 · private and cloud-metadata blocked"]
   end
 
   subgraph NET["🌐 Internet"]
-    ALLOW(["✅ Approved hosts only<br/>Anthropic · npm · GitHub (optional)"])
-    BLOCK(["⛔ Anything else<br/>exfiltration / beaconing blocked"])
+    ALLOW(["✅ Approved hosts<br/>Anthropic / Claude · npm · GitHub (on by default, removable)<br/>+ approved extras"])
+    BLOCK(["⛔ Unapproved hosts<br/>blocked (no direct path out)"])
   end
 
   BROWSER ==> AGENT
   PROJ <-->|bind mount| WS
   SECRETS -. "not mounted, invisible" .-> BOX
   AGENT --> WS
-  AGENT ==>|every connection forced through the proxy| PROXY
-  PROXY ==> FW
-  FW ==>|approved| ALLOW
-  FW -. dropped .-> BLOCK
+  AGENT ==>|every connection| PROXY
+  PROXY ==>|allowed by hostname| FW
+  PROXY -. "blocked by hostname (403)" .-> BLOCK
+  FW ==>|only the proxy may exit| ALLOW
+  FW -. "non-proxy traffic dropped" .-> BLOCK
   AGENT -. "bypass attempt (raw IP / DNS / metadata)" .-> FW
 
-  RULES["🔍 Content-mediation mode adds:<br/>• GitHub read-only (clone yes, push no)<br/>• block Anthropic file-upload endpoint<br/>• pin to your credential, strip stray API keys<br/>• Host + TLS-SNI must match allowlist (no fronting)<br/>• every request logged to an audit trail"]
+  RULES["🔍 Content-mediation mode (opt-in) adds:<br/>• GitHub read-only (clone yes, push no) · block file-upload endpoint<br/>• strip stray API keys (optional strict token pin)<br/>• reject Host / TLS-SNI outside the allowlist (no fronting)<br/>• every decision logged (persisted)"]
   PROXY -.-> RULES
+
+  NOTE["⚠️ Honest boundary: your project content IS sent to Anthropic for inference (by design).<br/>Approved hosts are trust grants — keep the allowlist minimal. The login token is stored<br/>and readable inside the sandbox. Strong container isolation, not a full VM boundary.<br/>Default mode matches the requested hostname (a shared-CDN host could be domain-fronted);<br/>the opt-in TLS mode closes that by checking the inner Host / TLS-SNI."]
+  ALLOW ~~~ NOTE
 
   classDef host fill:#eef2ff,stroke:#6366f1,color:#1e1b4b;
   classDef secret fill:#fef9c3,stroke:#ca8a04,color:#713f12;
@@ -38,6 +42,7 @@ flowchart TB
   classDef allow fill:#dcfce7,stroke:#16a34a,color:#14532d;
   classDef block fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
   classDef notes fill:#f8fafc,stroke:#94a3b8,color:#0f172a;
+  classDef warn fill:#fff7ed,stroke:#ea580c,color:#7c2d12;
 
   class BROWSER,PROJ host;
   class SECRETS secret;
@@ -45,3 +50,4 @@ flowchart TB
   class ALLOW allow;
   class BLOCK block;
   class RULES notes;
+  class NOTE warn;
