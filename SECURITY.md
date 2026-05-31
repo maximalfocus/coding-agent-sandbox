@@ -115,7 +115,10 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   variant is included — `docker compose -f docker-compose.mitm.yml up -d --build` — that swaps
   `tinyproxy` for mitmproxy (`Dockerfile.mitm`, `mitm/`). Because it terminates TLS it enforces the
   write-up's "defensive proxy" pattern: per-method/path rules (GitHub read-only — clone yes, push
-  no, via `GITHUB_READONLY`), `Authorization`/`Cookie` stripping to non-first-party hosts,
-  domain-fronting defeat (allowlist checked on the decrypted Host), and per-request logging. It's a
-  prototype (rules in `mitm/filter_addon.py`, extend as needed — e.g. pinning the Anthropic call to
-  your own token) and heavier (a CA the in-container tools must trust), so it's opt-in, not default.
+  no, via `GITHUB_READONLY`), Anthropic API hardening (block the Files API, strip `x-api-key`,
+  optional token pin), `Authorization`/`Cookie`/`x-api-key` stripping to non-first-party hosts, and
+  per-request logging (`audit.sh --mitm`). Authorization is keyed on the real routing host
+  (`request.host`, not the spoofable `Host` header), CONNECT is gated to allowlisted hosts on port
+  443, and raw-TCP passthrough is disabled — so host-spoofing and raw tunnels can't slip a
+  non-allowlisted destination through. It's a prototype (rules in `mitm/filter_addon.py`, extend as
+  needed) and heavier (a CA the in-container tools must trust), so it's opt-in, not default.

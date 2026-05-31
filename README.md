@@ -168,17 +168,20 @@ data leaving through an *allowed* host (see `SECURITY.md`). For stronger, conten
 an opt-in variant that swaps `tinyproxy` for a **TLS-intercepting** proxy (mitmproxy). Because it
 terminates TLS it can mediate on request *content*:
 
-- **GitHub read-only** — clone/fetch allowed, `git push` (and other write methods) blocked, so GitHub
-  can't be an exfil channel even while allowlisted. Toggle with `GITHUB_READONLY` (default `true`).
-- **Anthropic API hardening** — on `api.anthropic.com`, upload/exfil endpoints are blocked
-  (`ANTHROPIC_BLOCK_PATHS`, default the Files API `/v1/files` — the channel the write-up's red team
-  abused), an injected `x-api-key` is stripped when an OAuth bearer is in use so data can't be routed
-  to a different account (`ANTHROPIC_SINGLE_CRED`), and you can optionally **pin** the call to one
-  token's sha256 (`ANTHROPIC_PIN_TOKEN`, e.g. a `claude setup-token` value).
-- **Credential containment** — `Authorization`/`Cookie` headers are stripped from any host outside the
-  first-party + GitHub set, so a sanctioned extra domain can't harvest tokens.
-- **Domain-fronting defeat** — the allowlist is checked against the *decrypted* Host, not just the
-  CONNECT target.
+- **GitHub read-only** — clone/fetch allowed (incl. the `git-upload-pack` POST), `git push`
+  (`git-receive-pack`) and other write methods blocked, closing GitHub's obvious write/exfil paths
+  while it stays allowlisted. Toggle with `GITHUB_READONLY` (default `true`).
+- **Anthropic API hardening** — on `api.anthropic.com`, upload/exfil endpoints are blocked on the
+  normalized path (`ANTHROPIC_BLOCK_PATHS`, default the Files API `/v1/files` — the channel the
+  write-up's red team abused), any `x-api-key` is stripped (the subscription path uses an OAuth
+  bearer, so an injected key would route data to a different account — `ANTHROPIC_SINGLE_CRED`), and
+  you can optionally **pin** the call to one token's sha256 (`ANTHROPIC_PIN_TOKEN`, e.g. a
+  `claude setup-token` value).
+- **Credential containment** — `Authorization`/`Cookie`/`x-api-key` headers are stripped from any host
+  outside the first-party + GitHub set, so a sanctioned extra domain can't harvest tokens.
+- **Host-spoof / domain-fronting resistant** — authorization is keyed on the real routing host
+  (`request.host`), not the spoofable `Host` header; CONNECT is gated to allowlisted hosts on port
+  443 and raw-TCP passthrough is disabled, so a tunnel can't reach a non-allowlisted destination.
 - **Request logging** — every decision (`ALLOW`/`DENY`/`STRIP`) is persisted to the audit trail:
   `./audit.sh --mitm` (live), `--mitm --refused` (only blocked/stripped), `--mitm --dump`.
 
