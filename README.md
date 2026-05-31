@@ -189,7 +189,9 @@ docker compose -f docker-compose.mitm.yml up -d --build # start the mediated var
 
 It shares your saved login volume, so log in once and use either stack. It's heavier (pulls Python +
 mitmproxy) and intentionally a **prototype** — the rules live in `mitm/filter_addon.py`, meant to be
-extended further. The default stack is unchanged; run whichever fits the task.
+extended further. The default stack is unchanged; run whichever fits the task. Verified end-to-end: a
+real subscription `/login` and `claude -p` inference round-trip both succeed through the intercepting
+proxy (Node trusts the generated CA via `--use-openssl-ca`), with every call visible in `audit.sh --mitm`.
 
 ## Audit trail & resource limits
 
