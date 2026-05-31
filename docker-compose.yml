@@ -30,6 +30,9 @@ services:
       TTYD_USER: "${TTYD_USER:-coder}"
       TTYD_PASS: "${TTYD_PASS:-changeme}"
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      # GitHub egress is a capability grant (read payloads in / push data out). On by default;
+      # set ALLOW_GITHUB=false in .env for analysis-only or untrusted-workspace runs.
+      ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
       # (Proxy env, CLAUDE_CONFIG_DIR and telemetry-off are baked into the image so every
       #  launch — compose, exec, or the claude-safe `docker run` — inherits them.)
     volumes:
