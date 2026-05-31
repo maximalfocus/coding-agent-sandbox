@@ -179,11 +179,11 @@ terminates TLS it can mediate on request *content*:
   `claude setup-token` value).
 - **Credential containment** — `Authorization`/`Cookie`/`x-api-key` headers are stripped from any host
   outside the first-party + GitHub set, so a sanctioned extra domain can't harvest tokens.
-- **Host-spoof / domain-fronting resistant** — both the real routing host (`request.host`) AND the
-  claimed vhost (`Host`/`:authority`) must be allowlisted, so neither direction of header spoofing
-  gets through; CONNECT is gated to allowlisted hosts on port 443 and raw-TCP passthrough is disabled,
-  so a tunnel can't reach a non-allowlisted destination. (Limitation: WebSocket frames to allowlisted
-  hosts other than GitHub — where WS is denied — are tunnelled, not content-inspected.)
+- **Host-spoof / domain-fronting resistant** — the routing host (`request.host`), the claimed vhost
+  (`Host`/`:authority`), AND the TLS SNI must all be allowlisted, so none of header- or SNI-based
+  fronting gets through; CONNECT is gated to allowlisted hosts on port 443 and raw-TCP passthrough is
+  disabled, so a tunnel can't reach a non-allowlisted destination. (Limitation: WebSocket frames to
+  allowlisted hosts other than GitHub — where WS is denied — are tunnelled, not content-inspected.)
 - **Request logging** — every decision (`ALLOW`/`DENY`/`STRIP`) is persisted to the audit trail:
   `./audit.sh --mitm` (live), `--mitm --refused` (only blocked/stripped), `--mitm --dump`.
 

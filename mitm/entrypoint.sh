@@ -99,11 +99,14 @@ if [ "$(id -u)" = "0" ]; then
         echo "ERROR: example.com was NOT denied by the mitm allowlist (http)" >&2; exit 1
     fi
     say "  ok: non-allowlisted host denied (http 403)"
-    # HTTPS too: a non-allowlisted CONNECT must be refused at the gate (catches a CONNECT regression).
-    if curl -s -o /dev/null --connect-timeout 8 -x "$PROXY" https://example.com/ 2>/dev/null; then
-        echo "ERROR: https example.com CONNECT was NOT denied — CONNECT gate ineffective" >&2; exit 1
+    # HTTPS too: a non-allowlisted CONNECT must be refused *with 403* at the gate. Assert the proxy's
+    # CONNECT status specifically (%{http_connect}) so a DNS/offline/TLS failure can't masquerade as
+    # a denial and mask a CONNECT-gate regression.
+    hc=$(curl -s -o /dev/null -w '%{http_connect}' --connect-timeout 8 -x "$PROXY" https://example.com/ 2>/dev/null || true)
+    if [ "$hc" != "403" ]; then
+        echo "ERROR: https CONNECT to example.com not refused with 403 (got '${hc:-none}')" >&2; exit 1
     fi
-    say "  ok: non-allowlisted CONNECT (https) denied"
+    say "  ok: non-allowlisted CONNECT (https) denied (403)"
     if env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
          curl -s -o /dev/null --connect-timeout 5 https://1.1.1.1/ 2>/dev/null; then
         echo "ERROR: direct egress (no proxy) succeeded — firewall not effective" >&2; exit 1

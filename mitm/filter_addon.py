@@ -89,12 +89,13 @@ def _norm_path(raw):
     prefix check: /%76%31/files, /v1%2ffiles, //v1/files, /v1/./files, /v1/files;x, backslashes,
     double-encoding. NOTE: we do NOT use urlsplit here — for an origin-form path like '//v1/files'
     it would parse 'v1' as the authority and drop it."""
-    p = raw.split("?", 1)[0].split("#", 1)[0].replace("\\", "/")
-    for _ in range(3):                      # collapse double/triple percent-encoding to a fixed point
+    p = raw.split("?", 1)[0].split("#", 1)[0]
+    for _ in range(5):                      # percent-decode to a fixed point (handles nested encoding)
         dec = unquote(p)
         if dec == p:
             break
         p = dec
+    p = p.replace("\\", "/")                # AFTER decoding, so %5c (\) is also treated as a separator
     parts = []
     for seg in p.split("/"):
         seg = seg.split(";", 1)[0]          # drop path parameters (/seg;params)
@@ -162,6 +163,14 @@ def request(flow: http.HTTPFlow):
     if hdr_host and not _any(hdr_host, ALLOW):
         _log("DENY", method, hdr_host, path, "host-header-not-allowlisted")
         return _deny(flow, "Filtered: Host header not on allowlist")
+    # TLS SNI must also be allowlisted: mitmproxy re-uses the client's ClientHello SNI for the
+    # upstream handshake, so a CONNECT to an allowed shared-CDN host with an attacker SNI (and an
+    # allowed Host) could otherwise front to a non-allowlisted vhost. connection_strategy=lazy means
+    # this denial runs before the upstream connection is opened.
+    sni = _host_only(getattr(flow.client_conn, "sni", "") or "")
+    if sni and not _any(sni, ALLOW):
+        _log("DENY", method, sni, path, "sni-not-allowlisted")
+        return _deny(flow, "Filtered: TLS SNI not on allowlist")
 
     # 2. Anthropic API hardening
     if _any(host, ANTHROPIC_HOSTS):
