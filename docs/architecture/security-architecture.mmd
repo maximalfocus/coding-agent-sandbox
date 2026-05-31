@@ -1,0 +1,47 @@
+flowchart TB
+  subgraph HOST["🖥️ Developer machine (host)"]
+    direction LR
+    BROWSER["🌐 Browser → web terminal<br/>(127.0.0.1 only, password)"]
+    PROJ["📁 One project folder"]
+    SECRETS["🔑 SSH keys · cloud creds · browser profiles<br/>+ everything else on your machine"]
+  end
+
+  subgraph BOX["🛡️ Docker sandbox — trust boundary (contains the blast radius)"]
+    direction TB
+    AGENT["🤖 Claude Code CLI<br/>unprivileged 'node' user · capabilities dropped<br/>no-new-privileges · memory / PID limits"]
+    WS["📂 /workspace<br/>= your project folder — the ONLY files it can see"]
+    PROXY["🚦 Allowlist egress proxy<br/>Default: filter by hostname (tinyproxy)<br/>Opt-in: TLS-intercept + content rules (mitmproxy)"]
+    FW["🧱 Kernel firewall — FAIL-CLOSED<br/>only the proxy may reach the internet<br/>DNS · IPv6 · private and cloud-metadata ranges dropped"]
+  end
+
+  subgraph NET["🌐 Internet"]
+    ALLOW(["✅ Approved hosts only<br/>Anthropic · npm · GitHub (optional)"])
+    BLOCK(["⛔ Anything else<br/>exfiltration / beaconing blocked"])
+  end
+
+  BROWSER ==> AGENT
+  PROJ <-->|bind mount| WS
+  SECRETS -. "not mounted, invisible" .-> BOX
+  AGENT --> WS
+  AGENT ==>|every connection forced through the proxy| PROXY
+  PROXY ==> FW
+  FW ==>|approved| ALLOW
+  FW -. dropped .-> BLOCK
+  AGENT -. "bypass attempt (raw IP / DNS / metadata)" .-> FW
+
+  RULES["🔍 Content-mediation mode adds:<br/>• GitHub read-only (clone yes, push no)<br/>• block Anthropic file-upload endpoint<br/>• pin to your credential, strip stray API keys<br/>• Host + TLS-SNI must match allowlist (no fronting)<br/>• every request logged to an audit trail"]
+  PROXY -.-> RULES
+
+  classDef host fill:#eef2ff,stroke:#6366f1,color:#1e1b4b;
+  classDef secret fill:#fef9c3,stroke:#ca8a04,color:#713f12;
+  classDef boxn fill:#ecfdf5,stroke:#10b981,color:#064e3b;
+  classDef allow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef block fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
+  classDef notes fill:#f8fafc,stroke:#94a3b8,color:#0f172a;
+
+  class BROWSER,PROJ host;
+  class SECRETS secret;
+  class AGENT,WS,PROXY,FW boxn;
+  class ALLOW allow;
+  class BLOCK block;
+  class RULES notes;

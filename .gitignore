@@ -1,2 +1,5 @@
 .env
 workspace/
+__pycache__/
+*.pyc
+.playwright-mcp/
