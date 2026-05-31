@@ -15,8 +15,8 @@ services:
       - SETUID        # gosu drops root->node; tinyproxy drops root->tinyproxy
       - SETGID        # ditto (setgroups/setgid on privilege drop)
       - CHOWN         # entrypoint owns the config volume for the node user
-      - KILL          # hot-reload: signal tinyproxy on allowlist change (allow-domain.sh)
       - DAC_OVERRIDE  # tinyproxy (root) writes its pid/log into tinyproxy-owned dirs at startup
+      # (KILL dropped — allow-domain.sh now signals tinyproxy as the tinyproxy user, not root.)
     # Block privilege escalation via setuid binaries (Claude runs as the unprivileged `node`).
     security_opt:
       - "no-new-privileges:true"

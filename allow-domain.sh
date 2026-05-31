@@ -34,8 +34,9 @@ if [ "$added" -eq 0 ]; then
     echo "No valid domains supplied — nothing added." >&2; exit 1
 fi
 
-# Reload the proxy filter in place (no dropped sessions, no restart).
-docker compose exec -T claude-sandbox pkill -HUP tinyproxy
+# Reload the proxy filter in place (no dropped sessions, no restart). Signal as the tinyproxy user
+# (same-uid signal needs no CAP_KILL, so the container can drop that capability).
+docker compose exec -T -u tinyproxy claude-sandbox pkill -HUP tinyproxy
 sleep 1
 
 # Safety re-check: the allowlist must STILL deny a known-bad host. If example.com became

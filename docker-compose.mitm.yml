@@ -21,8 +21,8 @@ services:
       - SETUID
       - SETGID
       - CHOWN
-      - KILL
       - DAC_OVERRIDE
+      # (No KILL: this variant has no in-place reload path.)
     security_opt:
       - "no-new-privileges:true"
     mem_limit: "${MEM_LIMIT:-6g}"
