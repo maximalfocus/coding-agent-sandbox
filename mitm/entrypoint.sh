@@ -43,8 +43,16 @@ if [ "$(id -u)" = "0" ]; then
     ALLOWLIST="$(build_allowlist)"; export ALLOWLIST
     AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com"; export AUTH_HOSTS
     export GITHUB_READONLY="${GITHUB_READONLY:-true}"
+    # Anthropic API hardening knobs (see mitm/filter_addon.py).
+    export ANTHROPIC_BLOCK_PATHS="${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
+    export ANTHROPIC_SINGLE_CRED="${ANTHROPIC_SINGLE_CRED:-true}"
+    export ANTHROPIC_PIN_TOKEN="${ANTHROPIC_PIN_TOKEN:-}"
+    # Persisted decision log (the audit trail; surfaced by audit.sh --mitm). The addon runs as the
+    # tinyproxy user, so the dir must be writable by it.
+    export AUDIT_LOG="${AUDIT_LOG:-/var/log/mitm/decisions.log}"
+    mkdir -p "$(dirname "$AUDIT_LOG")"; chown -R tinyproxy:tinyproxy "$(dirname "$AUDIT_LOG")" 2>/dev/null || true
     say "Allowlist: $ALLOWLIST"
-    say "GitHub read-only: $GITHUB_READONLY"
+    say "GitHub read-only: $GITHUB_READONLY | Anthropic block: $ANTHROPIC_BLOCK_PATHS | token-pin: $([ -n "$ANTHROPIC_PIN_TOKEN" ] && echo on || echo off)"
 
     mkdir -p "$CONFDIR"; chown tinyproxy:tinyproxy "$CONFDIR"
 

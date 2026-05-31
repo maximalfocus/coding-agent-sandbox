@@ -36,12 +36,21 @@ services:
       ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
       # Content-level rule unique to this variant: allow GitHub clone/fetch, block push/writes.
       GITHUB_READONLY: "${GITHUB_READONLY:-true}"
+      # Anthropic API hardening: block upload/exfil endpoints, enforce a single credential, and
+      # (optional) pin the call to one provisioned token's sha256 (e.g. a `claude setup-token` value).
+      ANTHROPIC_BLOCK_PATHS: "${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
+      ANTHROPIC_SINGLE_CRED: "${ANTHROPIC_SINGLE_CRED:-true}"
+      ANTHROPIC_PIN_TOKEN: "${ANTHROPIC_PIN_TOKEN:-}"
     volumes:
       - "${WORKSPACE_DIR:-./workspace}:/workspace"
       # Shares the same login volume as the default stack — log in once, use either.
       - "claude-config:/home/node/.claude"
+      # Persisted mitm decision log (audit trail): surfaced by `./audit.sh --mitm`.
+      - "claude-audit-mitm:/var/log/mitm"
     restart: unless-stopped
 
 volumes:
   claude-config:
     name: claude-sandbox-config
+  claude-audit-mitm:
+    name: claude-sandbox-audit-mitm
