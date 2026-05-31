@@ -102,7 +102,11 @@ For the most natural workflow (`cd` into any project and run safe Claude there),
 function. It launches a one-off sandbox that mounts **your current directory** as `/workspace`,
 locked to the same hostname allowlist, reusing your saved subscription login. The canonical,
 up-to-date copy is installed in your `~/.zshrc` (`claude-safe`); it includes the mount guards,
-the session lock, resource limits, `no-new-privileges`, and the audit-volume mount. Use it as:
+the session lock, resource limits, `no-new-privileges`, the minimal capability set, and the
+audit-volume mount — full parity with the compose path. It runs on a dedicated user-defined Docker
+network (`claude-safe-net`, created on first use) so the in-container firewall's "DNS only via
+`127.0.0.11`" rule holds — a bare `docker run` on the default bridge can't resolve through the
+locked-down proxy. Use it as:
 
 Then, from any project:
 
@@ -112,6 +116,8 @@ claude-safe                  # interactive Claude, sandboxed to ~/code/my-app
 claude-safe -p "fix tests"   # args pass straight to claude
 claude-safe --shell          # a shell inside the sandbox instead
 CLAUDE_SAFE_DOMAINS=pypi.org,mycorp.com claude-safe   # allow extra hosts for this run
+CLAUDE_SAFE_GITHUB=false claude-safe                  # drop GitHub egress for untrusted work
+CLAUDE_SAFE_RUNTIME=runsc claude-safe                 # gVisor boundary (if installed)
 ```
 
 Each invocation is its own throwaway container scoped to that folder; they all share one saved
