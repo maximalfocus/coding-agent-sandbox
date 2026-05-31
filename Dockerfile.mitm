@@ -20,9 +20,13 @@ COPY mitm/filter_addon.py /usr/local/share/mitm/filter_addon.py
 COPY mitm/entrypoint.sh   /usr/local/bin/entrypoint-mitm.sh
 RUN chmod +x /usr/local/bin/entrypoint-mitm.sh
 
-# Make the intercept CA trusted by the toolchain. The system bundle is refreshed at runtime
-# (update-ca-certificates) once the CA is generated; node reads NODE_EXTRA_CA_CERTS directly.
-ENV NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem \
+# Make the intercept CA trusted by the whole toolchain. The system bundle is refreshed at runtime
+# (update-ca-certificates) once the CA is generated. curl/git/python read the system bundle below;
+# Node is the tricky one — its bundled-CA `fetch`/undici ignores NODE_EXTRA_CA_CERTS in some
+# versions, so --use-openssl-ca makes Node trust the system OpenSSL store (where the mitm CA lands).
+# NODE_EXTRA_CA_CERTS is kept as a belt-and-braces fallback.
+ENV NODE_OPTIONS=--use-openssl-ca \
+    NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
