@@ -33,18 +33,26 @@ GITHUB_DOMAINS=(
 
 build_filter() {
     : > "$FILTER_FILE"
-    local domains=("${BASE_DOMAINS[@]}")
-    # GitHub only when explicitly allowed (default on). Anything in {false,0,no,off} drops it.
+    local domains=("${BASE_DOMAINS[@]}") gh
+    # Fail-closed: only recognized true-values (or unset) enable GitHub; an unrecognized value
+    # (e.g. a "flase" typo) is treated as OFF — the safer side — not silently left on.
     case "$(printf '%s' "${ALLOW_GITHUB:-true}" | tr '[:upper:]' '[:lower:]')" in
-        false|0|no|off) say "  (GitHub egress OFF — ALLOW_GITHUB=${ALLOW_GITHUB})" ;;
-        *)              domains+=("${GITHUB_DOMAINS[@]}") ;;
+        true|1|yes|on) gh=1 ;;
+        false|0|no|off) gh=0; say "  (GitHub egress OFF — ALLOW_GITHUB=${ALLOW_GITHUB})" ;;
+        *) gh=0; echo "  WARN: unrecognized ALLOW_GITHUB='${ALLOW_GITHUB}' — treating as OFF (fail-closed)" >&2 ;;
     esac
+    [ "$gh" = "1" ] && domains+=("${GITHUB_DOMAINS[@]}")
     if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
-        local OLDIFS=$IFS; IFS=','
+        local OLDIFS=$IFS; IFS=','; set -f   # noglob: a stray '*' must not expand to /workspace files
         for d in $EXTRA_ALLOWED_DOMAINS; do
-            d=$(echo "$d" | tr -d '[:space:]'); [ -n "$d" ] && domains+=("$d")
+            d=$(echo "$d" | tr -d '[:space:]'); [ -z "$d" ] && continue
+            # Don't let extras re-add GitHub once it's been disabled.
+            if [ "$gh" = "0" ] && printf '%s' "$d" | grep -qiE '(^|\.)(github\.com|githubusercontent\.com)$'; then
+                echo "  WARN: ignoring '$d' — GitHub egress is disabled (ALLOW_GITHUB)" >&2; continue
+            fi
+            domains+=("$d")
         done
-        IFS=$OLDIFS
+        IFS=$OLDIFS; set +f
     fi
     for d in "${domains[@]}"; do
         # Strict hostname check: >=2 dot-separated labels, each starting/ending alphanumeric.
