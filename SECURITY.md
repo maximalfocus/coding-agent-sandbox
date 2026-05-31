@@ -37,9 +37,35 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   is open, and a parent domain allows **all** its subdomains (`github.com` ⇒ any `*.github.com`).
   Data *could* still leave via an allowlisted host (e.g. pushing to a GitHub repo you control).
   Keep `EXTRA_ALLOWED_DOMAINS` minimal.
-- **Name-based, not content inspection.** The proxy filters on the requested hostname (the
-  CONNECT target); it does **not** decrypt TLS or inspect payloads/paths. For per-path control or
-  request logging you'd add a TLS-intercepting proxy (heavier; needs a CA cert in the container).
+- **Name-based, not content inspection — and exfiltration through an allowed host is possible.**
+  The proxy filters on the requested hostname (the CONNECT target); it does **not** decrypt TLS or
+  inspect payloads/paths. This is the gap Anthropic's containment write-up calls out as the hard
+  one: an allowlisted domain is a *capability*, and "every function reachable through it is now
+  attack surface." A prompt-injected agent can still move data out through any allowed host it can
+  write to — push to a GitHub repo/gist (if `ALLOW_GITHUB` is on), POST to a permitted API, or
+  encode bytes into request paths to an allowed domain. Hostname allowlisting stops *arbitrary*
+  beaconing, not exfiltration via a sanctioned destination. Mitigations: keep the allowlist
+  minimal, turn off `ALLOW_GITHUB` for untrusted work, and for real content-level mediation run a
+  TLS-intercepting proxy (see *Hardening*). Name-only filtering can also be **domain-fronted** on
+  shared-CDN infrastructure (the CONNECT host is allowlisted but the inner TLS SNI/Host differs) —
+  another thing only a TLS-terminating proxy closes.
+- **Workspace-local Claude config & hooks are executed (and they're inside the box).** Claude Code
+  reads project-local settings and hooks (`.claude/settings.json`, hook commands) from the folder
+  you mount. Anthropic's write-up flags "pre-trust execution" — config/hooks that ran before the
+  user accepted a trust prompt — as a real vulnerability they had to fix. **Treat `WORKSPACE_DIR`
+  as untrusted:** if it carries a malicious `.claude/`, a hook can run automatically the moment
+  `claude` starts. The sandbox is exactly the right containment for this — the hook is confined to
+  `/workspace` and the egress allowlist — but combined with the allowed-host exfil path above it's
+  a live channel. Review a project's `.claude/` before pointing the sandbox at it, prefer
+  `ALLOW_GITHUB=false` and a minimal allowlist for code you don't trust, and mount `:ro` if you
+  only need analysis.
+- **The agent can read its own subscription token.** The login lives in the `claude-config` volume
+  at `/home/node/.claude`, owned by and readable as `node` — the same user Claude and its tools run
+  as. Anthropic's sealed-VM design keeps credentials in the host keychain, *never entering the
+  guest*; a subscription login inside a container can't fully match that. The token only authorizes
+  *your own* account, but it is reachable by the agent and therefore leakable via an allowed host.
+  This is an accepted trade-off of running a real logged-in CLI, not a defect — but don't treat the
+  container as a place where the token is hidden from the model.
 - **DNS is restricted to the proxy user** (queries to `127.0.0.11` from Claude/tools are dropped;
   only `tinyproxy` resolves). This closes the direct DNS-tunnelling channel. It is not a *hermetic*
   seal — the proxy still forwards lookups for allowlisted names daemon-side — but a non-proxy
@@ -58,17 +84,36 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   ordinary project files from **hardlinks or secrets already copied under `WORKSPACE_DIR`** — if a
   file is reachable inside the mounted tree, it's readable. Don't keep credentials in the project.
 - **Container isolation, not a VM.** Docker shares the host kernel. A kernel-level escape is out
-  of scope here; this is strong defense-in-depth, not a hypervisor boundary.
+  of scope here; this is strong defense-in-depth, not a hypervisor boundary. If you need a stronger
+  boundary, install gVisor and uncomment `runtime: runsc` in `docker-compose.yml` (see *Hardening*)
+  — a user-space kernel of the same class Anthropic uses for claude.ai.
+- **One layer, mostly.** This is an *environment-layer* containment (sandbox + egress + caps).
+  Anthropic's write-up stresses that defenses should overlap: model-layer and tool-permission
+  checks exist precisely because no single layer is 100%. The cheap complementary layer here is
+  Claude Code's **own permission prompts** — running fully unattended (auto-approving every action)
+  removes the one in-the-box check the environment layer can't provide. Keep a human in the loop
+  for untrusted work; lean on full autonomy only when the workspace and task are trusted.
 - **Build-time network is open.** The firewall applies at *runtime*. The image build (`npm i`,
   downloading ttyd) reaches the internet normally — review the `Dockerfile` if that matters to you.
 
 ## Hardening options
 
 - Set a strong `TTYD_PASS`; consider an SSH tunnel instead of publishing the port if remote.
-- Keep `EXTRA_ALLOWED_DOMAINS` as small as possible; trim `BASE_DOMAINS` in `entrypoint.sh` if you
-  don't need GitHub or npm. Telemetry egress is already off (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
+- Keep `EXTRA_ALLOWED_DOMAINS` as small as possible; treat every entry as a capability grant.
+  Set `ALLOW_GITHUB=false` to drop GitHub egress for analysis-only or untrusted-workspace runs, and
+  trim `BASE_DOMAINS` in `entrypoint.sh` if you don't need npm. Telemetry egress is already off
+  (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
 - The Claude CLI version is pinned and its **runtime auto-updater is disabled** (`DISABLE_AUTOUPDATER=1`),
   so the binary can't change mid-session. Bump `CLAUDE_CODE_VERSION` and rebuild to update it.
 - Mount `WORKSPACE_DIR` read-only (`:ro` in `docker-compose.yml`) if you only want analysis, not edits.
-- For per-path control or full request logging, swap `tinyproxy` for a TLS-intercepting proxy
-  (e.g. mitmproxy) and trust its CA inside the container — heavier, but gives content-level mediation.
+- **Stronger kernel boundary:** install [gVisor](https://gvisor.dev/) and uncomment `runtime: runsc`
+  in `docker-compose.yml`. It runs the container under a user-space kernel that intercepts syscalls,
+  narrowing the "shares the host kernel" gap above — the battle-tested-primitive approach the
+  containment write-up favors over rolling your own isolation.
+- **Content-level egress mediation:** the proxy filters by hostname only, so it can't stop
+  exfiltration through an *allowed* host or domain-fronting. To mediate request content, swap
+  `tinyproxy` for a TLS-intercepting proxy (e.g. mitmproxy) and trust its CA inside the container.
+  That buys per-path/-method rules (e.g. allow GitHub `GET`/clone but block `push`), request
+  logging, and — the write-up's "defensive proxy" pattern — stripping injected auth headers and
+  pinning the Anthropic call to your own session token. Heavier (a CA in the container, and tools
+  must trust it), so it's opt-in rather than the default.

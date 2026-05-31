@@ -20,6 +20,12 @@ services:
     # Block privilege escalation via setuid binaries (Claude runs as the unprivileged `node`).
     security_opt:
       - "no-new-privileges:true"
+    # Kernel-escape resistance (optional). Docker shares the host kernel, so this is defense-in-
+    # depth, not a VM boundary (see SECURITY.md). If you've installed gVisor, uncomment to run the
+    # container under the runsc sandbox — a user-space kernel that intercepts syscalls — which is
+    # the same class of primitive the containment write-up uses for claude.ai. No other change
+    # needed; everything below still applies.
+    # runtime: runsc
     # Cap blast radius of a runaway build/agent so it can't exhaust the host.
     mem_limit: "${MEM_LIMIT:-6g}"
     pids_limit: ${PIDS_LIMIT:-4096}
