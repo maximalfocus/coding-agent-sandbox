@@ -16,24 +16,31 @@ BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com)
 GITHUB_DOMAINS=(github.com githubusercontent.com)
 
 build_allowlist() {
-    local domains=("${BASE_DOMAINS[@]}")
+    local domains=("${BASE_DOMAINS[@]}") gh
+    # Fail-closed: only recognized true-values (or unset) enable GitHub; anything unrecognized
+    # (e.g. a "flase" typo) is treated as OFF, the safer side, not silently left on.
     case "$(printf '%s' "${ALLOW_GITHUB:-true}" | tr '[:upper:]' '[:lower:]')" in
-        false|0|no|off) say "  (GitHub egress OFF — ALLOW_GITHUB=${ALLOW_GITHUB})" ;;
-        *)              domains+=("${GITHUB_DOMAINS[@]}") ;;
+        true|1|yes|on) gh=1 ;;
+        false|0|no|off) gh=0; say "  (GitHub egress OFF — ALLOW_GITHUB=${ALLOW_GITHUB})" ;;
+        *) gh=0; echo "  WARN: unrecognized ALLOW_GITHUB='${ALLOW_GITHUB}' — treating as OFF (fail-closed)" >&2 ;;
     esac
+    [ "$gh" = "1" ] && domains+=("${GITHUB_DOMAINS[@]}")
     if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
-        local OLDIFS=$IFS; IFS=','
+        local OLDIFS=$IFS; IFS=','; set -f   # noglob: a stray '*' must not expand to /workspace files
         for d in $EXTRA_ALLOWED_DOMAINS; do
             d=$(printf '%s' "$d" | tr -d '[:space:]')
-            # Same strict multi-label/no-IP check the default path uses.
-            if printf '%s' "$d" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$' \
-               && ! printf '%s' "$d" | grep -qE '^[0-9.]+$'; then
-                domains+=("$d")
-            else
-                echo "  WARN: ignoring invalid domain '$d'" >&2
+            # Strict multi-label/no-IP check (parity with the default path).
+            if ! printf '%s' "$d" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$' \
+               || printf '%s' "$d" | grep -qE '^[0-9.]+$'; then
+                echo "  WARN: ignoring invalid domain '$d'" >&2; continue
             fi
+            # Don't let extras re-add GitHub once it's been disabled.
+            if [ "$gh" = "0" ] && printf '%s' "$d" | grep -qiE '(^|\.)(github\.com|githubusercontent\.com)$'; then
+                echo "  WARN: ignoring '$d' — GitHub egress is disabled (ALLOW_GITHUB)" >&2; continue
+            fi
+            domains+=("$d")
         done
-        IFS=$OLDIFS
+        IFS=$OLDIFS; set +f
     fi
     local IFS=','; printf '%s' "${domains[*]}"
 }
@@ -57,11 +64,17 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p "$CONFDIR"; chown tinyproxy:tinyproxy "$CONFDIR"
 
     say "Starting mitmproxy (TLS-intercepting egress) as the tinyproxy user..."
-    # Regular HTTP-proxy mode on 8888 (clients already point HTTPS_PROXY here). ssl_insecure lets
-    # mitm reach upstreams; downstream we present our own CA, which we trust below.
+    # Regular HTTP-proxy mode on 8888 (clients already point HTTPS_PROXY here). Hardening:
+    #   rawtcp=false            — no raw-TCP passthrough, so a CONNECT can't tunnel arbitrary,
+    #                             non-HTTP/TLS traffic past the addon's allowlist.
+    #   connection_strategy=lazy— don't open the upstream connection until the request is seen and
+    #                             allowed (no connect-then-reject window).
+    # We do NOT pass --ssl-insecure: mitm validates the *upstream* cert against the system CA bundle,
+    # so an on-path attacker can't impersonate an allowlisted host. (Downstream we present our own CA,
+    # trusted below.) The addon (-s) enforces the allowlist + content rules on every request/CONNECT.
     gosu tinyproxy mitmdump --quiet \
         --mode regular --listen-host 127.0.0.1 --listen-port 8888 \
-        --set confdir="$CONFDIR" --ssl-insecure \
+        --set confdir="$CONFDIR" --set rawtcp=false --set connection_strategy=lazy \
         -s "$ADDON" >/var/log/mitm.log 2>&1 &
 
     # Wait for the CA to be generated, then trust it container-wide (system store + node/git/python
@@ -92,6 +105,22 @@ if [ "$(id -u)" = "0" ]; then
         echo "ERROR: direct egress (no proxy) succeeded — firewall not effective" >&2; exit 1
     fi
     say "  ok: direct egress without the proxy is blocked"
+    # Same fatal channel checks as the default entrypoint — the firewall installs identical rules,
+    # but verify them here too (the IPv6 lock is best-effort, so a silent failure must be caught).
+    if dig +time=2 +tries=1 example.com @127.0.0.11 >/dev/null 2>&1; then
+        echo "ERROR: direct DNS to 127.0.0.11 worked as non-proxy — exfil channel open" >&2; exit 1
+    fi
+    say "  ok: direct DNS (non-proxy) is blocked"
+    if env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
+         curl -s -o /dev/null --connect-timeout 4 http://169.254.169.254/ 2>/dev/null; then
+        echo "ERROR: link-local/metadata 169.254.169.254 reachable" >&2; exit 1
+    fi
+    say "  ok: link-local/metadata range unreachable"
+    if env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
+         curl -6 -s -o /dev/null --connect-timeout 5 "https://[2606:4700:4700::1111]/" 2>/dev/null; then
+        echo "ERROR: direct IPv6 egress succeeded — v6 not locked" >&2; exit 1
+    fi
+    say "  ok: direct IPv6 egress is blocked"
 
     mkdir -p /home/node/.claude && chown -R node:node /home/node/.claude 2>/dev/null || true
 
