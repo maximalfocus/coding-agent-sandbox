@@ -31,9 +31,11 @@ ENV NODE_OPTIONS=--use-openssl-ca \
     GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
 # Override the base image's healthcheck (which greps for `tinyproxy`): this variant runs mitmdump.
-# Healthy = mitmdump alive AND actively returning 403 for a non-allowlisted host (filtering works).
+# Healthy = mitmdump alive AND filtering both layers: a non-allowlisted host is 403 over plain HTTP
+# AND its HTTPS CONNECT is refused (curl fails) — the latter catches a CONNECT-gate regression.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=25s --retries=3 \
   CMD pgrep -x mitmdump >/dev/null 2>&1 \
-      && [ "$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 -x http://127.0.0.1:8888 http://example.com/ 2>/dev/null)" = "403" ]
+      && [ "$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 -x http://127.0.0.1:8888 http://example.com/ 2>/dev/null)" = "403" ] \
+      && ! curl -s -o /dev/null --connect-timeout 5 -x http://127.0.0.1:8888 https://example.com/ 2>/dev/null
 
 ENTRYPOINT ["/usr/local/bin/entrypoint-mitm.sh"]

@@ -32,7 +32,7 @@ audit trail; see audit.sh --mitm). A prototype — deliberately small and readab
 import hashlib
 import os
 import sys
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote
 from mitmproxy import http
 
 
@@ -86,10 +86,18 @@ def _cred(req):
 
 def _norm_path(raw):
     """Percent-decode + normalize a request path so encoded/traversal variants can't dodge a
-    prefix check (e.g. /%76%31/files, /v1%2ffiles, //v1/files, /v1/./files)."""
-    path = unquote(urlsplit(raw).path)
+    prefix check: /%76%31/files, /v1%2ffiles, //v1/files, /v1/./files, /v1/files;x, backslashes,
+    double-encoding. NOTE: we do NOT use urlsplit here — for an origin-form path like '//v1/files'
+    it would parse 'v1' as the authority and drop it."""
+    p = raw.split("?", 1)[0].split("#", 1)[0].replace("\\", "/")
+    for _ in range(3):                      # collapse double/triple percent-encoding to a fixed point
+        dec = unquote(p)
+        if dec == p:
+            break
+        p = dec
     parts = []
-    for seg in path.split("/"):
+    for seg in p.split("/"):
+        seg = seg.split(";", 1)[0]          # drop path parameters (/seg;params)
         if seg in ("", "."):
             continue
         if seg == "..":
@@ -98,6 +106,14 @@ def _norm_path(raw):
             continue
         parts.append(seg)
     return ("/" + "/".join(parts)).lower()
+
+
+def _host_only(authority):
+    """Bare host from an authority/Host value, dropping any port (handles [v6]:port)."""
+    a = (authority or "").strip()
+    if a.startswith("["):
+        return a[1:a.index("]")].lower() if "]" in a else a.strip("[]").lower()
+    return a.split(":", 1)[0].lower().rstrip(".")
 
 
 def _log(verdict, method, host, path, reason=""):
@@ -136,10 +152,16 @@ def request(flow: http.HTTPFlow):
     method = flow.request.method
     path = flow.request.path
 
-    # 1. allowlist (on the real destination — defeats Host-header spoofing / domain-fronting)
+    # 1. allowlist — BOTH the routing target AND the claimed vhost (Host header / :authority) must be
+    # allowlisted. Checking host alone leaves plain-HTTP domain-fronting open (route to an allowed
+    # host, set Host: blocked); checking the header alone is the round-1 spoof. Require both.
     if not _any(host, ALLOW):
         _log("DENY", method, host, path, "not-allowlisted")
         return _deny(flow, "Filtered: host not on allowlist")
+    hdr_host = _host_only(getattr(flow.request, "host_header", "") or flow.request.headers.get("host", ""))
+    if hdr_host and not _any(hdr_host, ALLOW):
+        _log("DENY", method, hdr_host, path, "host-header-not-allowlisted")
+        return _deny(flow, "Filtered: Host header not on allowlist")
 
     # 2. Anthropic API hardening
     if _any(host, ANTHROPIC_HOSTS):
@@ -158,12 +180,19 @@ def request(flow: http.HTTPFlow):
             del flow.request.headers["x-api-key"]
             _log("STRIP", method, host, path, "removed x-api-key on anthropic host (single-cred)")
 
-    # 3. GitHub read-only: permit clone/fetch (incl. the git-upload-pack POST), block push + writes
+    # 3. GitHub read-only: permit clone/fetch, block push + writes. Match the smart-HTTP endpoints on
+    # the PATH COMPONENT (query stripped) so `POST /anything?git-upload-pack` can't sneak a write past
+    # a loose substring check. WebSocket upgrades are denied (bidirectional, not content-inspected).
     if GITHUB_READONLY and _any(host, GITHUB_HOSTS):
-        if "git-receive-pack" in path:
+        ppath = path.split("?", 1)[0]
+        query = path[len(ppath):]
+        if flow.request.headers.get("upgrade", "").lower() == "websocket":
+            _log("DENY", method, host, path, "github-readonly (websocket)")
+            return _deny(flow, "Filtered: WebSocket to GitHub blocked in this sandbox")
+        if ppath.endswith("/git-receive-pack") or "service=git-receive-pack" in query:
             _log("DENY", method, host, path, "github-readonly (push)")
             return _deny(flow, "Filtered: GitHub is read-only in this sandbox (push blocked)")
-        if method not in ("GET", "HEAD", "OPTIONS") and not (method == "POST" and "git-upload-pack" in path):
+        if method not in ("GET", "HEAD", "OPTIONS") and not (method == "POST" and ppath.endswith("/git-upload-pack")):
             _log("DENY", method, host, path, "github-readonly (write)")
             return _deny(flow, "Filtered: GitHub is read-only in this sandbox (writes blocked)")
 
@@ -175,3 +204,15 @@ def request(flow: http.HTTPFlow):
                 _log("STRIP", method, host, path, f"removed {h} header")
 
     _log("ALLOW", method, host, path)
+
+
+def websocket_start(flow: http.HTTPFlow):
+    """Backstop: refuse any websocket to a GitHub host however it was negotiated. The HTTP/1.1
+    Upgrade handshake is already denied in request(); this also covers HTTP/2 extended CONNECT,
+    where the upgrade isn't a normal header."""
+    if GITHUB_READONLY and _any(flow.request.host, GITHUB_HOSTS):
+        _log("DENY", "WS", flow.request.host, flow.request.path, "github-readonly (websocket backstop)")
+        try:
+            flow.kill()
+        except Exception:
+            pass

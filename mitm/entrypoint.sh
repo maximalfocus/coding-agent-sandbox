@@ -95,11 +95,15 @@ if [ "$(id -u)" = "0" ]; then
     else
         echo "  WARN: registry.npmjs.org not reachable right now (offline?) — starting anyway" >&2
     fi
-    deny=$(curl -sS -o /dev/null --connect-timeout 8 -x "$PROXY" https://example.com/ 2>&1 || true)
     if ! curl -s -o /dev/null --connect-timeout 8 -w '%{http_code}' -x "$PROXY" http://example.com/ 2>/dev/null | grep -q 403; then
-        echo "ERROR: example.com was NOT denied by the mitm allowlist" >&2; exit 1
+        echo "ERROR: example.com was NOT denied by the mitm allowlist (http)" >&2; exit 1
     fi
-    say "  ok: non-allowlisted host denied (403)"
+    say "  ok: non-allowlisted host denied (http 403)"
+    # HTTPS too: a non-allowlisted CONNECT must be refused at the gate (catches a CONNECT regression).
+    if curl -s -o /dev/null --connect-timeout 8 -x "$PROXY" https://example.com/ 2>/dev/null; then
+        echo "ERROR: https example.com CONNECT was NOT denied — CONNECT gate ineffective" >&2; exit 1
+    fi
+    say "  ok: non-allowlisted CONNECT (https) denied"
     if env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
          curl -s -o /dev/null --connect-timeout 5 https://1.1.1.1/ 2>/dev/null; then
         echo "ERROR: direct egress (no proxy) succeeded — firewall not effective" >&2; exit 1
