@@ -161,6 +161,31 @@ it in `EXTRA_ALLOWED_DOMAINS` in `.env` — then `docker compose up -d` (recreat
 `--build` is only needed if you changed a Dockerfile). For `claude-safe`, there's no "restart":
 each run reads its domains fresh, so just use `CLAUDE_SAFE_DOMAINS=...` for that invocation.
 
+## Content-mediation mode (opt-in, mitmproxy)
+
+The default proxy filters by **hostname only** — it can't tell `git clone` from `git push`, or stop
+data leaving through an *allowed* host (see `SECURITY.md`). For stronger, content-aware control there's
+an opt-in variant that swaps `tinyproxy` for a **TLS-intercepting** proxy (mitmproxy). Because it
+terminates TLS it can mediate on request *content*:
+
+- **GitHub read-only** — clone/fetch allowed, `git push` (and other write methods) blocked, so GitHub
+  can't be an exfil channel even while allowlisted. Toggle with `GITHUB_READONLY` (default `true`).
+- **Credential containment** — `Authorization`/`Cookie` headers are stripped from any host outside the
+  first-party + GitHub set, so a sanctioned extra domain can't harvest tokens.
+- **Domain-fronting defeat** — the allowlist is checked against the *decrypted* Host, not just the
+  CONNECT target.
+- **Request logging** — every decision (`ALLOW`/`DENY`/`STRIP`) is logged: `docker logs claude-sandbox-mitm`.
+
+```bash
+docker compose build                                   # base image first (once)
+docker compose -f docker-compose.mitm.yml up -d --build # start the mediated variant
+```
+
+It shares your saved login volume, so log in once and use either stack. It's heavier (pulls Python +
+mitmproxy) and intentionally a **prototype** — the rules live in `mitm/filter_addon.py`, meant to be
+extended (e.g. per-path API rules, pinning the Anthropic call to your own token). The default stack is
+unchanged; run whichever fits the task.
+
 ## Audit trail & resource limits
 
 Every host the proxy was asked to reach (allowed *and* refused) is logged to a persisted volume:

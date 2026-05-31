@@ -1,0 +1,29 @@
+# OPT-IN content-mediation variant: adds mitmproxy (a TLS-intercepting egress proxy) on top of the
+# default sandbox image. Heavier than the default (pulls Python + mitmproxy), so it's a separate
+# image you build only when you want request-content mediation — per-method/path rules (e.g. GitHub
+# read-only), credential-header stripping, and full request logging — instead of hostname-only
+# filtering. Build/run with:  docker compose -f docker-compose.mitm.yml up -d --build
+FROM claude-container-sandbox:latest
+USER root
+
+# The base image bakes HTTP(S)_PROXY=127.0.0.1:8888 for runtime; that proxy isn't up at build
+# time, so clear it for this network step (build-time egress is direct, same as the base image).
+RUN http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= no_proxy='*' \
+      apt-get update && http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= no_proxy='*' \
+      apt-get install -y --no-install-recommends mitmproxy \
+    && rm -rf /var/lib/apt/lists/*
+
+# mitmproxy's CA + config dir, owned by the egress user it runs as.
+RUN mkdir -p /etc/mitmproxy && chown tinyproxy:tinyproxy /etc/mitmproxy
+
+COPY mitm/filter_addon.py /usr/local/share/mitm/filter_addon.py
+COPY mitm/entrypoint.sh   /usr/local/bin/entrypoint-mitm.sh
+RUN chmod +x /usr/local/bin/entrypoint-mitm.sh
+
+# Make the intercept CA trusted by the toolchain. The system bundle is refreshed at runtime
+# (update-ca-certificates) once the CA is generated; node reads NODE_EXTRA_CA_CERTS directly.
+ENV NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-mitm.sh"]

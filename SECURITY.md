@@ -110,10 +110,12 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   in `docker-compose.yml`. It runs the container under a user-space kernel that intercepts syscalls,
   narrowing the "shares the host kernel" gap above — the battle-tested-primitive approach the
   containment write-up favors over rolling your own isolation.
-- **Content-level egress mediation:** the proxy filters by hostname only, so it can't stop
-  exfiltration through an *allowed* host or domain-fronting. To mediate request content, swap
-  `tinyproxy` for a TLS-intercepting proxy (e.g. mitmproxy) and trust its CA inside the container.
-  That buys per-path/-method rules (e.g. allow GitHub `GET`/clone but block `push`), request
-  logging, and — the write-up's "defensive proxy" pattern — stripping injected auth headers and
-  pinning the Anthropic call to your own session token. Heavier (a CA in the container, and tools
-  must trust it), so it's opt-in rather than the default.
+- **Content-level egress mediation (shipped, opt-in):** the default proxy filters by hostname only,
+  so it can't stop exfiltration through an *allowed* host or domain-fronting. A TLS-intercepting
+  variant is included — `docker compose -f docker-compose.mitm.yml up -d --build` — that swaps
+  `tinyproxy` for mitmproxy (`Dockerfile.mitm`, `mitm/`). Because it terminates TLS it enforces the
+  write-up's "defensive proxy" pattern: per-method/path rules (GitHub read-only — clone yes, push
+  no, via `GITHUB_READONLY`), `Authorization`/`Cookie` stripping to non-first-party hosts,
+  domain-fronting defeat (allowlist checked on the decrypted Host), and per-request logging. It's a
+  prototype (rules in `mitm/filter_addon.py`, extend as needed — e.g. pinning the Anthropic call to
+  your own token) and heavier (a CA the in-container tools must trust), so it's opt-in, not default.

@@ -1,0 +1,47 @@
+# OPT-IN TLS-intercepting (content-mediation) variant of the sandbox. The default stack
+# (docker-compose.yml, tinyproxy) is unchanged; this one swaps in mitmproxy so egress can be
+# filtered by request CONTENT — method/path rules (GitHub read-only by default), credential-header
+# stripping, domain-fronting defeat, and request logging (`docker logs claude-sandbox-mitm`).
+#
+#   docker compose -f docker-compose.mitm.yml up -d --build
+#
+# Requires the base image (claude-container-sandbox:latest) built first: `docker compose build`.
+services:
+  claude-sandbox-mitm:
+    build:
+      context: .
+      dockerfile: Dockerfile.mitm
+    image: claude-container-sandbox-mitm:latest
+    container_name: claude-sandbox-mitm
+    # Same least-privilege posture as the default stack.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - SETUID
+      - SETGID
+      - CHOWN
+      - KILL
+      - DAC_OVERRIDE
+    security_opt:
+      - "no-new-privileges:true"
+    mem_limit: "${MEM_LIMIT:-6g}"
+    pids_limit: ${PIDS_LIMIT:-4096}
+    ports:
+      - "127.0.0.1:${TTYD_PORT:-7681}:7681"
+    environment:
+      TTYD_USER: "${TTYD_USER:-coder}"
+      TTYD_PASS: "${TTYD_PASS:-changeme}"
+      EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
+      # Content-level rule unique to this variant: allow GitHub clone/fetch, block push/writes.
+      GITHUB_READONLY: "${GITHUB_READONLY:-true}"
+    volumes:
+      - "${WORKSPACE_DIR:-./workspace}:/workspace"
+      # Shares the same login volume as the default stack — log in once, use either.
+      - "claude-config:/home/node/.claude"
+    restart: unless-stopped
+
+volumes:
+  claude-config:
+    name: claude-sandbox-config

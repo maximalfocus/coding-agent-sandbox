@@ -1,0 +1,95 @@
+#!/bin/bash
+# Root entrypoint for the OPT-IN mitmproxy (TLS-intercepting) egress variant.
+# Starts mitmdump as the `tinyproxy` egress user (so the existing UID-based firewall applies
+# unchanged), trusts its CA inside the container, installs the fail-closed firewall, self-tests
+# TLS interception, then hands off to the shared node-side entrypoint (workspace + command/ttyd).
+set -euo pipefail
+
+PROXY="http://127.0.0.1:8888"
+CONFDIR="/etc/mitmproxy"
+ADDON="/usr/local/share/mitm/filter_addon.py"
+CA_PEM="$CONFDIR/mitmproxy-ca-cert.pem"
+say() { [ -n "${SANDBOX_QUIET:-}" ] || echo "$@"; }
+
+# Always-on hosts (parity with the default entrypoint's BASE_DOMAINS); GitHub + extras layered on.
+BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com)
+GITHUB_DOMAINS=(github.com githubusercontent.com)
+
+build_allowlist() {
+    local domains=("${BASE_DOMAINS[@]}")
+    case "$(printf '%s' "${ALLOW_GITHUB:-true}" | tr '[:upper:]' '[:lower:]')" in
+        false|0|no|off) say "  (GitHub egress OFF — ALLOW_GITHUB=${ALLOW_GITHUB})" ;;
+        *)              domains+=("${GITHUB_DOMAINS[@]}") ;;
+    esac
+    if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
+        local OLDIFS=$IFS; IFS=','
+        for d in $EXTRA_ALLOWED_DOMAINS; do
+            d=$(printf '%s' "$d" | tr -d '[:space:]')
+            # Same strict multi-label/no-IP check the default path uses.
+            if printf '%s' "$d" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$' \
+               && ! printf '%s' "$d" | grep -qE '^[0-9.]+$'; then
+                domains+=("$d")
+            else
+                echo "  WARN: ignoring invalid domain '$d'" >&2
+            fi
+        done
+        IFS=$OLDIFS
+    fi
+    local IFS=','; printf '%s' "${domains[*]}"
+}
+
+if [ "$(id -u)" = "0" ]; then
+    # Auth is only ever forwarded to first-party + GitHub; everything else gets it stripped.
+    ALLOWLIST="$(build_allowlist)"; export ALLOWLIST
+    AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com"; export AUTH_HOSTS
+    export GITHUB_READONLY="${GITHUB_READONLY:-true}"
+    say "Allowlist: $ALLOWLIST"
+    say "GitHub read-only: $GITHUB_READONLY"
+
+    mkdir -p "$CONFDIR"; chown tinyproxy:tinyproxy "$CONFDIR"
+
+    say "Starting mitmproxy (TLS-intercepting egress) as the tinyproxy user..."
+    # Regular HTTP-proxy mode on 8888 (clients already point HTTPS_PROXY here). ssl_insecure lets
+    # mitm reach upstreams; downstream we present our own CA, which we trust below.
+    gosu tinyproxy mitmdump --quiet \
+        --mode regular --listen-host 127.0.0.1 --listen-port 8888 \
+        --set confdir="$CONFDIR" --ssl-insecure \
+        -s "$ADDON" >/var/log/mitm.log 2>&1 &
+
+    # Wait for the CA to be generated, then trust it container-wide (system store + node/git/python
+    # pick it up via the CA env vars baked into the image).
+    for _ in $(seq 1 50); do [ -f "$CA_PEM" ] && break; sleep 0.2; done
+    if [ ! -f "$CA_PEM" ]; then echo "ERROR: mitmproxy CA not generated; see /var/log/mitm.log" >&2; cat /var/log/mitm.log >&2; exit 1; fi
+    cp "$CA_PEM" /usr/local/share/ca-certificates/mitmproxy.crt
+    update-ca-certificates >/dev/null 2>&1 || true
+    # Wait for the proxy port to accept connections.
+    for _ in $(seq 1 50); do { exec 3<>/dev/tcp/127.0.0.1/8888; } 2>/dev/null && { exec 3>&-; break; }; sleep 0.2; done
+
+    if [ -n "${SANDBOX_QUIET:-}" ]; then /usr/local/bin/init-firewall.sh >/dev/null; else /usr/local/bin/init-firewall.sh; fi
+
+    # --- self-tests (TLS interception + the security guarantees) ---
+    say "Verifying mediated egress..."
+    if curl -s -o /dev/null --connect-timeout 8 -x "$PROXY" https://registry.npmjs.org/; then
+        say "  ok: allowlisted host reachable with the trusted intercept CA"
+    else
+        echo "  WARN: registry.npmjs.org not reachable right now (offline?) — starting anyway" >&2
+    fi
+    deny=$(curl -sS -o /dev/null --connect-timeout 8 -x "$PROXY" https://example.com/ 2>&1 || true)
+    if ! curl -s -o /dev/null --connect-timeout 8 -w '%{http_code}' -x "$PROXY" http://example.com/ 2>/dev/null | grep -q 403; then
+        echo "ERROR: example.com was NOT denied by the mitm allowlist" >&2; exit 1
+    fi
+    say "  ok: non-allowlisted host denied (403)"
+    if env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
+         curl -s -o /dev/null --connect-timeout 5 https://1.1.1.1/ 2>/dev/null; then
+        echo "ERROR: direct egress (no proxy) succeeded — firewall not effective" >&2; exit 1
+    fi
+    say "  ok: direct egress without the proxy is blocked"
+
+    mkdir -p /home/node/.claude && chown -R node:node /home/node/.claude 2>/dev/null || true
+
+    # Hand off to the shared node-side entrypoint (cd /workspace, run command or ttyd).
+    exec gosu node /usr/local/bin/entrypoint.sh "$@"
+fi
+
+# Never reached as non-root (handoff goes to entrypoint.sh), but keep a sane fallback.
+exec /usr/local/bin/entrypoint.sh "$@"
