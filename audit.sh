@@ -3,13 +3,19 @@
 #
 # Default stack (tinyproxy, hostname-only) — every host the proxy was asked to reach:
 #   ./audit.sh            # follow live
-#   ./audit.sh --refused  # only the blocked attempts
-#   ./audit.sh --dump     # print all and exit
+#   ./audit.sh --refused  # only the blocked attempts (across rotated files too)
+#   ./audit.sh --dump     # print all and exit (oldest rotated -> current)
+#   ./audit.sh --export [DIR]  # copy the full trail (current + rotated) out to the host,
+#                              # so it survives `docker compose down -v`. Default DIR: ./audit-export
 #
 # Content-mediation stack (mitmproxy) — every per-request decision (ALLOW/DENY/STRIP):
 #   ./audit.sh --mitm            # follow live
 #   ./audit.sh --mitm --refused  # only DENY/STRIP decisions
 #   ./audit.sh --mitm --dump     # print all and exit
+#   ./audit.sh --mitm --export [DIR]
+#
+# The trail stays on this machine. It's owned by the proxy user and the sandboxed agent can't
+# read or alter it; rotation (see entrypoint.sh) caps its size. Use --export to back it up.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -36,9 +42,16 @@ if ! "${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep
     exit 1
 fi
 
+# Concatenate the trail oldest-first: rotated files (.N ... .1) then the live log.
+cat_all='L="$1"; for f in $(ls -1 "$L".[0-9]* 2>/dev/null | sort -V -r); do cat "$f"; done; [ -f "$L" ] && cat "$L" || true'
+
 case "${1:-}" in
-    --refused) "${COMPOSE[@]}" exec -T "$SVC" grep -iE "$REFUSED" "$LOG" \
+    --refused) "${COMPOSE[@]}" exec -T "$SVC" sh -c "$cat_all" _ "$LOG" | grep -iE "$REFUSED" \
                  || echo "(no refused/stripped entries logged yet)"; exit 0 ;;
-    --dump)    exec "${COMPOSE[@]}" exec -T "$SVC" cat "$LOG" ;;
+    --dump)    exec "${COMPOSE[@]}" exec -T "$SVC" sh -c "$cat_all" _ "$LOG" ;;
+    --export)  DEST="${2:-./audit-export}"; mkdir -p "$DEST"
+               "${COMPOSE[@]}" exec -T "$SVC" sh -c 'cd "$(dirname "$1")" && tar cf - "$(basename "$1")"*' _ "$LOG" \
+                 | tar xf - -C "$DEST"
+               echo "Exported audit trail to: $DEST"; exit 0 ;;
     *)         exec "${COMPOSE[@]}" exec "$SVC" tail -f -n 50 "$LOG" ;;
 esac

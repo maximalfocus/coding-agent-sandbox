@@ -1,9 +1,11 @@
 # Build + start the Claude Code sandbox on Windows (PowerShell). Run from this folder.
+param([switch]$NoStartBrowser)
+
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
 if (-not (Test-Path ".env")) {
-    Write-Host "No .env found. Run:  Copy-Item .env.example .env  then edit WORKSPACE_DIR + the password."
+    Write-Host "No .env found. Run setup-windows.cmd first."
     exit 1
 }
 
@@ -44,7 +46,29 @@ if ($home0.StartsWith("$wdNorm\", $ic)) { Write-Host "Refusing: WORKSPACE_DIR co
 # Mount the exact validated path (shell env overrides .env in Compose).
 $env:WORKSPACE_DIR = $wdAbs
 
-docker compose up -d --build
+# Build, then gate on a supply-chain scan BEFORE starting, so a known-vulnerable image never
+# runs. Set $env:SKIP_TRIVY=1 to bypass (e.g. offline with no scanner DB cached).
+Write-Host "Building image..."
+docker compose build
+if ($LASTEXITCODE -ne 0) { Write-Host "Build failed."; exit 1 }
+
+if ($env:SKIP_TRIVY) {
+    Write-Host "  (SKIP_TRIVY set — skipping image vulnerability scan)"
+}
+else {
+    & (Join-Path $PSScriptRoot "scan.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        $sevMsg = if ($env:TRIVY_SEVERITY) { $env:TRIVY_SEVERITY } else { "HIGH,CRITICAL" }
+        Write-Host ""
+        Write-Host "Image scan found $sevMsg vulnerabilities (see above)."
+        Write-Host "Fix by bumping the base-image digest / packages in the Dockerfile and rebuilding,"
+        Write-Host "or set `$env:SKIP_TRIVY=1 to start anyway."
+        exit 1
+    }
+}
+
+docker compose up -d
+if ($LASTEXITCODE -ne 0) { Write-Host "Start failed."; exit 1 }
 
 $port = (Select-String -Path .env -Pattern '^TTYD_PORT=').Line -replace '^TTYD_PORT=', ''
 if ([string]::IsNullOrWhiteSpace($port)) { $port = "7681" }
@@ -57,3 +81,7 @@ Write-Host "  2. Log in with the TTYD_USER / TTYD_PASS from your .env"
 Write-Host "  3. In the terminal:  claude  ->  /login  ->  paste the code from your browser"
 Write-Host ""
 Write-Host "  Stop with:  docker compose down     Logs:  docker compose logs -f"
+
+if (-not $NoStartBrowser) {
+    Start-Process "http://127.0.0.1:$port" | Out-Null
+}

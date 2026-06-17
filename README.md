@@ -26,6 +26,45 @@ same on **macOS and Windows**.
 - **Windows:** Docker Desktop with the **WSL2** backend enabled.
 - A Claude **Pro or Max** subscription (or Console access).
 
+## Easiest Windows setup
+
+On a new Windows machine, copy or extract this folder onto the machine. No Git setup is needed
+first.
+
+Run once:
+
+```text
+setup-windows.cmd
+```
+
+If Windows asks for permission, allow it. If WSL2 asks for a restart, restart and run
+`setup-windows.cmd` again. For PowerShell-only environments, this is the equivalent command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -InstallPrereqs
+```
+
+The script does the first-run work for you:
+
+- enables WSL2 if Windows has not done it yet
+- installs Git with `winget` if it is missing
+- installs Docker Desktop with `winget` if it is missing
+- creates `.env` from `.env.example`
+- creates `C:\Users\<you>\projects` if missing, or reuses it if it already exists
+- asks which folder Claude may edit, defaulting to that `projects` folder
+- generates a web-terminal password
+- starts Docker Desktop and the sandbox
+- opens `http://127.0.0.1:7681`
+
+After setup, everyone starts the sandbox the same way:
+
+```text
+start-sandbox.cmd
+```
+
+That starts the container and opens the browser terminal. In the browser terminal, run `claude`.
+On the first use only, run `/login` inside Claude Code and paste back the browser login code.
+
 ## Quick start
 
 ```bash
@@ -40,8 +79,8 @@ Then:
 
 ```bash
 ./run.sh           # macOS / Linux
-#  …or on Windows (PowerShell):
-#  ./run.ps1
+#  ...or on Windows:
+#  start-sandbox.cmd
 ```
 
 Open **http://127.0.0.1:7681**, log in with `TTYD_USER` / `TTYD_PASS`, and you're in the
@@ -160,6 +199,34 @@ That edit is **temporary** (lost on the next container (re)start). For a **perma
 it in `EXTRA_ALLOWED_DOMAINS` in `.env` — then `docker compose up -d` (recreate, ~seconds; a
 `--build` is only needed if you changed a Dockerfile). For `claude-safe`, there's no "restart":
 each run reads its domains fresh, so just use `CLAUDE_SAFE_DOMAINS=...` for that invocation.
+
+## Codex (cross-vendor peer review)
+
+The image also bundles the **Codex CLI** (OpenAI), so you can run a Claude/Codex peer-review loop
+inside the same sandbox — Codex is just as contained (workspace-only, egress allowlist, kernel
+firewall) as Claude. Two steps to enable it:
+
+1. **Allow OpenAI egress.** It's off by default (another vendor your code can flow to). Set in `.env`:
+
+   ```bash
+   ALLOW_OPENAI=true
+   ```
+
+2. **Sign in with your ChatGPT/OpenAI subscription** (once — it persists in the `claude-sandbox-codex` volume):
+
+   ```bash
+   ./codex-login.sh
+   ```
+
+   Codex's "Sign in with ChatGPT" uses an OAuth callback on `localhost:1455`. Its callback server
+   runs *inside* the container, so `codex-login.sh` bridges it (socat → the published `1455` port)
+   and walks you through it: open the printed URL, sign in, and the redirect completes the login.
+
+   **Fallback (if the `localhost:1455` redirect won't complete):** use a ChatGPT access token
+   directly — `printenv CODEX_ACCESS_TOKEN | docker compose exec -T claude-sandbox codex login --with-access-token`.
+
+Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
+allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.
 
 ## Content-mediation mode (opt-in, mitmproxy)
 

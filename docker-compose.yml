@@ -32,6 +32,11 @@ services:
     # Web terminal, bound to localhost only — never exposed to your LAN.
     ports:
       - "127.0.0.1:${TTYD_PORT:-7681}:7681"
+      # Codex "Sign in with ChatGPT" OAuth callback. Codex's loopback server listens on
+      # 127.0.0.1:1455 INSIDE the container; ./codex-login.sh bridges that to container port
+      # 11455 (via socat) so the host browser's redirect to localhost:1455 reaches it. Idle
+      # otherwise (nothing listens until you run codex-login), and bound to localhost only.
+      - "127.0.0.1:${CODEX_LOGIN_PORT:-1455}:11455"
     environment:
       TTYD_USER: "${TTYD_USER:-coder}"
       TTYD_PASS: "${TTYD_PASS:-changeme}"
@@ -39,6 +44,14 @@ services:
       # GitHub egress is a capability grant (read payloads in / push data out). On by default;
       # set ALLOW_GITHUB=false in .env for analysis-only or untrusted-workspace runs.
       ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
+      # OpenAI/Codex egress (api/auth.openai.com + chatgpt.com) for cross-vendor peer review.
+      # Off by default; set true in .env to use the bundled Codex CLI (./codex-login.sh).
+      ALLOW_OPENAI: "${ALLOW_OPENAI:-false}"
+      # Audit-log rotation (the local egress trail in the claude-audit volume). Defaults keep
+      # ~100 MiB max; tune if you want a longer or shorter local history.
+      AUDIT_LOG_MAX_BYTES: "${AUDIT_LOG_MAX_BYTES:-20971520}"
+      AUDIT_LOG_KEEP: "${AUDIT_LOG_KEEP:-5}"
+      AUDIT_ROTATE_INTERVAL: "${AUDIT_ROTATE_INTERVAL:-3600}"
       # (Proxy env, CLAUDE_CONFIG_DIR and telemetry-off are baked into the image so every
       #  launch — compose, exec, or the claude-safe `docker run` — inherits them.)
     volumes:
@@ -46,6 +59,8 @@ services:
       - "${WORKSPACE_DIR:-./workspace}:/workspace"
       # Persists the subscription login + Claude settings across restarts.
       - "claude-config:/home/node/.claude"
+      # Persists the Codex subscription login (~/.codex/auth.json) across restarts.
+      - "claude-codex:/home/node/.codex"
       # Audit trail: every host the proxy was asked to reach (allowed + refused).
       - "claude-audit:/var/log/tinyproxy"
     restart: unless-stopped
@@ -54,5 +69,7 @@ volumes:
   # Explicit, project-name-independent names so renaming the folder never orphans your login.
   claude-config:
     name: claude-sandbox-config
+  claude-codex:
+    name: claude-sandbox-codex
   claude-audit:
     name: claude-sandbox-audit

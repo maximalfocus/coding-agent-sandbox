@@ -31,6 +31,14 @@ GITHUB_DOMAINS=(
     "githubusercontent.com"  # raw/objects/codeload
 )
 
+# OpenAI/Codex egress is also a CAPABILITY GRANT (another vendor your code can flow to), so it's a
+# separate, deliberate toggle — and unlike GitHub it defaults OFF (fail-closed for fresh clones).
+# Enable with ALLOW_OPENAI=true to use the bundled Codex CLI for cross-vendor peer review.
+OPENAI_DOMAINS=(
+    "openai.com"   # api/auth/platform.openai.com — Codex API + ChatGPT OAuth
+    "chatgpt.com"  # ChatGPT subscription backend + "Sign in with ChatGPT"
+)
+
 build_filter() {
     : > "$FILTER_FILE"
     local domains=("${BASE_DOMAINS[@]}") gh
@@ -42,6 +50,13 @@ build_filter() {
         *) gh=0; echo "  WARN: unrecognized ALLOW_GITHUB='${ALLOW_GITHUB}' — treating as OFF (fail-closed)" >&2 ;;
     esac
     [ "$gh" = "1" ] && domains+=("${GITHUB_DOMAINS[@]}")
+    local oai
+    case "$(printf '%s' "${ALLOW_OPENAI:-false}" | tr '[:upper:]' '[:lower:]')" in
+        true|1|yes|on) oai=1; say "  (OpenAI/Codex egress ON — ALLOW_OPENAI=${ALLOW_OPENAI})" ;;
+        false|0|no|off) oai=0 ;;
+        *) oai=0; echo "  WARN: unrecognized ALLOW_OPENAI='${ALLOW_OPENAI}' — treating as OFF (fail-closed)" >&2 ;;
+    esac
+    [ "$oai" = "1" ] && domains+=("${OPENAI_DOMAINS[@]}")
     if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
         local OLDIFS=$IFS; IFS=','; set -f   # noglob: a stray '*' must not expand to /workspace files
         for d in $EXTRA_ALLOWED_DOMAINS; do
@@ -131,6 +146,37 @@ if [ "$(id -u)" = "0" ]; then
     # project, and on Linux/WSL that would rewrite your host files' ownership (and be slow).
     mkdir -p /home/node/.claude
     chown -R node:node /home/node/.claude 2>/dev/null || true
+    # Codex subscription login persists here (~/.codex/auth.json), like Claude's in .claude.
+    mkdir -p /home/node/.codex
+    chown -R node:node /home/node/.codex 2>/dev/null || true
+
+    # Audit log handling (stays local — this is the persisted egress trail in the claude-audit
+    # volume). Two protections:
+    #  1) Tamper-resistance: the dir is owned by `tinyproxy` and locked to 0750, so the sandboxed
+    #     `node` user (the agent) can neither read, alter, nor delete the trail. Only tinyproxy
+    #     writes it, and `./audit.sh` reads it via a root `docker exec`.
+    #  2) Bounded rotation: a root-side loop keeps the log from growing without limit using
+    #     copytruncate (tinyproxy's open fd stays valid — no signal needed). `node` can't touch
+    #     this loop (can't signal a root process), so the agent can't disable rotation either.
+    chown tinyproxy:tinyproxy /var/log/tinyproxy 2>/dev/null || true
+    chmod 0750 /var/log/tinyproxy 2>/dev/null || true
+
+    AUDIT_LOG=/var/log/tinyproxy/tinyproxy.log
+    AUDIT_MAX_BYTES="${AUDIT_LOG_MAX_BYTES:-20971520}"   # 20 MiB per file
+    AUDIT_KEEP="${AUDIT_LOG_KEEP:-5}"                     # rotated files to retain (~100 MiB total)
+    AUDIT_INTERVAL="${AUDIT_ROTATE_INTERVAL:-3600}"       # check hourly
+    rotate_audit() {
+        [ -f "$AUDIT_LOG" ] || return 0
+        local sz; sz="$(stat -c%s "$AUDIT_LOG" 2>/dev/null || echo 0)"
+        [ "$sz" -ge "$AUDIT_MAX_BYTES" ] || return 0
+        local i
+        for ((i=AUDIT_KEEP-1; i>=1; i--)); do
+            [ -f "$AUDIT_LOG.$i" ] && mv -f "$AUDIT_LOG.$i" "$AUDIT_LOG.$((i+1))"
+        done
+        cp "$AUDIT_LOG" "$AUDIT_LOG.1" && : > "$AUDIT_LOG"   # copytruncate
+        rm -f "$AUDIT_LOG.$((AUDIT_KEEP+1))" 2>/dev/null || true
+    }
+    ( while :; do sleep "$AUDIT_INTERVAL"; rotate_audit || true; done ) &
 
     exec gosu node "$0" "$@"
 fi

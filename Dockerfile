@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git ripgrep tmux less procps \
       curl ca-certificates dnsutils \
       tinyproxy iptables iproute2 \
-      gosu \
+      gosu socat \
     && rm -rf /var/lib/apt/lists/*
 
 # Hostname allowlist proxy config + writable runtime dirs (the `tinyproxy` user is created
@@ -41,6 +41,11 @@ RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
 # (The base image and ttyd are also pinned; apt packages come from moving Debian repos.)
 ARG CLAUDE_CODE_VERSION=2.1.158
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+# Codex CLI (OpenAI) for cross-vendor peer review, pinned at BUILD time. Authenticated separately
+# with your ChatGPT/OpenAI subscription via ./codex-login.sh; egress is gated by ALLOW_OPENAI.
+ARG CODEX_VERSION=0.140.0
+RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 COPY entrypoint.sh    /usr/local/bin/entrypoint.sh

@@ -37,7 +37,22 @@ case "$home_abs" in "$wd_abs"/*) echo "Refusing: WORKSPACE_DIR '$wd_abs' contain
 # mismatch if the .env value is relative or a symlink that resolves elsewhere.
 export WORKSPACE_DIR="$wd_abs"
 
-docker compose up -d --build
+# Build, then gate on a supply-chain scan BEFORE starting the container, so a known-vulnerable
+# image never gets run. Set SKIP_TRIVY=1 to bypass (e.g. offline with no scanner DB cached).
+echo "Building image..."
+docker compose build
+if [ -n "${SKIP_TRIVY:-}" ]; then
+    echo "  (SKIP_TRIVY set — skipping image vulnerability scan)"
+else
+    ./scan.sh || {
+        echo
+        echo "Image scan found ${TRIVY_SEVERITY:-HIGH,CRITICAL} vulnerabilities (see above)."
+        echo "Fix by bumping the base-image digest / packages in the Dockerfile and rebuilding,"
+        echo "or re-run with SKIP_TRIVY=1 to start anyway."
+        exit 1
+    }
+fi
+docker compose up -d
 
 port="$(grep -E '^TTYD_PORT=' .env | cut -d= -f2)"; port="${port:-7681}"
 cat <<EOF
