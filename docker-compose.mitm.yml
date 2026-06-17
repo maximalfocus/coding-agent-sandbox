@@ -5,13 +5,13 @@
 #
 #   docker compose -f docker-compose.mitm.yml up -d --build
 #
-# Requires the base image (claude-container-sandbox:latest) built first: `docker compose build`.
+# Requires the base image (windows-dev-sandbox:latest) built first: `docker compose build`.
 services:
   claude-sandbox-mitm:
     build:
       context: .
       dockerfile: Dockerfile.mitm
-    image: claude-container-sandbox-mitm:latest
+    image: windows-dev-sandbox-mitm:latest
     container_name: claude-sandbox-mitm
     # Same least-privilege posture as the default stack.
     cap_drop:

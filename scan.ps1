@@ -1,7 +1,7 @@
 # Supply-chain gate (Windows): scan the built sandbox image for known-vulnerable packages with
 # Trivy. Mirrors scan.sh. Called by run.ps1 before starting the container; can also run standalone.
 #   powershell -ExecutionPolicy Bypass -File .\scan.ps1
-param([string]$Image = "claude-container-sandbox:latest")
+param([string]$Image = "windows-dev-sandbox:latest")
 
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot

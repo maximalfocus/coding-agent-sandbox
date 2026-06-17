@@ -1,5 +1,16 @@
 # Security model & limits
 
+## Reporting a vulnerability
+
+Please report security issues **privately**, not in a public issue or pull request. Use GitHub's
+private vulnerability reporting: open the repository's **Security → Advisories → Report a
+vulnerability** ([new advisory](https://github.com/maximalfocus/windows-dev-sandbox/security/advisories/new)).
+
+Include what you found, how to reproduce it, and the impact. You'll get an acknowledgement and,
+once a fix is available, coordinated disclosure. Because this is a containment tool, reports about
+egress bypass, firewall/proxy evasion, privilege escalation inside the container, or credential
+exposure are especially valued. Please don't include real secrets or tokens in your report.
+
 ## What this protects against
 
 This sandbox contains the **blast radius on your own machine** if Claude Code (or a tool/agent

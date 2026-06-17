@@ -1,4 +1,7 @@
-# Claude Code Sandbox
+# Windows Dev Sandbox
+
+*Run AI coding agents (Claude Code + Codex) locked inside a hardened Docker container — one-click
+setup on Windows, and works just as well on macOS and Linux.*
 
 Run the **real Claude Code CLI** — on your **Claude subscription**, with the same terminal
 experience you have now — but locked inside a Docker container that can only:
@@ -126,7 +129,7 @@ chmod +x shell.sh                 # first time
 Equivalent raw commands (no wrapper):
 
 ```bash
-cd /Users/focus/ws/claude-container-sandbox
+cd /path/to/windows-dev-sandbox
 docker compose exec -u node -w /workspace claude-sandbox bash -l   # then: claude
 # or run Claude Code directly:
 docker compose exec -u node -w /workspace claude-sandbox claude
@@ -309,3 +312,13 @@ your project dir ──bind mount───────────────�
 ```
 
 See `SECURITY.md` for the threat model and its limits.
+
+## Contributing
+
+Issues and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). To report a
+security issue privately, see the policy in [`SECURITY.md`](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) © maximalfocus. This project runs third-party tools (Claude Code, Codex,
+mitmproxy, tinyproxy, ttyd, and others) that are licensed separately by their respective authors.

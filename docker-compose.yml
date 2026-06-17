@@ -2,7 +2,7 @@ services:
   claude-sandbox:
     build:
       context: .
-    image: claude-container-sandbox:latest
+    image: windows-dev-sandbox:latest
     container_name: claude-sandbox
     # Least privilege: drop the WHOLE default capability set, then add back only the five caps
     # this sandbox actually exercises. The article's recurring lesson is to lean on battle-tested
