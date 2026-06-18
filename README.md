@@ -251,19 +251,32 @@ allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENA
 ### Bringing your own skills / slash-commands into the sandbox
 
 Claude in the sandbox reads skills from `/home/node/.claude/skills` (a persisted volume), which
-starts empty. To use your host's skills (e.g. a CDD or peer-review family) and their slash-commands
-inside the sandbox, run — with the sandbox running:
+starts empty. There are two ways to populate it — pick by whether you want to *evolve* the skills:
+
+**Clone — recommended for skill repos you develop/evolve (`skills-setup.sh`).** Clones your skill
+repos into the sandbox as live git working copies and symlinks them into the skills dir, so the
+commands work **and** their `*-evolve` variants can `git commit` + `git push` to GitHub (over HTTPS
+with your `GITHUB_TOKEN`). Set the repos in `.env`, then with the sandbox running:
+
+```bash
+# .env:  SKILL_REPOS=https://github.com/you/cdd-skills.git https://github.com/you/peerreview-skills.git
+./skills-setup.sh          # clone (or git pull) each, then symlink their skills; re-run to update
+```
+
+The clones live in `/home/node/.claude/skill-repos` (persisted, independent of `WORKSPACE_DIR`), so
+the skills are available in every project, identically on macOS and Windows (`skills-setup.cmd`).
+Pushing needs a `GITHUB_TOKEN` with write access; `*-evolve` pushes to whatever branch the skill
+targets (have it use a branch + PR if you want a review gate).
+
+**Copy — for read-only use of skills you won't change (`sync-skills.sh`).** Copies skill *content*
+(no `.git`) from your host `~/.claude/skills` + matching `~/.claude/commands/*.md` into the volume:
 
 ```bash
 ./sync-skills.sh                      # default: cdd* and peerreview/peer-review*
-./sync-skills.sh cdd peerreview note  # or name the prefixes to include
 ```
 
-It copies the matching skills (dereferencing symlinks, pulling each skill's whole source repo so
-sibling/approach skills come too) plus the matching `~/.claude/commands/*.md` into the sandbox's
-config volume, where they persist. Re-run after changing a skill. Then restart `claude` inside the
-sandbox to load them. (Skills that call `codex` — like peer-review — need `ALLOW_OPENAI=true` and a
-one-time `./codex-login.sh`.)
+Either way, restart `claude` inside the sandbox to load the skills. (Skills that call `codex` — like
+peer-review — need `ALLOW_OPENAI=true` and a one-time `./codex-login.sh`.)
 
 ## Content-mediation mode (opt-in, mitmproxy)
 
