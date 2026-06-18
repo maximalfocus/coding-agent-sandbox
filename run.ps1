@@ -33,15 +33,20 @@ $wdNorm = Norm $wdAbs
 $root = [System.IO.Path]::GetPathRoot($wdAbs)
 try { $homeResolved = (Resolve-Path -LiteralPath $HOME -ErrorAction Stop).Path } catch { $homeResolved = $HOME }
 $home0 = Norm $homeResolved
-$bad = @($home0, (Norm $root),
-         "$home0\.ssh","$home0\.aws","$home0\.gnupg","$home0\.config","$home0\.kube",
+# Refuse your WHOLE home or a drive/UNC root (exact match) — but allow a project dir UNDER home
+# (e.g. C:\Users\you\projects, the setup-windows default).
+if ($wdNorm.Equals($home0, $ic) -or $wdNorm.Equals((Norm $root), $ic)) {
+    Write-Host "Refusing to mount '$wdAbs' (your whole home or a drive root). Point it at a project dir."; exit 1
+}
+# Refuse known credential/config dirs and anything inside them (prefix match).
+$bad = @("$home0\.ssh","$home0\.aws","$home0\.gnupg","$home0\.config","$home0\.kube",
          "$home0\.docker","$home0\.gcloud","$home0\.azure") | ForEach-Object { Norm $_ }
 foreach ($b in $bad) {
     if ($wdNorm.Equals($b, $ic) -or $wdNorm.StartsWith("$b\", $ic)) {
-        Write-Host "Refusing to mount sensitive/broad WORKSPACE_DIR '$wdAbs'. Point it at a project dir."; exit 1
+        Write-Host "Refusing to mount sensitive WORKSPACE_DIR '$wdAbs'. Point it at a project dir."; exit 1
     }
 }
-if ($home0.StartsWith("$wdNorm\", $ic)) { Write-Host "Refusing: WORKSPACE_DIR contains your home dir."; exit 1 }
+if ($home0.StartsWith("$wdNorm\", $ic)) { Write-Host "Refusing: WORKSPACE_DIR '$wdAbs' contains your home dir."; exit 1 }
 
 # Mount the exact validated path (shell env overrides .env in Compose).
 $env:WORKSPACE_DIR = $wdAbs

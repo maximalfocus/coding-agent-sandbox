@@ -25,12 +25,19 @@ wd="$(printf '%s' "$wd" | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"   #
 wd_abs="$(cd "$wd" 2>/dev/null && pwd -P)" || { echo "WORKSPACE_DIR '$wd' does not exist."; exit 1; }
 # Canonicalize $HOME too, so the comparison holds even when home is reached via a symlink.
 home_abs="$(cd "$HOME" 2>/dev/null && pwd -P)"; home_abs="${home_abs:-$HOME}"
-for bad in "$home_abs" / "$home_abs/.ssh" "$home_abs/.aws" "$home_abs/.gnupg" "$home_abs/.config" \
+# Refuse your WHOLE home or the filesystem root (exact match) — but DO allow a normal project dir
+# that lives under home, e.g. ~/code/app or ~/projects (that's the common case).
+if [ "$wd_abs" = "$home_abs" ] || [ "$wd_abs" = "/" ]; then
+    echo "Refusing to mount '$wd_abs' (your whole home or filesystem root). Point it at a project dir."; exit 1
+fi
+# Refuse known credential/config dirs and anything inside them (prefix match).
+for bad in "$home_abs/.ssh" "$home_abs/.aws" "$home_abs/.gnupg" "$home_abs/.config" \
            "$home_abs/.kube" "$home_abs/.docker" "$home_abs/.gcloud" "$home_abs/.azure"; do
     if [ "$wd_abs" = "$bad" ] || case "$wd_abs" in "$bad"/*) true;; *) false;; esac; then
-        echo "Refusing to mount sensitive/broad WORKSPACE_DIR '$wd_abs'. Point it at a project dir."; exit 1
+        echo "Refusing to mount sensitive WORKSPACE_DIR '$wd_abs'. Point it at a project dir."; exit 1
     fi
 done
+# Refuse a dir that CONTAINS your home (an ancestor like / or /Users).
 case "$home_abs" in "$wd_abs"/*) echo "Refusing: WORKSPACE_DIR '$wd_abs' contains your home dir."; exit 1;; esac
 
 # Mount the exact path we validated (shell env overrides .env in Compose). Avoids a check-vs-mount
