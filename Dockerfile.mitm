@@ -3,7 +3,7 @@
 # image you build only when you want request-content mediation — per-method/path rules (e.g. GitHub
 # read-only), credential-header stripping, and full request logging — instead of hostname-only
 # filtering. Build/run with:  docker compose -f docker-compose.mitm.yml up -d --build
-FROM windows-dev-sandbox:latest
+FROM coding-agent-sandbox:latest
 USER root
 
 # The base image bakes HTTP(S)_PROXY=127.0.0.1:8888 for runtime; that proxy isn't up at build

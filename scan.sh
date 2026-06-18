@@ -2,7 +2,7 @@
 # Supply-chain gate: scan the built sandbox image for known-vulnerable packages with Trivy
 # (open source, Apache-2.0). Run standalone or via ./run.sh (which calls this before starting).
 #
-#   ./scan.sh                         # scan windows-dev-sandbox:latest, fail on HIGH/CRITICAL
+#   ./scan.sh                         # scan coding-agent-sandbox:latest, fail on HIGH/CRITICAL
 #   ./scan.sh some-other-image:tag    # scan a specific image
 #   TRIVY_SEVERITY=CRITICAL ./scan.sh # tune what blocks (default HIGH,CRITICAL)
 #
@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-IMAGE="${1:-windows-dev-sandbox:latest}"
+IMAGE="${1:-coding-agent-sandbox:latest}"
 # Only FIXED vulns gate the build (--ignore-unfixed): those are actionable — bump the base-image
 # digest or a package and rebuild. Unfixed CVEs in the Debian base would otherwise block forever.
 SEVERITY="${TRIVY_SEVERITY:-HIGH,CRITICAL}"

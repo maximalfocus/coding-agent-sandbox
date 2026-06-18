@@ -1,7 +1,7 @@
-# Windows Dev Sandbox
+# Coding Agent Sandbox
 
-*Run AI coding agents (Claude Code + Codex) locked inside a hardened Docker container — one-click
-setup on Windows, and works just as well on macOS and Linux.*
+*Run AI coding agents (Claude Code + Codex) locked inside a hardened, network-restricted Docker
+container — one-command setup on macOS, Linux, and Windows.*
 
 Run the **real Claude Code CLI** — on your **Claude subscription**, with the same terminal
 experience you have now — but locked inside a Docker container that can only:
@@ -15,7 +15,7 @@ experience you have now — but locked inside a Docker container that can only:
 
 You drive it from a **browser tab** (a web terminal), so "the browser is the sandbox surface":
 open `http://127.0.0.1:7681`, and you're in a terminal inside the locked-down box. Works the
-same on **macOS and Windows**.
+same on **macOS, Linux, and Windows**.
 
 > This sandboxes the *blast radius on your machine*. It does **not** hide your code from
 > Anthropic — file contents you give Claude are still sent to the model. See `SECURITY.md`.
@@ -28,6 +28,25 @@ same on **macOS and Windows**.
   [OrbStack](https://orbstack.dev/). (Apple Silicon works — the image builds for arm64.)
 - **Windows:** Docker Desktop with the **WSL2** backend enabled.
 - A Claude **Pro or Max** subscription (or Console access).
+
+## Easiest macOS / Linux setup
+
+Make sure Docker is installed and running (Docker Desktop or OrbStack), then run once:
+
+```bash
+./setup.sh
+```
+
+It does the first-run work for you:
+
+- checks Docker is installed and running (offers to `brew install --cask orbstack` on macOS if it's missing)
+- creates `.env` from `.env.example`
+- asks which folder the sandbox may edit (defaults to `~/projects`)
+- generates a web-terminal password
+- builds, scans the image (Trivy), and starts the sandbox
+- opens `http://127.0.0.1:7681` (macOS)
+
+After setup, start it again any time with `./run.sh`.
 
 ## Easiest Windows setup
 
@@ -129,7 +148,7 @@ chmod +x shell.sh                 # first time
 Equivalent raw commands (no wrapper):
 
 ```bash
-cd /path/to/windows-dev-sandbox
+cd /path/to/coding-agent-sandbox
 docker compose exec -u node -w /workspace claude-sandbox bash -l   # then: claude
 # or run Claude Code directly:
 docker compose exec -u node -w /workspace claude-sandbox claude

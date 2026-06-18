@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving Windows Dev Sandbox. This is a security tool, so changes are
+Thanks for your interest in improving Coding Agent Sandbox. This is a security tool, so changes are
 reviewed with the threat model in `SECURITY.md` in mind — please read it before proposing changes
 to the proxy, firewall, or entrypoint.
 

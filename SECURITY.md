@@ -4,7 +4,7 @@
 
 Please report security issues **privately**, not in a public issue or pull request. Use GitHub's
 private vulnerability reporting: open the repository's **Security → Advisories → Report a
-vulnerability** ([new advisory](https://github.com/maximalfocus/windows-dev-sandbox/security/advisories/new)).
+vulnerability** ([new advisory](https://github.com/maximalfocus/coding-agent-sandbox/security/advisories/new)).
 
 Include what you found, how to reproduce it, and the impact. You'll get an acknowledgement and,
 once a fix is available, coordinated disclosure. Because this is a containment tool, reports about
