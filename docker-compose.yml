@@ -47,6 +47,11 @@ services:
       # OpenAI/Codex egress (api/auth.openai.com + chatgpt.com) for cross-vendor peer review.
       # Off by default; set true in .env to use the bundled Codex CLI (./codex-login.sh).
       ALLOW_OPENAI: "${ALLOW_OPENAI:-false}"
+      # GitHub over HTTPS (SSH/22 is blocked). Set GITHUB_TOKEN in .env to a PAT for full
+      # clone/pull/push; SSH github remotes are auto-rewritten to HTTPS. Needs ALLOW_GITHUB=true.
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GIT_USER_NAME: "${GIT_USER_NAME:-}"
+      GIT_USER_EMAIL: "${GIT_USER_EMAIL:-}"
       # Audit-log rotation (the local egress trail in the claude-audit volume). Defaults keep
       # ~100 MiB max; tune if you want a longer or shorter local history.
       AUDIT_LOG_MAX_BYTES: "${AUDIT_LOG_MAX_BYTES:-20971520}"

@@ -186,6 +186,19 @@ fi
 # --- now running as `node` (proxy + CLAUDE_CONFIG_DIR come from the image ENV) ---
 cd /workspace 2>/dev/null || cd "$HOME"
 
+# GitHub auth over HTTPS. SSH (port 22) is blocked by the firewall, so GitHub works via HTTPS +
+# a token. If GITHUB_TOKEN is set, wire git to use it and rewrite SSH GitHub remotes to HTTPS so
+# existing repos (git@github.com:...) just work for clone/pull/PUSH. Regenerated each start from
+# the env (so it persists via .env). Requires ALLOW_GITHUB=true (the default).
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    git config --global credential.helper store
+    git config --global --replace-all url."https://github.com/".insteadOf "git@github.com:"
+    git config --global --add         url."https://github.com/".insteadOf "ssh://git@github.com/"
+    [ -n "${GIT_USER_NAME:-}" ]  && git config --global user.name  "$GIT_USER_NAME"
+    [ -n "${GIT_USER_EMAIL:-}" ] && git config --global user.email "$GIT_USER_EMAIL"
+    ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
+fi
+
 # A command was passed (e.g. `claude`, `bash -l`) -> run it. This is how the local-terminal
 # `docker exec` / claude-safe `docker run` paths work.
 if [ "$#" -gt 0 ]; then
