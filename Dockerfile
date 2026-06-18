@@ -54,6 +54,17 @@ RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 ARG BUN_VERSION=1.3.11
 RUN npm install -g "bun@${BUN_VERSION}"
 
+# Playwright + Chromium for cdd's UI acceptance testing (`npx playwright test --project=chromium`).
+# Browsers go to a SHARED path (not root's ~/.cache) so the unprivileged `node` user finds them;
+# --with-deps apt-installs Chromium's system libraries. Pinned to match the host; bump deliberately.
+# (Projects pinning a different Playwright version may re-download their browser at runtime — that
+#  needs the Playwright CDN allowlisted via EXTRA_ALLOWED_DOMAINS.)
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ARG PLAYWRIGHT_VERSION=1.58.2
+RUN npm install -g "@playwright/test@${PLAYWRIGHT_VERSION}" \
+    && playwright install --with-deps chromium \
+    && chmod -R a+rX "${PLAYWRIGHT_BROWSERS_PATH}"
+
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 COPY entrypoint.sh    /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh
