@@ -240,12 +240,10 @@ firewall) as Claude. Two steps to enable it:
    ./codex-login.sh
    ```
 
-   Codex's "Sign in with ChatGPT" uses an OAuth callback on `localhost:1455`. Its callback server
-   runs *inside* the container, so `codex-login.sh` bridges it (socat → the published `1455` port)
-   and walks you through it: open the printed URL, sign in, and the redirect completes the login.
-
-   **Fallback (if the `localhost:1455` redirect won't complete):** use a ChatGPT access token
-   directly — `printenv CODEX_ACCESS_TOKEN | docker compose exec -T claude-sandbox codex login --with-access-token`.
+   This uses Codex's **device-auth** flow (the right one for a container — no `localhost` callback).
+   It prints a URL and a short code: open the URL in any browser, enter the code, and sign in with
+   your ChatGPT subscription. Codex polls OpenAI through the egress proxy to finish, and the login
+   is saved in the persisted `claude-sandbox-codex` volume (one-time).
 
 Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
 allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.

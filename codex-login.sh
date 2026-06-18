@@ -1,44 +1,39 @@
 #!/usr/bin/env bash
-# Log in to the bundled Codex CLI with your personal ChatGPT/OpenAI subscription, from inside
-# the sandbox — used for the cross-vendor peer-review loop.
+# Log in to the bundled Codex CLI with your personal ChatGPT/OpenAI subscription, from inside the
+# sandbox — used for the cross-vendor peer-review loop.
 #
-# Why a helper: Codex's "Sign in with ChatGPT" runs an OAuth callback server on 127.0.0.1:1455
-# INSIDE the container, but your browser redirects to localhost:1455 on THIS host. They don't
-# meet on their own. This bridges them: a socat listener on the container's published port
-# (11455) forwards to codex's loopback 1455, and docker-compose publishes host 127.0.0.1:1455 ->
-# container 11455. So the browser redirect reaches codex and the login completes.
+# Uses the DEVICE-AUTH flow, which Codex itself recommends for headless/containerized machines:
+# it prints a URL + code, you authorize in any browser, and Codex polls OpenAI (through the egress
+# proxy) to finish. No localhost:1455 loopback callback — that flow is unreliable through Docker.
+# The login is saved in the persisted claude-codex volume, so you only do this once.
 #
-#   ./codex-login.sh        # one-time; the login then persists in the claude-codex volume
+#   ./codex-login.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
 SVC=claude-sandbox
+
 if ! docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -q .; then
     echo "Sandbox isn't running. Start it first:  ./run.sh"; exit 1
 fi
 
-# Token exchange goes through the egress proxy, so OpenAI must be allowlisted or it 403s.
-# Make it permanent by setting ALLOW_OPENAI=true in .env; this covers the current session too.
-echo "Allowlisting OpenAI domains for this session..."
-./allow-domain.sh openai.com chatgpt.com >/dev/null
-
-# Bridge the callback: socat on 0.0.0.0:11455 -> codex's loopback 1455. Idempotent.
-# `pgrep -x socat` matches the socat process by name (not `pgrep -f`, which would self-match the
-# guard command line, since it contains the word "socat" — then socat would never start).
-docker compose exec -d "$SVC" sh -c \
-    'pgrep -x socat >/dev/null 2>&1 || socat TCP-LISTEN:11455,fork,reuseaddr TCP:127.0.0.1:1455'
+# OpenAI egress must be on, or the device-auth polling is refused (403) by the proxy.
+docker compose exec -T "$SVC" grep -q "openai" /etc/tinyproxy/filter 2>/dev/null || {
+    echo "OpenAI egress is not enabled. Set ALLOW_OPENAI=true in .env, run ./run.sh, then retry."
+    exit 1
+}
 
 cat <<'EOF'
 
-Starting `codex login`. When it prints a URL:
-  1. Open it in your browser on this laptop.
-  2. Sign in with your ChatGPT / OpenAI subscription.
-  3. It redirects to http://localhost:1455/... and the CLI completes the login.
+Starting `codex login --device-auth`. Codex will print a URL and a short code:
+  1. Open the URL in your browser on this laptop.
+  2. Enter the code and sign in with your ChatGPT / OpenAI subscription.
+  3. Codex polls to finish — the terminal will say it's logged in.
 
-The login is saved in the persisted claude-codex volume, so you only do this once.
-If the browser shows "can't reach this page" at localhost:1455, see the access-token
-fallback in the README. Press Ctrl-C to abort.
+Saved in the persisted codex volume, so you only do this once. Ctrl-C to abort.
 
 EOF
 
-exec docker compose exec "$SVC" codex login
+# Run as `node` so the login lands in /home/node/.codex (the persisted volume) and matches the
+# user that runs `codex` in the web terminal.
+exec docker compose exec -u node "$SVC" codex login --device-auth

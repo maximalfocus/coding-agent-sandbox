@@ -32,11 +32,7 @@ services:
     # Web terminal, bound to localhost only — never exposed to your LAN.
     ports:
       - "127.0.0.1:${TTYD_PORT:-7681}:7681"
-      # Codex "Sign in with ChatGPT" OAuth callback. Codex's loopback server listens on
-      # 127.0.0.1:1455 INSIDE the container; ./codex-login.sh bridges that to container port
-      # 11455 (via socat) so the host browser's redirect to localhost:1455 reaches it. Idle
-      # otherwise (nothing listens until you run codex-login), and bound to localhost only.
-      - "127.0.0.1:${CODEX_LOGIN_PORT:-1455}:11455"
+      # (Codex sign-in uses the device-auth flow — no localhost callback port needed.)
     environment:
       TTYD_USER: "${TTYD_USER:-coder}"
       TTYD_PASS: "${TTYD_PASS:-changeme}"
