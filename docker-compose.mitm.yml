@@ -51,6 +51,6 @@ services:
 
 volumes:
   claude-config:
-    name: claude-sandbox-config
+    name: coding-agent-sandbox-config
   claude-audit-mitm:
-    name: claude-sandbox-audit-mitm
+    name: coding-agent-sandbox-audit-mitm

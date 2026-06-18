@@ -250,7 +250,7 @@ firewall) as Claude. Two steps to enable it:
    ALLOW_OPENAI=true
    ```
 
-2. **Sign in with your ChatGPT/OpenAI subscription** (once — it persists in the `claude-sandbox-codex` volume):
+2. **Sign in with your ChatGPT/OpenAI subscription** (once — it persists in the `coding-agent-sandbox-codex` volume):
 
    ```bash
    ./codex-login.sh
@@ -259,7 +259,7 @@ firewall) as Claude. Two steps to enable it:
    This uses Codex's **device-auth** flow (the right one for a container — no `localhost` callback).
    It prints a URL and a short code: open the URL in any browser, enter the code, and sign in with
    your ChatGPT subscription. Codex polls OpenAI through the egress proxy to finish, and the login
-   is saved in the persisted `claude-sandbox-codex` volume (one-time).
+   is saved in the persisted `coding-agent-sandbox-codex` volume (one-time).
 
 Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
 allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.
