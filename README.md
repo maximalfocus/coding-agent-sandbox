@@ -263,10 +263,17 @@ with your `GITHUB_TOKEN`). Set the repos in `.env`, then with the sandbox runnin
 ./skills-setup.sh          # clone (or git pull) each, then symlink their skills; re-run to update
 ```
 
-The clones live in `/home/node/.claude/skill-repos` (persisted, independent of `WORKSPACE_DIR`), so
-the skills are available in every project, identically on macOS and Windows (`skills-setup.cmd`).
-Pushing needs a `GITHUB_TOKEN` with write access; `*-evolve` pushes to whatever branch the skill
-targets (have it use a branch + PR if you want a review gate).
+The clones live in **`~/ws`** inside the sandbox (a persisted volume) — the same path the
+`*-evolve` skills hardcode (`~/ws/cdd-skills`, `~/ws/peerreview-skills`), so self-evolve/commit/push
+works in the sandbox exactly as on the host. They're independent of `WORKSPACE_DIR` (available in
+every project), identical on macOS and Windows (`skills-setup.cmd`). Pushing needs a `GITHUB_TOKEN`
+with write access.
+
+**One evolver across environments.** `peerreview` self-evolves + pushes `peerreview-skills` after
+*every* run; if more than one environment (this sandbox + your host) does that, the clones race on
+git. Pick ONE evolver and set `PEERREVIEW_EVOLVE=off` in `.env` on the others (they log-only, no
+push). `cdd-evolve` and the updated `peerreview` also `git pull --rebase` before pushing and
+union-merge their append-only `evolution/` logs, so an accidental dual-push self-heals.
 
 **Copy — for read-only use of skills you won't change (`sync-skills.sh`).** Copies skill *content*
 (no `.git`) from your host `~/.claude/skills` + matching `~/.claude/commands/*.md` into the volume:

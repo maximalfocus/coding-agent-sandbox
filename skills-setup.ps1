@@ -27,7 +27,7 @@ if (-not $Repos -or $Repos.Count -eq 0) {
 $routine = @'
 set -e
 url="$1"; name="$(basename "$url" .git)"
-base="$HOME/.claude/skill-repos"; mkdir -p "$base" "$HOME/.claude/skills"
+base="$HOME/ws"; mkdir -p "$base" "$HOME/.claude/skills"
 if [ -d "$base/$name/.git" ]; then
   echo "  updating $name"; git -C "$base/$name" pull --ff-only || echo "  (pull skipped)"
 else
@@ -41,6 +41,9 @@ for sk in "$base/$name"/skills/*/; do
 done
 echo "  linked $n skills from $name (live git clone)"
 '@
+
+# One-time migration: older versions cloned into ~/.claude/skill-repos; ~/ws is the home now.
+docker compose exec -T -u node $svc sh -c 'rm -rf "$HOME/.claude/skill-repos" 2>/dev/null || true'
 
 foreach ($url in $Repos) {
     Write-Host "=== $url ==="

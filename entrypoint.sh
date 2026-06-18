@@ -149,6 +149,9 @@ if [ "$(id -u)" = "0" ]; then
     # Codex subscription login persists here (~/.codex/auth.json), like Claude's in .claude.
     mkdir -p /home/node/.codex
     chown -R node:node /home/node/.codex 2>/dev/null || true
+    # ~/ws holds the cloned skill repos (skills-setup.sh). Own it so node can clone/commit/push.
+    mkdir -p /home/node/ws
+    chown node:node /home/node/ws 2>/dev/null || true
 
     # Audit log handling (stays local — this is the persisted egress trail in the claude-audit
     # volume). Two protections:

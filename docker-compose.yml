@@ -48,6 +48,10 @@ services:
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       GIT_USER_NAME: "${GIT_USER_NAME:-}"
       GIT_USER_EMAIL: "${GIT_USER_EMAIL:-}"
+      # peerreview self-evolves + pushes peerreview-skills every run. Set PEERREVIEW_EVOLVE=off on
+      # environments that should NOT be the evolver (so only one place pushes — avoids git races).
+      # Unset (default) = this environment evolves. See skills-setup / SECURITY notes.
+      PEERREVIEW_EVOLVE: "${PEERREVIEW_EVOLVE:-}"
       # Audit-log rotation (the local egress trail in the claude-audit volume). Defaults keep
       # ~100 MiB max; tune if you want a longer or shorter local history.
       AUDIT_LOG_MAX_BYTES: "${AUDIT_LOG_MAX_BYTES:-20971520}"
@@ -62,6 +66,9 @@ services:
       - "claude-config:/home/node/.claude"
       # Persists the Codex subscription login (~/.codex/auth.json) across restarts.
       - "claude-codex:/home/node/.codex"
+      # Persists ~/ws — where skills-setup.sh clones your skill repos (cdd-skills, peerreview-skills).
+      # Matches the host ~/ws layout the *-evolve skills hardcode, so self-evolve/push works here too.
+      - "claude-ws:/home/node/ws"
       # Audit trail: every host the proxy was asked to reach (allowed + refused).
       - "claude-audit:/var/log/tinyproxy"
     restart: unless-stopped
@@ -72,5 +79,7 @@ volumes:
     name: claude-sandbox-config
   claude-codex:
     name: claude-sandbox-codex
+  claude-ws:
+    name: claude-sandbox-ws
   claude-audit:
     name: claude-sandbox-audit
