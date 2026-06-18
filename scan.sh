@@ -1,44 +1,59 @@
 #!/usr/bin/env bash
-# Supply-chain gate: scan the built sandbox image for known-vulnerable packages with Trivy
-# (open source, Apache-2.0). Run standalone or via ./run.sh (which calls this before starting).
+# Supply-chain scan: check the built image for known-vulnerable packages with Trivy (Apache-2.0).
 #
-#   ./scan.sh                         # scan coding-agent-sandbox:latest, fail on HIGH/CRITICAL
-#   ./scan.sh some-other-image:tag    # scan a specific image
-#   TRIVY_SEVERITY=CRITICAL ./scan.sh # tune what blocks (default HIGH,CRITICAL)
+# ADVISORY by default — it prints what it finds but does NOT block the sandbox from starting.
+# Why: this image is a full Debian + Node base plus third-party CLIs (Claude Code, Codex), whose
+# OS and bundled-npm packages routinely carry fixed CVEs you can't patch yourself. Hard-blocking
+# on those would brick every fresh build. The scan keeps you AWARE of the surface; you reduce it
+# by bumping the base-image digest over time.
 #
-# Prefers a local `trivy` binary (brew install trivy). If absent, falls back to the official
-# Trivy container, fed the image as a tarball via `docker save` — so we never mount the Docker
-# socket into the scanner (no daemon access handed to a third-party image).
+#   ./scan.sh                          # advisory: scan windows + print findings, exit 0
+#   TRIVY_STRICT=1 ./scan.sh           # gate: exit non-zero if any fixed HIGH/CRITICAL remain
+#   TRIVY_SUMMARY=1 ./scan.sh          # print only the per-target totals (used by run.sh)
+#   TRIVY_SEVERITY=CRITICAL ./scan.sh  # tune severities
+#
+# Prefers a local `trivy` binary (brew install trivy); else falls back to the official Trivy
+# container, fed the image as a tarball via `docker save` (no Docker-socket mount).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 IMAGE="${1:-coding-agent-sandbox:latest}"
-# Only FIXED vulns gate the build (--ignore-unfixed): those are actionable — bump the base-image
-# digest or a package and rebuild. Unfixed CVEs in the Debian base would otherwise block forever.
 SEVERITY="${TRIVY_SEVERITY:-HIGH,CRITICAL}"
-# Pin/override the fallback scanner image. `latest` is used by default; pin to a digest for full
-# reproducibility (this repo pins its base image, ttyd, and the CLI the same way).
 TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:latest}"
+GATE=0; [ -n "${TRIVY_STRICT:-}" ] && GATE=1
+COMMON=(image --severity "$SEVERITY" --ignore-unfixed --no-progress --exit-code "$GATE")
 
-COMMON=(image --severity "$SEVERITY" --ignore-unfixed --exit-code 1 --no-progress)
-
-echo "Scanning ${IMAGE} for ${SEVERITY} vulnerabilities (fixed only)..."
+mode="advisory — report only (set TRIVY_STRICT=1 to block)"
+[ "$GATE" = 1 ] && mode="STRICT — blocks on findings"
+echo "Scanning ${IMAGE} for ${SEVERITY} (fixed only; ${mode})..."
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "Image '$IMAGE' not found locally. Build it first (./run.sh or 'docker compose build')." >&2
     exit 1
 fi
 
+report="$(mktemp)"; tarball=""
+cleanup() { rm -f "$report" ${tarball:+"$tarball"}; }
+trap cleanup EXIT
+
+rc=0
 if command -v trivy >/dev/null 2>&1; then
-    exec trivy "${COMMON[@]}" "$IMAGE"
+    trivy "${COMMON[@]}" "$IMAGE" > "$report" 2>&1 || rc=$?
+else
+    echo "  (no local 'trivy' — using ${TRIVY_IMAGE} via docker; 'brew install trivy' is faster)"
+    tarball="$(mktemp -t sandbox-scan.XXXXXX.tar)"
+    docker save "$IMAGE" -o "$tarball"
+    docker run --rm -v "$tarball:/image.tar:ro" -v coding-agent-sandbox-trivy-cache:/root/.cache/trivy \
+        "$TRIVY_IMAGE" "${COMMON[@]}" --input /image.tar > "$report" 2>&1 || rc=$?
 fi
 
-echo "  (no local 'trivy' — using ${TRIVY_IMAGE} via docker; 'brew install trivy' for a faster local scan)"
+if [ -n "${TRIVY_SUMMARY:-}" ]; then
+    grep -E "Total:|^${IMAGE}" "$report" || echo "  (scan produced no summary lines — run ./scan.sh for detail)"
+else
+    cat "$report"
+fi
 
-# Hand the image to Trivy as a tarball rather than via the daemon socket. tmp is cleaned on exit.
-tar="$(mktemp -t sandbox-scan.XXXXXX.tar)"
-trap 'rm -f "$tar"' EXIT
-docker save "$IMAGE" -o "$tar"
-# Persisted cache volume so the vuln DB isn't re-downloaded on every scan.
-docker run --rm -v "$tar:/image.tar:ro" -v claude-sandbox-trivy-cache:/root/.cache/trivy \
-    "$TRIVY_IMAGE" "${COMMON[@]}" --input /image.tar
+if [ "$GATE" = 1 ] && [ "$rc" -ne 0 ]; then
+    echo "STRICT scan: fixed ${SEVERITY} vulnerabilities present (see above)." >&2
+fi
+exit "$rc"

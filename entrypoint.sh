@@ -158,8 +158,10 @@ if [ "$(id -u)" = "0" ]; then
     #  2) Bounded rotation: a root-side loop keeps the log from growing without limit using
     #     copytruncate (tinyproxy's open fd stays valid — no signal needed). `node` can't touch
     #     this loop (can't signal a root process), so the agent can't disable rotation either.
+    # NB: we run chmod AS tinyproxy (via gosu), not root — the container drops CAP_FOWNER, so root
+    # can't chmod a file it doesn't own, but the owner always can.
     chown tinyproxy:tinyproxy /var/log/tinyproxy 2>/dev/null || true
-    chmod 0750 /var/log/tinyproxy 2>/dev/null || true
+    gosu tinyproxy chmod 0750 /var/log/tinyproxy 2>/dev/null || true
 
     AUDIT_LOG=/var/log/tinyproxy/tinyproxy.log
     AUDIT_MAX_BYTES="${AUDIT_LOG_MAX_BYTES:-20971520}"   # 20 MiB per file

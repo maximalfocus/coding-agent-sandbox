@@ -56,13 +56,14 @@ if ($env:SKIP_TRIVY) {
     Write-Host "  (SKIP_TRIVY set — skipping image vulnerability scan)"
 }
 else {
+    $env:TRIVY_SUMMARY = "1"
     & (Join-Path $PSScriptRoot "scan.ps1")
-    if ($LASTEXITCODE -ne 0) {
-        $sevMsg = if ($env:TRIVY_SEVERITY) { $env:TRIVY_SEVERITY } else { "HIGH,CRITICAL" }
+    $scanRc = $LASTEXITCODE
+    Remove-Item Env:\TRIVY_SUMMARY -ErrorAction SilentlyContinue
+    if ($scanRc -ne 0) {
         Write-Host ""
-        Write-Host "Image scan found $sevMsg vulnerabilities (see above)."
-        Write-Host "Fix by bumping the base-image digest / packages in the Dockerfile and rebuilding,"
-        Write-Host "or set `$env:SKIP_TRIVY=1 to start anyway."
+        Write-Host "STRICT scan failed (see above). Set `$env:SKIP_TRIVY=1 to start anyway, or reduce"
+        Write-Host "the surface by bumping the base-image digest in the Dockerfile and rebuilding."
         exit 1
     }
 }

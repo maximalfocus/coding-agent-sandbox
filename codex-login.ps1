@@ -22,7 +22,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Bridge Codex's loopback callback (1455) to the container's published port (11455). Idempotent.
-docker compose exec -d $svc sh -c 'pgrep -f "socat.*:11455" >/dev/null 2>&1 || socat TCP-LISTEN:11455,fork,reuseaddr TCP:127.0.0.1:1455'
+# `pgrep -x socat` matches by process name; `pgrep -f` would self-match this guard's own command
+# line (it contains "socat") and socat would never start.
+docker compose exec -d $svc sh -c 'pgrep -x socat >/dev/null 2>&1 || socat TCP-LISTEN:11455,fork,reuseaddr TCP:127.0.0.1:1455'
 
 Write-Host ""
 Write-Host "Starting codex login. When it prints a URL:"

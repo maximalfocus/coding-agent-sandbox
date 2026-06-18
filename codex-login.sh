@@ -23,8 +23,10 @@ echo "Allowlisting OpenAI domains for this session..."
 ./allow-domain.sh openai.com chatgpt.com >/dev/null
 
 # Bridge the callback: socat on 0.0.0.0:11455 -> codex's loopback 1455. Idempotent.
+# `pgrep -x socat` matches the socat process by name (not `pgrep -f`, which would self-match the
+# guard command line, since it contains the word "socat" — then socat would never start).
 docker compose exec -d "$SVC" sh -c \
-    'pgrep -f "socat.*:11455" >/dev/null 2>&1 || socat TCP-LISTEN:11455,fork,reuseaddr TCP:127.0.0.1:1455'
+    'pgrep -x socat >/dev/null 2>&1 || socat TCP-LISTEN:11455,fork,reuseaddr TCP:127.0.0.1:1455'
 
 cat <<'EOF'
 

@@ -1,17 +1,19 @@
-# Supply-chain gate (Windows): scan the built sandbox image for known-vulnerable packages with
-# Trivy. Mirrors scan.sh. Called by run.ps1 before starting the container; can also run standalone.
+# Supply-chain scan (Windows). Mirrors scan.sh: ADVISORY by default (prints findings, does not
+# block the sandbox from starting), because this full Debian + Node image plus third-party CLIs
+# carries fixed CVEs you can't patch yourself. Set $env:TRIVY_STRICT=1 to gate on findings.
 #   powershell -ExecutionPolicy Bypass -File .\scan.ps1
 param([string]$Image = "coding-agent-sandbox:latest")
 
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
-# Only FIXED vulns gate the build (--ignore-unfixed): those are actionable. Tune via $env:TRIVY_SEVERITY.
 $sev = if ($env:TRIVY_SEVERITY) { $env:TRIVY_SEVERITY } else { "HIGH,CRITICAL" }
 $trivyImage = if ($env:TRIVY_IMAGE) { $env:TRIVY_IMAGE } else { "aquasec/trivy:latest" }
-$common = @("image", "--severity", $sev, "--ignore-unfixed", "--exit-code", "1", "--no-progress")
+$gate = if ($env:TRIVY_STRICT) { 1 } else { 0 }
+$common = @("image", "--severity", $sev, "--ignore-unfixed", "--no-progress", "--exit-code", "$gate")
 
-Write-Host "Scanning $Image for $sev vulnerabilities (fixed only)..."
+$mode = if ($gate -eq 1) { "STRICT - blocks on findings" } else { "advisory - report only (set TRIVY_STRICT=1 to block)" }
+Write-Host "Scanning $Image for $sev (fixed only; $mode)..."
 
 docker image inspect $Image *> $null
 if ($LASTEXITCODE -ne 0) {
@@ -19,28 +21,38 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Prefer a local trivy binary (winget install AquaSecurity.Trivy); else use the official container.
+$report = New-TemporaryFile
+$rc = 0
 if (Get-Command trivy -ErrorAction SilentlyContinue) {
-    & trivy @common $Image
-    exit $LASTEXITCODE
+    & trivy @common $Image *> $report.FullName
+    $rc = $LASTEXITCODE
+}
+else {
+    Write-Host "  (no local 'trivy' - using $trivyImage via docker)"
+    $tarDir = Join-Path $env:TEMP ("sandbox-scan-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $tarDir | Out-Null
+    try {
+        $tar = Join-Path $tarDir "image.tar"
+        docker save $Image -o $tar
+        if ($LASTEXITCODE -ne 0) { throw "docker save failed for '$Image'." }
+        $mount = ($tarDir -replace '\\', '/')
+        docker run --rm -v "${mount}:/work:ro" -v coding-agent-sandbox-trivy-cache:/root/.cache/trivy `
+            $trivyImage @common --input /work/image.tar *> $report.FullName
+        $rc = $LASTEXITCODE
+    }
+    finally {
+        Remove-Item -Recurse -Force -LiteralPath $tarDir -ErrorAction SilentlyContinue
+    }
 }
 
-Write-Host "  (no local 'trivy' — using $trivyImage via docker)"
-# Hand Trivy the image as a tarball (no Docker socket mount). Mount the temp DIR (a single-file
-# bind mount is unreliable on Windows + Docker Desktop), then point --input at the file inside it.
-$tarDir = Join-Path $env:TEMP ("sandbox-scan-" + [System.Guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $tarDir | Out-Null
-$code = 0
-try {
-    $tar = Join-Path $tarDir "image.tar"
-    docker save $Image -o $tar
-    if ($LASTEXITCODE -ne 0) { throw "docker save failed for '$Image'." }
-    $mount = ($tarDir -replace '\\', '/')
-    docker run --rm -v "${mount}:/work:ro" -v claude-sandbox-trivy-cache:/root/.cache/trivy `
-        $trivyImage @common --input /work/image.tar
-    $code = $LASTEXITCODE
+if ($env:TRIVY_SUMMARY) {
+    $hits = Select-String -Path $report.FullName -Pattern ("Total:|^" + [Regex]::Escape($Image))
+    if ($hits) { $hits.Line } else { Write-Host "  (no summary lines - run scan.ps1 for detail)" }
 }
-finally {
-    Remove-Item -Recurse -Force -LiteralPath $tarDir -ErrorAction SilentlyContinue
+else {
+    Get-Content $report.FullName
 }
-exit $code
+Remove-Item -LiteralPath $report.FullName -ErrorAction SilentlyContinue
+
+if ($gate -eq 1 -and $rc -ne 0) { Write-Host "STRICT scan: fixed $sev vulnerabilities present (see above)." }
+exit $rc

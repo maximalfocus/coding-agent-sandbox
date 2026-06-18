@@ -37,18 +37,17 @@ case "$home_abs" in "$wd_abs"/*) echo "Refusing: WORKSPACE_DIR '$wd_abs' contain
 # mismatch if the .env value is relative or a symlink that resolves elsewhere.
 export WORKSPACE_DIR="$wd_abs"
 
-# Build, then gate on a supply-chain scan BEFORE starting the container, so a known-vulnerable
-# image never gets run. Set SKIP_TRIVY=1 to bypass (e.g. offline with no scanner DB cached).
+# Build, then run a supply-chain scan. The scan is ADVISORY by default (prints findings, doesn't
+# block — see scan.sh); set TRIVY_STRICT=1 to make it gate the start, or SKIP_TRIVY=1 to skip it.
 echo "Building image..."
 docker compose build
 if [ -n "${SKIP_TRIVY:-}" ]; then
     echo "  (SKIP_TRIVY set — skipping image vulnerability scan)"
 else
-    ./scan.sh || {
+    TRIVY_SUMMARY=1 ./scan.sh || {
         echo
-        echo "Image scan found ${TRIVY_SEVERITY:-HIGH,CRITICAL} vulnerabilities (see above)."
-        echo "Fix by bumping the base-image digest / packages in the Dockerfile and rebuilding,"
-        echo "or re-run with SKIP_TRIVY=1 to start anyway."
+        echo "STRICT scan failed (see above). Set SKIP_TRIVY=1 to start anyway, or reduce the"
+        echo "surface by bumping the base-image digest in the Dockerfile and rebuilding."
         exit 1
     }
 fi

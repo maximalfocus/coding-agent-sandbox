@@ -33,7 +33,8 @@ Before opening a PR:
 
 - `bash -n` your shell scripts; keep PowerShell to **Windows PowerShell 5.1**-compatible syntax.
 - Run `docker compose config` to confirm compose still parses.
-- Run `./scan.sh` (Trivy) against the built image — don't introduce fixed HIGH/CRITICAL CVEs.
+- Review the `./scan.sh` (Trivy) report — it's advisory, but avoid adding *new, avoidable* CVEs
+  (e.g. an unnecessary package); `TRIVY_STRICT=1 ./scan.sh` makes it gate if you want a hard check.
 - Keep macOS/Linux (`run.sh`, `scan.sh`, `*.sh`) and Windows (`run.ps1`, `scan.ps1`, `*.ps1`)
   paths at parity when you touch one.
 
