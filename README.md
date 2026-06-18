@@ -250,6 +250,23 @@ firewall) as Claude. Two steps to enable it:
 Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
 allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.
 
+### Bringing your own skills / slash-commands into the sandbox
+
+Claude in the sandbox reads skills from `/home/node/.claude/skills` (a persisted volume), which
+starts empty. To use your host's skills (e.g. a CDD or peer-review family) and their slash-commands
+inside the sandbox, run — with the sandbox running:
+
+```bash
+./sync-skills.sh                      # default: cdd* and peerreview/peer-review*
+./sync-skills.sh cdd peerreview note  # or name the prefixes to include
+```
+
+It copies the matching skills (dereferencing symlinks, pulling each skill's whole source repo so
+sibling/approach skills come too) plus the matching `~/.claude/commands/*.md` into the sandbox's
+config volume, where they persist. Re-run after changing a skill. Then restart `claude` inside the
+sandbox to load them. (Skills that call `codex` — like peer-review — need `ALLOW_OPENAI=true` and a
+one-time `./codex-login.sh`.)
+
 ## Content-mediation mode (opt-in, mitmproxy)
 
 The default proxy filters by **hostname only** — it can't tell `git clone` from `git push`, or stop
