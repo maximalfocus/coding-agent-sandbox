@@ -222,6 +222,22 @@ it in `EXTRA_ALLOWED_DOMAINS` in `.env` — then `docker compose up -d` (recreat
 `--build` is only needed if you changed a Dockerfile). For `claude-safe`, there's no "restart":
 each run reads its domains fresh, so just use `CLAUDE_SAFE_DOMAINS=...` for that invocation.
 
+## GitHub access (clone / pull / push)
+
+SSH (port 22) is firewalled off, so GitHub works over **HTTPS with a token**. Set in `.env`:
+
+```bash
+GITHUB_TOKEN=github_pat_...     # a PAT with access to your repos (fine-grained, Contents: read+write is enough)
+GIT_USER_NAME=you               # commit identity used inside the sandbox
+GIT_USER_EMAIL=you@example.com
+```
+
+On each start the sandbox wires git to authenticate with the token and **rewrites
+`git@github.com:` / `ssh://git@github.com/` remotes to HTTPS** — so `git clone`, `pull`, and
+**`push`** all work, including on repos that already have SSH remotes. Needs `ALLOW_GITHUB=true`
+(the default). The token is readable by the agent inside the sandbox (the unavoidable cost of giving
+it push) — scope it narrowly to the repos you need, and revoke it if it ever leaks.
+
 ## Codex (cross-vendor peer review)
 
 The image also bundles the **Codex CLI** (OpenAI), so you can run a Claude/Codex peer-review loop
@@ -284,6 +300,53 @@ union-merge their append-only `evolution/` logs, so an accidental dual-push self
 
 Either way, restart `claude` inside the sandbox to load the skills. (Skills that call `codex` — like
 peer-review — need `ALLOW_OPENAI=true` and a one-time `./codex-login.sh`.)
+
+### UI acceptance tests & cdd tooling (bundled)
+
+The image bundles **Playwright + Chromium** (pinned, with system libraries) and **bun**, so cdd's
+testing and tools work with no extra install:
+
+- `npx playwright test --project=chromium` launches **headless Chromium** for `cdd-acceptance`.
+- `/cdd` and `/cdd-evolve`'s `bun run` tools (metrics-baseline, golden-lint, coverage-review, …) run directly.
+
+(If a project pins a *different* Playwright version than the bundled one, it re-downloads its browser
+at runtime — add `cdn.playwright.dev` to `EXTRA_ALLOWED_DOMAINS` so that download is allowed.)
+
+### Full cdd / peerreview setup (one-time per machine)
+
+Putting the pieces together for the agentic dev workflow, in order:
+
+1. **Configure `.env`** — `WORKSPACE_DIR`, `TTYD_PASS`, `ALLOW_OPENAI=true`, `GITHUB_TOKEN` (+ `GIT_USER_NAME`/`EMAIL`),
+   `SKILL_REPOS=<your cdd-skills + peerreview-skills HTTPS URLs>`, and `PEERREVIEW_EVOLVE=off` on every
+   machine that should **not** be the evolver (leave it unset on your one primary evolver).
+2. **Start** — `./run.sh` (macOS/Linux) or `start-sandbox.cmd` (Windows).
+3. **Log in** — in the web terminal `claude` → `/login`; then `./codex-login.sh` (Codex device-auth, one-time).
+4. **Load skills** — `./skills-setup.sh` (clones your skill repos into `~/ws`, symlinks them; re-run to update).
+5. **Use** — restart `claude`, then `/cdd`, `/cdd-plan`, `/peerreview`, …; `*-evolve` commands commit + push to GitHub.
+
+## Configuration reference (`.env`)
+
+Every knob, with its default. Copy `.env.example` → `.env` and set what you need.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `WORKSPACE_DIR` | `./workspace` | Absolute path to the **only** host folder the sandbox can see/edit (mounted at `/workspace`). |
+| `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
+| `TTYD_PORT` | `7681` | Local port for the browser terminal. |
+| `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |
+| `ALLOW_GITHUB` | `true` | github.com / githubusercontent.com egress on/off. |
+| `ALLOW_OPENAI` | `false` | OpenAI egress (openai.com + chatgpt.com) — needed for Codex / peer-review. |
+| `GITHUB_TOKEN` | — | PAT for git clone/pull/**push** over HTTPS (see *GitHub access*). |
+| `GIT_USER_NAME` / `GIT_USER_EMAIL` | — | Commit identity used inside the sandbox. |
+| `SKILL_REPOS` | — | Space-separated HTTPS skill-repo URLs that `skills-setup.sh` clones into `~/ws`. |
+| `PEERREVIEW_EVOLVE` | *(unset = evolve)* | Set `off` to make peerreview log-only (skip self-evolve/push) — designate **one** evolver. |
+| `MEM_LIMIT` / `PIDS_LIMIT` | `6g` / `4096` | Container resource ceilings. |
+| `AUDIT_LOG_MAX_BYTES` / `AUDIT_LOG_KEEP` / `AUDIT_ROTATE_INTERVAL` | `20971520` / `5` / `3600` | Egress-log rotation (size, files kept, seconds). |
+| `TRIVY_STRICT` / `TRIVY_SEVERITY` / `SKIP_TRIVY` | — / `HIGH,CRITICAL` / — | Image scan: advisory by default; `TRIVY_STRICT=1` blocks on findings, `SKIP_TRIVY=1` skips it. |
+
+Most are runtime env, so a change takes effect on `docker compose up -d` (recreate, seconds) — no
+rebuild needed unless you changed a `Dockerfile`. The **mitm** variant adds `GITHUB_READONLY`,
+`ANTHROPIC_BLOCK_PATHS`, `ANTHROPIC_SINGLE_CRED`, `ANTHROPIC_PIN_TOKEN` (see below).
 
 ## Content-mediation mode (opt-in, mitmproxy)
 
