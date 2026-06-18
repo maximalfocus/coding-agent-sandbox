@@ -47,6 +47,13 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 ARG CODEX_VERSION=0.140.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 
+# bun — runtime for the cdd-skills TypeScript tools (metrics-baseline, golden-lint, coverage-review,
+# scaffold-runner, conformance-validate) that /cdd and /cdd-evolve invoke via `bun run`. Those tools
+# use only Node/Bun stdlib (no package.json), so the runtime alone is enough — no dependency install.
+# Pinned to match the host; bump deliberately.
+ARG BUN_VERSION=1.3.11
+RUN npm install -g "bun@${BUN_VERSION}"
+
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 COPY entrypoint.sh    /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh
