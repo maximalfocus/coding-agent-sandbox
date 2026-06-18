@@ -3,3 +3,4 @@ workspace/
 __pycache__/
 *.pyc
 .playwright-mcp/
+volume-backups/

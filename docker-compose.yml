@@ -76,10 +76,10 @@ services:
 volumes:
   # Explicit, project-name-independent names so renaming the folder never orphans your login.
   claude-config:
-    name: claude-sandbox-config
+    name: coding-agent-sandbox-config
   claude-codex:
-    name: claude-sandbox-codex
+    name: coding-agent-sandbox-codex
   claude-ws:
-    name: claude-sandbox-ws
+    name: coding-agent-sandbox-ws
   claude-audit:
-    name: claude-sandbox-audit
+    name: coding-agent-sandbox-audit
