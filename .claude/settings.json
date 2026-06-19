@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./allow-domain.sh:*)",
+      "Bash(./allow-domain.ps1:*)",
+      "Bash(./audit.sh:*)",
+      "Bash(docker compose exec:*)",
+      "Bash(grep:*)",
+      "Bash(perl:*)",
+      "Edit(./.env)",
+      "Read(./*)"
+    ]
+  }
+}
