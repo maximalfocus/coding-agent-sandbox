@@ -11,7 +11,9 @@ if ([string]::IsNullOrWhiteSpace($running)) {
 }
 
 if ($Attach) {
-    docker compose exec -u node claude-sandbox tmux new-session -A -s claude
+    # Shared launcher: attaches to the 'claude' session, building the 2x2 grid on first use
+    # (same script the browser uses), so you get the same grid here.
+    docker compose exec -u node claude-sandbox sandbox-tmux
 } else {
     docker compose exec -u node -w /workspace claude-sandbox bash -l
 }
