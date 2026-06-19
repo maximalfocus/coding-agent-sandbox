@@ -202,6 +202,11 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
     ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
 fi
 
+# tmux: mouse on so the web-terminal grid is click-to-focus (click a pane to select it, drag the
+# borders to resize, scroll to scroll). Written if absent, so it applies to the browser grid AND
+# the shell.sh --attach path. Keyboard nav still works (Ctrl-b + arrows / Ctrl-b o).
+[ -f "$HOME/.tmux.conf" ] || printf 'set -g mouse on\n' > "$HOME/.tmux.conf"
+
 # A command was passed (e.g. `claude`, `bash -l`) -> run it. This is how the local-terminal
 # `docker exec` / claude-safe `docker run` paths work.
 if [ "$#" -gt 0 ]; then
