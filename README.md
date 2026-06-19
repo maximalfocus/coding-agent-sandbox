@@ -430,6 +430,51 @@ your project dir ──bind mount───────────────�
 
 See `SECURITY.md` for the threat model and its limits.
 
+## Repo layout
+
+The sandbox itself is the **shared core** — that's where all the logic and the security model live, and
+it runs *inside the Linux container, identically on every OS*. Everything else is a thin per-OS
+launcher or docs. The macOS/Linux and Windows scripts are **1:1 parallel pairs** (`run.sh` ↔ `run.ps1`)
+and are meant to behave the same — change one and you almost always change its twin.
+
+```
+Shared core — the sandbox (runs in the container; same on macOS, Linux, Windows)
+  Dockerfile, Dockerfile.mitm      image build (default + content-mediation variant)
+  docker-compose.yml, *.mitm.yml   services, named volumes, capabilities, resource limits
+  entrypoint.sh                    build allowlist → start proxy → install firewall → drop to
+                                   node → launch the ttyd/tmux web terminal (2x2 grid, mouse on)
+  init-firewall.sh                 fail-closed iptables egress rules
+  tinyproxy.conf                   hostname-filtering proxy config
+  mitm/                            TLS-intercepting proxy addon (opt-in mitm variant)
+
+macOS / Linux launchers (thin wrappers around `docker compose`)
+  setup.sh         first run: create .env → build → scan → start
+  run.sh           build → scan → start
+  shell.sh         exec a shell / attach the tmux session
+  scan.sh          Trivy image scan (advisory; TRIVY_STRICT=1 to gate)
+  audit.sh         read the egress audit trail (--refused, --dump, --mitm)
+  allow-domain.sh  hot-add host(s) to the running allowlist
+  watch-egress.sh  alert on / auto-assess refused hosts (--auto, --llm)
+  codex-login.sh   Codex device-auth sign-in
+  skills-setup.sh  clone your skill repos into the sandbox (~/ws)
+  sync-skills.sh   copy host skills into the sandbox (read-only use)
+
+Windows launchers (parallel .ps1 + .cmd wrappers — same behavior)
+  setup-windows.ps1 / .cmd   first run (WSL2 + Docker + Git + .env + start)
+  start-sandbox.cmd          start (calls run.ps1)
+  run.ps1 · shell.ps1 · scan.ps1 · allow-domain.ps1 · watch-egress.ps1
+  codex-login.ps1 / .cmd · skills-setup.ps1 / .cmd
+
+Config & docs
+  .env.example      every knob, with defaults (copy to .env)
+  .gitattributes    forces LF on container scripts so a Windows `git clone` can't break the build
+  README.md · SECURITY.md · CONTRIBUTING.md · docs/
+```
+
+Rule of thumb: **logic belongs in the shared core; a launcher only translates a `docker compose`
+invocation for its OS.** This is why the project isn't split into separate Windows/macOS trees —
+keeping the pairs side by side is what keeps them from drifting.
+
 ## Contributing
 
 Issues and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). To report a
