@@ -207,10 +207,15 @@ fi
 #  - set-clipboard on + terminal-features clipboard -> a mouse selection is copied to your real
 #    system clipboard via OSC 52 (tmux -> ttyd -> browser), like local tmux. Without this, a
 #    selection only lands in tmux's own buffer and nothing reaches the OS clipboard.
+# NB: ttyd's xterm.js does not consume OSC 52, so tmux can't auto-push a selection to the OS
+# clipboard. To copy: Shift+drag (native browser selection, then Cmd/Ctrl+C), or Ctrl-b m to toggle
+# mouse OFF and drag-select. The toggle keeps click-to-switch-panes available by default.
 printf '%s\n' \
     'set -g mouse on' \
     'set -g set-clipboard on' \
-    "set -as terminal-features ',*:clipboard'" > "$HOME/.tmux.conf"
+    "set -as terminal-features ',*:clipboard'" \
+    'bind m set -g mouse \; display-message "tmux mouse #{?mouse,ON (click=switch pane; Shift+drag to copy),OFF (drag to select+copy; Ctrl-b m to restore)}"' \
+    > "$HOME/.tmux.conf"
 
 # A command was passed (e.g. `claude`, `bash -l`) -> run it. This is how the local-terminal
 # `docker exec` / claude-safe `docker run` paths work.
