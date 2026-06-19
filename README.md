@@ -330,7 +330,9 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 
 | Variable | Default | What it does |
 |---|---|---|
-| `WORKSPACE_DIR` | `./workspace` | Absolute path to the **only** host folder the sandbox can see/edit (mounted at `/workspace`). |
+| `WORKSPACE_DIR` | `./workspace` | Host folder mounted at `/workspace` (the root the sandbox sees/edits). |
+| `WS_DIR` | — | Optional. Host tree mounted at `/workspace/ws` **and** `/home/node/ws` — lets you work across a whole tree in one session, and makes the sandbox's skills your real host clones (one source). Guarded like `WORKSPACE_DIR`. |
+| `PROJECTS_DIR` | — | Optional. A second host tree mounted at `/workspace/projects` (e.g. enterprise projects). ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. |
 | `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
 | `TTYD_PORT` | `7681` | Local port for the browser terminal. |
 | `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |
