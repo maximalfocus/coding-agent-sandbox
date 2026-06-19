@@ -14,4 +14,7 @@ if ! tmux has-session -t "$S" 2>/dev/null; then
         tmux select-pane  -t "$S:.0"
     fi
 fi
+# Always re-apply the config (mouse on, clipboard, key bindings) — self-healing, so a server that
+# was started by some path which didn't auto-source ~/.tmux.conf still ends up correct on attach.
+[ -f "$HOME/.tmux.conf" ] && tmux source-file "$HOME/.tmux.conf" 2>/dev/null
 exec tmux attach-session -t "$S"
