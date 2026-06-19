@@ -12,6 +12,8 @@ if ! docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep 
 fi
 
 if [ "${1:-}" = "--attach" ]; then
-    exec docker compose exec -u node claude-sandbox tmux new-session -A -s claude
+    # Shared launcher: attaches to the 'claude' session, building the 2x2 grid on first use
+    # (same script the browser uses), so you get the same grid here.
+    exec docker compose exec -u node claude-sandbox sandbox-tmux
 fi
 exec docker compose exec -u node -w /workspace claude-sandbox bash -l
