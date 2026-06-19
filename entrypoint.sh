@@ -221,5 +221,19 @@ case "$TTYD_PASS" in
 esac
 say "Open http://127.0.0.1:7681 — log in as '${TTYD_USER}'."
 say "First run: type 'claude', then '/login' and paste the code from your browser."
+# Open the browser terminal as a 2x2 equal grid (four tmux panes, tiled). The splits run ONLY when
+# the session is first created — reattaching (reopening the tab) keeps whatever layout you've since
+# set. Override the grid with TTYD_GRID=1 (single pane) in .env.
+tmux_bootstrap='
+  if ! tmux has-session -t claude 2>/dev/null; then
+    tmux new-session -d -s claude
+    if [ "${TTYD_GRID:-2x2}" = "2x2" ]; then
+      tmux split-window -t claude; tmux split-window -t claude; tmux split-window -t claude
+      tmux select-layout -t claude tiled
+      tmux select-pane  -t claude:.0
+    fi
+  fi
+  exec tmux attach-session -t claude
+'
 exec ttyd -p 7681 -i 0.0.0.0 -W -c "${TTYD_USER}:${TTYD_PASS}" \
-    tmux new-session -A -s claude
+    bash -lc "$tmux_bootstrap"
