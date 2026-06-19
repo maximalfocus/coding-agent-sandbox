@@ -67,7 +67,11 @@ RUN npm install -g "@playwright/test@${PLAYWRIGHT_VERSION}" \
 
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 COPY entrypoint.sh    /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh
+# Strip any CR line endings so the container boots even if the build context was checked out on
+# Windows with CRLF (a `bash\r` shebang otherwise fails with "no such file"). Belt-and-suspenders
+# with .gitattributes (which forces LF on checkout); also normalize the proxy config copied above.
+RUN sed -i 's/\r$//' /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh /etc/tinyproxy/tinyproxy.conf \
+    && chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh
 
 # Claude's view of your files: only what gets mounted here.
 RUN mkdir -p /workspace && chown node:node /workspace
