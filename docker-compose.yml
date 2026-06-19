@@ -36,6 +36,8 @@ services:
     environment:
       TTYD_USER: "${TTYD_USER:-coder}"
       TTYD_PASS: "${TTYD_PASS:-changeme}"
+      # Browser terminal layout: 2x2 (default, four tiled panes) or 1 (single pane).
+      TTYD_GRID: "${TTYD_GRID:-2x2}"
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
       # GitHub egress is a capability grant (read payloads in / push data out). On by default;
       # set ALLOW_GITHUB=false in .env for analysis-only or untrusted-workspace runs.
