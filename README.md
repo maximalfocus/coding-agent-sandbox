@@ -25,9 +25,14 @@ same on **macOS, Linux, and Windows**.
 ## Prerequisites
 
 - **macOS:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
-  [OrbStack](https://orbstack.dev/). (Apple Silicon works — the image builds for arm64.)
+  [OrbStack](https://orbstack.dev/). (Apple Silicon works — the image builds for arm64.) No engine
+  yet? `./setup.sh` offers to install Homebrew and OrbStack for you. On the newest Apple Silicon,
+  if OrbStack reports "virtualization not available", use [Colima](https://github.com/abiosoft/colima)
+  instead (`brew install colima && colima start --vm-type qemu`) — setup.sh accepts any running daemon.
 - **Windows:** Docker Desktop with the **WSL2** backend enabled.
 - A Claude **Pro or Max** subscription (or Console access).
+- **Optional:** [iTerm2](https://iterm2.com/) (recommended over Terminal.app for the 2×2 tmux grid in
+  sandbox sessions) — `./setup.sh` offers to install it on macOS.
 
 > **On a managed laptop behind Cloudflare WARP / Zscaler** (TLS inspection)? Read
 > [Behind a corporate TLS-inspecting proxy](#behind-a-corporate-tls-inspecting-proxy-cloudflare-warp--zscaler)
@@ -43,7 +48,8 @@ Make sure Docker is installed and running (Docker Desktop or OrbStack), then run
 
 It does the first-run work for you:
 
-- checks Docker is installed and running (offers to `brew install --cask orbstack` on macOS if it's missing)
+- checks Docker is installed and running (on macOS, offers to install Homebrew if missing, then `brew install --cask orbstack`)
+- optionally installs iTerm2 (recommended for the 2×2 tmux grid)
 - creates `.env` from `.env.example`
 - asks which folder the sandbox may edit (defaults to `~/work`)
 - generates a web-terminal password

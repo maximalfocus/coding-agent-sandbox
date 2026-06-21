@@ -13,23 +13,33 @@ say() { printf '%s\n' "$@"; }
 # sandbox-installed engine from a pre-existing one and only remove the former by default.
 ENGINE_MARKER="$HOME/.coding-agent-sandbox/installed-orbstack"
 
-# --- Docker (guide, don't force-install — Unix Docker runtimes vary too much to do safely) ------
+# --- Docker engine (macOS: bootstrap Homebrew + OrbStack if missing; Linux: guide) ----------------
 if ! command -v docker >/dev/null 2>&1; then
     say "Docker isn't installed."
     if [ "$(uname -s)" = "Darwin" ]; then
-        if command -v brew >/dev/null 2>&1; then
-            read -r -p "Install OrbStack via Homebrew now? [y/N]: " a
+        # 1. Ensure Homebrew — the one thing we can't install any other way.
+        if ! command -v brew >/dev/null 2>&1; then
+            read -r -p "Homebrew isn't installed. Install it now? (runs the official installer) [y/N]: " a
             case "$a" in
-                y|Y) brew install --cask orbstack \
-                        && { mkdir -p "$(dirname "$ENGINE_MARKER")"; : > "$ENGINE_MARKER"; } ;;
-                *)   say "Install OrbStack (https://orbstack.dev) or Docker Desktop, then re-run ./setup.sh"; exit 1 ;;
+                y|Y)
+                    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+                        || { say "Homebrew install failed — install it manually (https://brew.sh), then re-run ./setup.sh"; exit 1; }
+                    # Put brew on PATH for the rest of this run (Apple Silicon prefix, then Intel).
+                    for p in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+                        if [ -x "$p" ]; then eval "$("$p" shellenv)"; break; fi
+                    done ;;
+                *)  say "Install Homebrew (https://brew.sh) or OrbStack/Docker Desktop directly, then re-run ./setup.sh"; exit 1 ;;
             esac
-        else
-            say "Homebrew isn't installed, so I can't auto-install a Docker engine. Either:"
-            say "  • install Homebrew (https://brew.sh), then re-run ./setup.sh — it'll offer OrbStack; or"
-            say "  • download OrbStack (https://orbstack.dev) or Docker Desktop directly, start it, then re-run."
-            exit 1
+            command -v brew >/dev/null 2>&1 \
+                || { say "Homebrew installed but not on PATH yet — open a new terminal and re-run ./setup.sh"; exit 1; }
         fi
+        # 2. Install OrbStack (marker lets uninstall.sh remove only the engine we installed).
+        read -r -p "Install OrbStack via Homebrew now? [y/N]: " a
+        case "$a" in
+            y|Y) brew install --cask orbstack \
+                    && { mkdir -p "$(dirname "$ENGINE_MARKER")"; : > "$ENGINE_MARKER"; } ;;
+            *)   say "Install OrbStack (https://orbstack.dev) or Docker Desktop, then re-run ./setup.sh"; exit 1 ;;
+        esac
     else
         say "Install Docker Engine (https://docs.docker.com/engine/install/), then re-run ./setup.sh"; exit 1
     fi
@@ -46,9 +56,18 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
     done
     if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
         say "Docker still isn't running. Launch OrbStack / Docker Desktop, then re-run ./setup.sh"
+        say "(If OrbStack reports 'virtualization not available' on newer Apple Silicon, use Colima instead:"
+        say "   brew install colima && colima start --vm-type qemu  — then re-run ./setup.sh.)"
         exit 1
     fi
     say "Docker engine is up."
+fi
+
+# --- Recommended terminal (optional): iTerm2 for the 2x2 tmux grid used in sandbox sessions -------
+if [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1 \
+   && [ ! -d "/Applications/iTerm.app" ] && [ ! -d "$HOME/Applications/iTerm.app" ]; then
+    read -r -p "Install iTerm2? (recommended over Terminal.app for the 2x2 tmux grid) [y/N]: " a
+    case "$a" in y|Y) brew install --cask iterm2 || say "iTerm2 install failed — continuing without it." ;; esac
 fi
 
 # --- .env -----------------------------------------------------------------------------------------
@@ -116,4 +135,8 @@ say "Building and starting the sandbox..."
 # Convenience: open the web terminal on macOS.
 if [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then
     open "http://127.0.0.1:${port}" || true
+    if [ -d "/Applications/iTerm.app" ] || [ -d "$HOME/Applications/iTerm.app" ]; then
+        say ""
+        say "Tip: drive sandbox sessions from iTerm2 (Terminal.app is not recommended) — a 2x2 tmux grid works well."
+    fi
 fi
