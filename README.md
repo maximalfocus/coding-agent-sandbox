@@ -137,10 +137,11 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
 - The terminal runs inside `tmux` (session `claude`), so closing the tab doesn't kill your
   session — reopen the URL to reattach.
 - Stop: `docker compose down`. Logs: `docker compose logs -f`. Rebuild after edits: `./run.sh`.
-- Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network, this repo
-  directory, and (by default) the Docker engine — leaving your host `~/ws`, `~/projects`, and
-  `~/.docker` login untouched. Pass `--keep-docker-engine` to keep OrbStack/Docker Desktop, or
-  `--keep-dir` to keep the repo. Reinstall with `git clone … && ./setup.sh`.
+- Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network and this repo
+  directory, and — only if this sandbox installed it — the Docker engine, leaving your host
+  personal/work trees (`PERSONAL_DIR` / `WORK_DIR`) and `~/.docker` login untouched. Pass
+  `--remove-docker-engine` to also remove a pre-existing engine, `--keep-docker-engine` to keep it,
+  or `--keep-dir` to keep the repo. Reinstall with `git clone … && ./setup.sh`.
 
 ## Use a local terminal instead of the browser
 
@@ -360,8 +361,8 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | Variable | Default | What it does |
 |---|---|---|
 | `WORKSPACE_DIR` | `./workspace` | Host folder mounted at `/workspace` (the root the sandbox sees/edits). |
-| `WS_DIR` | — | Optional. Host tree mounted at `/workspace/ws` **and** `/home/node/ws` — lets you work across a whole tree in one session, and makes the sandbox's skills your real host clones (one source). Guarded like `WORKSPACE_DIR`. |
-| `PROJECTS_DIR` | — | Optional. A second host tree mounted at `/workspace/projects` (e.g. enterprise projects). ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. |
+| `PERSONAL_DIR` | — | Optional. Your **personal** project tree, mounted at `/workspace/personal` **and** `/home/node/ws` — lets you work across a whole tree in one session, and makes the sandbox's skills your real host clones (one source). Guarded like `WORKSPACE_DIR`. _(formerly `WS_DIR`, still honored.)_ |
+| `WORK_DIR` | — | Optional. Your **work** / enterprise project tree, mounted at `/workspace/work`. ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. _(formerly `PROJECTS_DIR`, still honored.)_ |
 | `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
 | `TTYD_PORT` | `7681` | Local port for the browser terminal. |
 | `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |

@@ -46,18 +46,29 @@ validate_mount() {
     printf '%s' "$abs"
 }
 
-# WORKSPACE_DIR (required; the /workspace root). WS_DIR + PROJECTS_DIR (optional) mount at
-# /workspace/ws and /workspace/projects so you can work across normal + enterprise projects in one
-# session. Export the validated ABS paths so Compose mounts exactly what we checked (and so a
-# relative/symlinked .env value can't slip past the guard).
+# WORKSPACE_DIR (required; the /workspace root). PERSONAL_DIR + WORK_DIR (optional) mount at
+# /workspace/personal and /workspace/work so you can work across personal + work/enterprise projects
+# in one session. PERSONAL_DIR also backs the skills/notes home (~/ws) in the container — see compose.
+# Export the validated ABS paths so Compose mounts exactly what we checked (and so a relative/
+# symlinked .env value can't slip past the guard).
 wd="$(read_env WORKSPACE_DIR)"; wd="${wd:-./workspace}"
 WORKSPACE_DIR="$(validate_mount "$wd" WORKSPACE_DIR)" || exit 1; export WORKSPACE_DIR
-ws="$(read_env WS_DIR)" || exit 1
-if [ -n "$ws" ]; then WS_DIR="$(validate_mount "$ws" WS_DIR)" || exit 1; export WS_DIR
-    echo "  mounting WS_DIR        -> /workspace/ws        ($WS_DIR)"; fi
-pj="$(read_env PROJECTS_DIR)" || exit 1
-if [ -n "$pj" ]; then PROJECTS_DIR="$(validate_mount "$pj" PROJECTS_DIR)" || exit 1; export PROJECTS_DIR
-    echo "  mounting PROJECTS_DIR  -> /workspace/projects  ($PROJECTS_DIR)"; fi
+
+# read_compat NEW OLD -> value of NEW, else OLD (with a one-time deprecation notice), else empty.
+read_compat() {
+    local v; v="$(read_env "$1")" || exit 1
+    if [ -z "$v" ]; then
+        v="$(read_env "$2")" || exit 1
+        [ -n "$v" ] && echo "  (note: $2 is deprecated — rename it to $1 in .env)" >&2
+    fi
+    printf '%s' "$v"
+}
+ps="$(read_compat PERSONAL_DIR WS_DIR)" || exit 1
+if [ -n "$ps" ]; then PERSONAL_DIR="$(validate_mount "$ps" PERSONAL_DIR)" || exit 1; export PERSONAL_DIR
+    echo "  mounting PERSONAL_DIR  -> /workspace/personal + /home/node/ws  ($PERSONAL_DIR)"; fi
+wk="$(read_compat WORK_DIR PROJECTS_DIR)" || exit 1
+if [ -n "$wk" ]; then WORK_DIR="$(validate_mount "$wk" WORK_DIR)" || exit 1; export WORK_DIR
+    echo "  mounting WORK_DIR      -> /workspace/work  ($WORK_DIR)"; fi
 
 # Behind a TLS-inspecting proxy (Cloudflare WARP / Zscaler)? Any PEM in certs/ is trusted at build
 # + runtime (see certs/README.md). Advisory only — an empty certs/ is a no-op.

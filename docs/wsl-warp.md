@@ -83,9 +83,9 @@ for how the trust is wired into the image (build-time + runtime).
 
 ## Notes
 
-- Keep repos under `~/ws` / `~/projects` mapped to `C:\Users\<you>\{ws,projects}`
-  (e.g. `ln -s /mnt/c/Users/<you>/ws ~/ws`) if you want them visible in Windows;
-  point `WS_DIR` / `PROJECTS_DIR` in `.env` at those paths. Code on `/mnt/c` is
+- Keep your personal/work repos mapped to `C:\Users\<you>\{personal,work}`
+  (e.g. `ln -s /mnt/c/Users/<you>/personal ~/personal`) if you want them visible in Windows;
+  point `PERSONAL_DIR` / `WORK_DIR` in `.env` at those paths. Code on `/mnt/c` is
   slower than the Linux home — the `metadata` mount makes git *work* there, not
   *fast*.
 - WARP interception is transparent to the container's egress, so no firewall

@@ -16,8 +16,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Guard every mounted host dir so a typo in .env can't expose your whole profile/credentials.
-# WORKSPACE_DIR is the /workspace root; WS_DIR + PROJECTS_DIR (optional) mount at /workspace/ws and
-# /workspace/projects (and WS_DIR also replaces the skills volume at /home/node/ws — see compose).
+# WORKSPACE_DIR is the /workspace root; PERSONAL_DIR + WORK_DIR (optional) mount at /workspace/personal
+# and /workspace/work (and PERSONAL_DIR also backs the skills home at /home/node/ws — see compose).
+# (PERSONAL_DIR/WORK_DIR were formerly WS_DIR/PROJECTS_DIR; the old names still work below.)
 $ic = [System.StringComparison]::OrdinalIgnoreCase
 function Norm($p) { return $p.TrimEnd('\','/') }   # canonical compare form
 try { $homeResolved = (Resolve-Path -LiteralPath $HOME -ErrorAction Stop).Path } catch { $homeResolved = $HOME }
@@ -53,15 +54,24 @@ function Resolve-Mount([string]$Raw, [string]$Label) {
 # Mount the exact validated paths (shell env overrides .env in Compose).
 $wd = Read-DotEnv 'WORKSPACE_DIR'; if ([string]::IsNullOrWhiteSpace($wd)) { $wd = './workspace' }
 $env:WORKSPACE_DIR = Resolve-Mount $wd 'WORKSPACE_DIR'
-$wsRaw = Read-DotEnv 'WS_DIR'
-if (-not [string]::IsNullOrWhiteSpace($wsRaw)) {
-    $env:WS_DIR = Resolve-Mount $wsRaw 'WS_DIR'
-    Write-Host "  mounting WS_DIR        -> /workspace/ws + /home/node/ws  ($env:WS_DIR)"
+# Read-Compat NEW OLD -> value of NEW, else OLD (with a deprecation notice), else ''.
+function Read-Compat([string]$New, [string]$Old) {
+    $v = Read-DotEnv $New
+    if ([string]::IsNullOrWhiteSpace($v)) {
+        $v = Read-DotEnv $Old
+        if (-not [string]::IsNullOrWhiteSpace($v)) { Write-Host "  (note: $Old is deprecated — rename it to $New in .env)" }
+    }
+    return $v
 }
-$pjRaw = Read-DotEnv 'PROJECTS_DIR'
-if (-not [string]::IsNullOrWhiteSpace($pjRaw)) {
-    $env:PROJECTS_DIR = Resolve-Mount $pjRaw 'PROJECTS_DIR'
-    Write-Host "  mounting PROJECTS_DIR  -> /workspace/projects  ($env:PROJECTS_DIR)"
+$psRaw = Read-Compat 'PERSONAL_DIR' 'WS_DIR'
+if (-not [string]::IsNullOrWhiteSpace($psRaw)) {
+    $env:PERSONAL_DIR = Resolve-Mount $psRaw 'PERSONAL_DIR'
+    Write-Host "  mounting PERSONAL_DIR  -> /workspace/personal + /home/node/ws  ($env:PERSONAL_DIR)"
+}
+$wkRaw = Read-Compat 'WORK_DIR' 'PROJECTS_DIR'
+if (-not [string]::IsNullOrWhiteSpace($wkRaw)) {
+    $env:WORK_DIR = Resolve-Mount $wkRaw 'WORK_DIR'
+    Write-Host "  mounting WORK_DIR      -> /workspace/work  ($env:WORK_DIR)"
 }
 
 # Build, then gate on a supply-chain scan BEFORE starting, so a known-vulnerable image never

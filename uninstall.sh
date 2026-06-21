@@ -3,8 +3,8 @@
 # created on the host, so you can start from a clean slate (or fully remove it).
 #
 # Removes ONLY sandbox-owned resources (all have fixed, project-name-independent
-# names) plus this repo directory. It NEVER touches your host ~/ws, ~/projects,
-# or your ~/.docker login.
+# names) plus this repo directory. It NEVER touches your host personal/work trees
+# (PERSONAL_DIR / WORK_DIR) or your ~/.docker login.
 #
 #   ./uninstall.sh                    # prompts, then full wipe (incl. Docker engine)
 #   ./uninstall.sh -y                 # no prompt
@@ -55,7 +55,7 @@ usage() {
 uninstall.sh — remove everything this sandbox created on the host.
 
 Removes ONLY sandbox-owned Docker resources (fixed names) + this repo directory.
-NEVER touches your host ~/ws, ~/projects, or your ~/.docker login.
+NEVER touches your host personal/work trees (PERSONAL_DIR / WORK_DIR) or your ~/.docker login.
 
 Usage:
   ./uninstall.sh [flags]
@@ -119,7 +119,7 @@ else
     say "Docker engine: kept — it pre-existed this sandbox (no install marker). Use --remove-docker-engine to force."
 fi
 say ""
-say "NOT touched: your host ~/ws, ~/projects, and your ~/.docker login."
+say "NOT touched: your host personal/work trees (PERSONAL_DIR / WORK_DIR) and your ~/.docker login."
 say ""
 
 if [ "$ASSUME_YES" -eq 0 ]; then
