@@ -59,6 +59,11 @@ pj="$(read_env PROJECTS_DIR)" || exit 1
 if [ -n "$pj" ]; then PROJECTS_DIR="$(validate_mount "$pj" PROJECTS_DIR)" || exit 1; export PROJECTS_DIR
     echo "  mounting PROJECTS_DIR  -> /workspace/projects  ($PROJECTS_DIR)"; fi
 
+# Behind a TLS-inspecting proxy (Cloudflare WARP / Zscaler)? Any PEM in certs/ is trusted at build
+# + runtime (see certs/README.md). Advisory only — an empty certs/ is a no-op.
+ncerts=$(ls certs/*.crt certs/*.pem 2>/dev/null | wc -l | tr -d ' ')
+[ "${ncerts:-0}" -gt 0 ] && echo "  trusting ${ncerts} custom CA cert(s) from certs/ (corporate / TLS-inspecting proxy)"
+
 # Build, then run a supply-chain scan. The scan is ADVISORY by default (prints findings, doesn't
 # block — see scan.sh); set TRIVY_STRICT=1 to make it gate the start, or SKIP_TRIVY=1 to skip it.
 echo "Building image..."

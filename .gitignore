@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .playwright-mcp/
 volume-backups/
+
+# Corporate / TLS-inspecting-proxy root CAs — provided locally, never committed.
+certs/*.crt
+certs/*.pem
+!certs/.gitkeep
