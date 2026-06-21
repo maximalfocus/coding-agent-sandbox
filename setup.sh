@@ -9,6 +9,10 @@ cd "$(dirname "$0")"
 
 say() { printf '%s\n' "$@"; }
 
+# Provenance marker — written iff WE install OrbStack here, so uninstall.sh can tell a
+# sandbox-installed engine from a pre-existing one and only remove the former by default.
+ENGINE_MARKER="$HOME/.coding-agent-sandbox/installed-orbstack"
+
 # --- Docker (guide, don't force-install — Unix Docker runtimes vary too much to do safely) ------
 if ! command -v docker >/dev/null 2>&1; then
     say "Docker isn't installed."
@@ -16,20 +20,35 @@ if ! command -v docker >/dev/null 2>&1; then
         if command -v brew >/dev/null 2>&1; then
             read -r -p "Install OrbStack via Homebrew now? [y/N]: " a
             case "$a" in
-                y|Y) brew install --cask orbstack ;;
+                y|Y) brew install --cask orbstack \
+                        && { mkdir -p "$(dirname "$ENGINE_MARKER")"; : > "$ENGINE_MARKER"; } ;;
                 *)   say "Install OrbStack (https://orbstack.dev) or Docker Desktop, then re-run ./setup.sh"; exit 1 ;;
             esac
         else
-            say "Install OrbStack (https://orbstack.dev) or Docker Desktop, then re-run ./setup.sh"; exit 1
+            say "Homebrew isn't installed, so I can't auto-install a Docker engine. Either:"
+            say "  • install Homebrew (https://brew.sh), then re-run ./setup.sh — it'll offer OrbStack; or"
+            say "  • download OrbStack (https://orbstack.dev) or Docker Desktop directly, start it, then re-run."
+            exit 1
         fi
     else
         say "Install Docker Engine (https://docs.docker.com/engine/install/), then re-run ./setup.sh"; exit 1
     fi
 fi
-if ! docker info >/dev/null 2>&1; then
-    say "Docker is installed but not running. Start Docker Desktop / OrbStack (or your engine),"
-    say "then re-run ./setup.sh"
-    exit 1
+# Make sure the engine is actually up. On a fresh OrbStack install the daemon (and its `docker`
+# CLI shim) aren't running yet, so launch it and wait rather than bailing on the first try.
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+    say "Starting the Docker engine (waiting up to ~2 min)..."
+    open -a OrbStack 2>/dev/null || open -a Docker 2>/dev/null || true
+    for _ in $(seq 1 60); do
+        hash -r 2>/dev/null || true
+        if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then break; fi
+        sleep 2
+    done
+    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+        say "Docker still isn't running. Launch OrbStack / Docker Desktop, then re-run ./setup.sh"
+        exit 1
+    fi
+    say "Docker engine is up."
 fi
 
 # --- .env -----------------------------------------------------------------------------------------

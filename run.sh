@@ -70,13 +70,19 @@ echo "Building image..."
 docker compose build
 if [ -n "${SKIP_TRIVY:-}" ]; then
     echo "  (SKIP_TRIVY set — skipping image vulnerability scan)"
-else
-    TRIVY_SUMMARY=1 ./scan.sh || {
-        echo
+elif ! TRIVY_SUMMARY=1 ./scan.sh; then
+    echo
+    if [ -n "${TRIVY_STRICT:-}" ]; then
+        # STRICT mode: scan.sh exits non-zero on findings AND on operational errors — gate the start.
         echo "STRICT scan failed (see above). Set SKIP_TRIVY=1 to start anyway, or reduce the"
         echo "surface by bumping the base-image digest in the Dockerfile and rebuilding."
         exit 1
-    }
+    else
+        # Advisory mode: findings never set a non-zero code (scan.sh runs with --exit-code 0), so a
+        # failure here is OPERATIONAL (no Trivy, Docker Hub pull/rate-limit/TLS/offline). Don't let
+        # that block a first-run setup — warn and continue.
+        echo "  (advisory scan could not complete — continuing anyway; set SKIP_TRIVY=1 to skip it)"
+    fi
 fi
 docker compose up -d
 
