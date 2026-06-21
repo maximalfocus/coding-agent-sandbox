@@ -203,12 +203,21 @@ _set_git_identity() {
     [ -n "${GIT_USER_NAME:-}" ]  && git config --global user.name  "$GIT_USER_NAME"
     [ -n "${GIT_USER_EMAIL:-}" ] && git config --global user.email "$GIT_USER_EMAIL"
 }
-if command -v gh >/dev/null 2>&1 && gh auth status --hostname github.com >/dev/null 2>&1; then
-    # Persisted gh login present -> use it for github.com (workflow-scope pushes work).
+# Detect a STORED gh login INDEPENDENT of the env token: `gh auth status` would otherwise report
+# "logged in" merely because GITHUB_TOKEN is set, so clear the env tokens for the probe.
+if command -v gh >/dev/null 2>&1 && env -u GITHUB_TOKEN -u GH_TOKEN gh auth status --hostname github.com >/dev/null 2>&1; then
+    # A persisted gh login exists; its token carries `workflow`. But gh AND git prefer the env
+    # GITHUB_TOKEN when it is set, so a bare `setup-git` would still hand git the non-workflow env
+    # PAT. Fix: UPGRADE the env token to gh's (workflow-scoped) one and use it everywhere — git
+    # store creds, gh's credential helper, and any script that reads $GITHUB_TOKEN. Exported before
+    # the final `exec ttyd`, so every web-terminal shell inherits the workflow-capable token.
+    _ghtok="$(env -u GITHUB_TOKEN -u GH_TOKEN gh auth token --hostname github.com 2>/dev/null)"
+    [ -n "${_ghtok}" ] && export GITHUB_TOKEN="${_ghtok}"
+    git config --global credential.helper store
     _set_git_identity
-    rm -f "$HOME/.git-credentials" 2>/dev/null || true   # drop any stale non-workflow PAT creds
-    gh auth setup-git --hostname github.com 2>/dev/null \
-        && echo "✅ git authenticated via gh for github.com (workflow-scope pushes OK)."
+    ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
+    gh auth setup-git --hostname github.com 2>/dev/null || true
+    echo "✅ git uses the gh login's workflow-scoped token for github.com (workflow-file pushes OK)."
 elif [ -n "${GITHUB_TOKEN:-}" ]; then
     git config --global credential.helper store
     _set_git_identity
