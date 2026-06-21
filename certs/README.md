@@ -11,7 +11,16 @@ certs/
   Cloudflare_CA.crt     # example: your WARP root CA
 ```
 
-Then rebuild: `./run.sh` (or `docker compose build`).
+**SEED laptops — zero-touch:** instead of locating the cert by hand, run the
+fetcher (it downloads the WARP CA, verifies it against a pinned SHA-256, and
+writes `certs/Cloudflare_CA.crt`):
+
+```bash
+./certs/fetch-warp-ca.sh
+./run.sh
+```
+
+Otherwise, drop the cert in manually and rebuild: `./run.sh` (or `docker compose build`).
 
 - Files must be **PEM-encoded** and end in **`.crt`** (`update-ca-certificates`
   ignores other extensions). Convert a `.pem` with: `cp my-ca.pem my-ca.crt`.

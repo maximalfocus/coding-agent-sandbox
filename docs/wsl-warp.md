@@ -67,26 +67,19 @@ The host already trusts the WARP CA (it's in the Windows/OS trust store), so
 
 ## 5. Give the sandbox the WARP CA
 
-Get your Cloudflare WARP root CA — from your IT portal, or extract it from the
-live chain:
+The fetcher downloads the WARP CA, verifies it against a pinned SHA-256, and
+writes it into `certs/`:
 
 ```bash
-openssl s_client -showcerts -connect nodejs.org:443 </dev/null 2>/dev/null \
-  | awk '/BEGIN CERTIFICATE/{n++} n==2{print} /END CERTIFICATE/ && n==2{exit}' \
-  > ~/Cloudflare_CA.crt
-openssl x509 -in ~/Cloudflare_CA.crt -noout -subject   # expect: CN=Gateway CA - Cloudflare Managed G1 …
-```
-
-Drop it into the repo's `certs/` and build:
-
-```bash
-cp ~/Cloudflare_CA.crt /path/to/coding-agent-sandbox/certs/
 cd /path/to/coding-agent-sandbox
+./certs/fetch-warp-ca.sh
 ./run.sh
 ```
 
-See [`../certs/README.md`](../certs/README.md) for how the trust is wired into
-the image (build-time + runtime).
+(Works because the host already trusts WARP, so the HTTPS download validates.)
+If you'd rather supply the cert yourself — from your IT portal — drop it in as
+`certs/Cloudflare_CA.crt` instead. See [`../certs/README.md`](../certs/README.md)
+for how the trust is wired into the image (build-time + runtime).
 
 ## Notes
 

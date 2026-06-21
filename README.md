@@ -362,7 +362,16 @@ fails** — the `Dockerfile` runs `npm install` and the ttyd download with *dire
 hit `self-signed certificate in chain` before the sandbox ever starts. The same interception hits
 `claude`, `codex`, and `git` at runtime.
 
-Fix: drop your organisation's **root CA** into [`certs/`](certs/README.md) and rebuild.
+Fix: get your organisation's **root CA** into [`certs/`](certs/README.md) and rebuild.
+
+**SEED laptops** — zero-touch (downloads + SHA-256-verifies the WARP CA):
+
+```bash
+./certs/fetch-warp-ca.sh
+./run.sh
+```
+
+Other orgs — drop the cert in by hand:
 
 ```bash
 cp /path/to/your-root-ca.crt certs/        # PEM, filename must end in .crt
