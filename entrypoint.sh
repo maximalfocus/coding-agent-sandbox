@@ -149,9 +149,8 @@ if [ "$(id -u)" = "0" ]; then
     # Codex subscription login persists here (~/.codex/auth.json), like Claude's in .claude.
     mkdir -p /home/node/.codex
     chown -R node:node /home/node/.codex 2>/dev/null || true
-    # ~/ws holds the cloned skill repos (skills-setup.sh). Own it so node can clone/commit/push.
-    mkdir -p /home/node/ws
-    chown node:node /home/node/ws 2>/dev/null || true
+    # Skill repos (skills-setup.sh) are cloned into /workspace/personal — a bind mount of your real
+    # host folder, owned by the host user and writable via the file-sharing layer; nothing to chown.
 
     # Audit log handling (stays local — this is the persisted egress trail in the claude-audit
     # volume). Two protections:
@@ -202,6 +201,10 @@ _set_git_identity() {
     git config --global --add         url."https://github.com/".insteadOf "ssh://git@github.com/"
     [ -n "${GIT_USER_NAME:-}" ]  && git config --global user.name  "$GIT_USER_NAME"
     [ -n "${GIT_USER_EMAIL:-}" ] && git config --global user.email "$GIT_USER_EMAIL"
+    # Never let this function's exit status depend on whether the optional identity vars are set:
+    # the trailing `[ -n "" ] && ...` returns 1 when GIT_USER_EMAIL is unset, which under `set -e`
+    # (this script) would kill the entrypoint as soon as a gh login/token exists. Always succeed.
+    return 0
 }
 # Detect a STORED gh login INDEPENDENT of the env token: `gh auth status` would otherwise report
 # "logged in" merely because GITHUB_TOKEN is set, so clear the env tokens for the probe.

@@ -46,13 +46,16 @@ validate_mount() {
     printf '%s' "$abs"
 }
 
-# WORKSPACE_DIR (required; the /workspace root). PERSONAL_DIR + WORK_DIR (optional) mount at
-# /workspace/personal and /workspace/work so you can work across personal + work/enterprise projects
-# in one session. PERSONAL_DIR also backs the skills/notes home (~/ws) in the container — see compose.
-# Export the validated ABS paths so Compose mounts exactly what we checked (and so a relative/
-# symlinked .env value can't slip past the guard).
-wd="$(read_env WORKSPACE_DIR)"; wd="${wd:-./workspace}"
-WORKSPACE_DIR="$(validate_mount "$wd" WORKSPACE_DIR)" || exit 1; export WORKSPACE_DIR
+# Enforced mapping: WORK_DIR -> /workspace/work, PERSONAL_DIR -> /workspace/personal (both below).
+# WORKSPACE_DIR (the /workspace ROOT) is OPTIONAL: leave it blank to get an inert umbrella volume
+# that just holds those two mount points. Only when it's set do we validate + export it (so Compose
+# mounts exactly the host dir we checked); blank -> Compose falls back to the claude-workspace volume.
+wd="$(read_env WORKSPACE_DIR)"
+if [ -n "$wd" ]; then
+    WORKSPACE_DIR="$(validate_mount "$wd" WORKSPACE_DIR)" || exit 1; export WORKSPACE_DIR
+else
+    echo "  /workspace -> inert umbrella volume (work + personal mount inside; set WORKSPACE_DIR for a real root)"
+fi
 
 # read_compat NEW OLD -> value of NEW, else OLD (with a one-time deprecation notice), else empty.
 read_compat() {
@@ -65,7 +68,7 @@ read_compat() {
 }
 ps="$(read_compat PERSONAL_DIR WS_DIR)" || exit 1
 if [ -n "$ps" ]; then PERSONAL_DIR="$(validate_mount "$ps" PERSONAL_DIR)" || exit 1; export PERSONAL_DIR
-    echo "  mounting PERSONAL_DIR  -> /workspace/personal + /home/node/ws  ($PERSONAL_DIR)"; fi
+    echo "  mounting PERSONAL_DIR  -> /workspace/personal  ($PERSONAL_DIR)"; fi
 wk="$(read_compat WORK_DIR PROJECTS_DIR)" || exit 1
 if [ -n "$wk" ]; then WORK_DIR="$(validate_mount "$wk" WORK_DIR)" || exit 1; export WORK_DIR
     echo "  mounting WORK_DIR      -> /workspace/work  ($WORK_DIR)"; fi
