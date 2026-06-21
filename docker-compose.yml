@@ -78,6 +78,8 @@ services:
       # source of truth (host == sandbox clones, no duplication, one evolver). Unset -> isolated
       # named volume (the original behavior; skills-setup clones into it).
       - "${WS_DIR:-claude-ws}:/home/node/ws"
+      # ~/projects mirrored to home (same host dir as /workspace/projects) - live two-way.
+      - "${PROJECTS_DIR:-./workspace/projects}:/home/node/projects"
       # Audit trail: every host the proxy was asked to reach (allowed + refused).
       - "claude-audit:/var/log/tinyproxy"
     restart: unless-stopped
