@@ -58,6 +58,22 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 ARG CODEX_VERSION=0.140.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 
+# GitHub CLI (gh) — the PERMANENT fix for pushing GitHub Actions workflow files. A plain
+# `repo`/Contents PAT (GITHUB_TOKEN) cannot create/update `.github/workflows/*`: GitHub rejects it
+# without the `workflow` scope, and a classic PAT's scopes are immutable after creation, so it
+# can't be fixed from inside the sandbox. `gh auth login`'s token DOES carry `workflow`, so authing
+# once via ./gh-login.sh (device flow, persisted in the gh-config volume) makes such pushes just
+# work, every session — the entrypoint runs `gh auth setup-git` when that login is present so git
+# uses gh's token for github.com. Installed from the official gh apt repo (arch-correct).
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
 # bun — runtime for the cdd-skills TypeScript tools (metrics-baseline, golden-lint, coverage-review,
 # scaffold-runner, conformance-validate) that /cdd and /cdd-evolve invoke via `bun run`. Those tools
 # use only Node/Bun stdlib (no package.json), so the runtime alone is enough — no dependency install.

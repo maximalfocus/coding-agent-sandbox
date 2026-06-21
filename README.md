@@ -268,6 +268,27 @@ firewall) as Claude. Two steps to enable it:
 Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
 allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.
 
+### Pushing repos with GitHub Actions workflows (the `workflow` scope)
+
+A plain `GITHUB_TOKEN` (classic `repo` or fine-grained Contents) pushes everything **except**
+`.github/workflows/*` — GitHub rejects workflow-file pushes without the `workflow` scope
+(*"refusing to allow … without `workflow` scope"*), and a classic PAT's scopes are **fixed at
+creation**, so you can't fix it from inside the sandbox. CDD implementation repos ship a CI
+workflow, so this bites the first time you `git push` a new impl repo.
+
+**Permanent fix — log in the bundled GitHub CLI once** (its token carries `workflow`; the login
+persists in the `coding-agent-sandbox-gh` volume, and the entrypoint wires git to use it on every
+start, preferred over `GITHUB_TOKEN`):
+
+```bash
+./gh-login.sh
+```
+
+Device flow, same as `codex-login.sh`: it prints a URL + one-time code, you approve in any browser
+(the consent screen includes **workflow**), and you never hit the workflow-scope wall again. The
+entrypoint prints `✅ git authenticated via gh …` on start when the login is present, and warns at
+start if a `GITHUB_TOKEN` fallback lacks `workflow`.
+
 ### Bringing your own skills / slash-commands into the sandbox
 
 Claude in the sandbox reads skills from `/home/node/.claude/skills` (a persisted volume), which
@@ -324,7 +345,7 @@ Putting the pieces together for the agentic dev workflow, in order:
    `SKILL_REPOS=<your cdd-skills + peerreview-skills HTTPS URLs>`, and `PEERREVIEW_EVOLVE=off` on every
    machine that should **not** be the evolver (leave it unset on your one primary evolver).
 2. **Start** — `./run.sh` (macOS/Linux) or `start-sandbox.cmd` (Windows).
-3. **Log in** — in the web terminal `claude` → `/login`; then `./codex-login.sh` (Codex device-auth, one-time).
+3. **Log in** — in the web terminal `claude` → `/login`; then `./codex-login.sh` (Codex device-auth, one-time); and `./gh-login.sh` if you'll push repos with GitHub Actions workflows (one-time, for the `workflow` scope).
 4. **Load skills** — `./skills-setup.sh` (clones your skill repos into `~/ws`, symlinks them; re-run to update).
 5. **Use** — restart `claude`, then `/cdd`, `/cdd-plan`, `/peerreview`, …; `*-evolve` commands commit + push to GitHub.
 
@@ -490,6 +511,7 @@ macOS / Linux launchers (thin wrappers around `docker compose`)
   allow-domain.sh  hot-add host(s) to the running allowlist
   watch-egress.sh  alert on / auto-assess refused hosts (--auto, --llm)
   codex-login.sh   Codex device-auth sign-in
+  gh-login.sh      GitHub CLI device sign-in (workflow-scope token for pushing .github/workflows)
   skills-setup.sh  clone your skill repos into the sandbox (~/ws)
   sync-skills.sh   copy host skills into the sandbox (read-only use)
 
