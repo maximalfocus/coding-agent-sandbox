@@ -113,6 +113,7 @@ WORKDIR /workspace
 # Placed after all network-using build steps so the build itself doesn't try to use the proxy.
 ENV CLAUDE_CONFIG_DIR=/home/node/.claude \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1 \
     DISABLE_AUTOUPDATER=1 \
     HTTP_PROXY=http://127.0.0.1:8888  HTTPS_PROXY=http://127.0.0.1:8888 \
     http_proxy=http://127.0.0.1:8888  https_proxy=http://127.0.0.1:8888 \

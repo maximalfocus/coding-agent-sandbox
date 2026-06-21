@@ -249,15 +249,15 @@ if ([string]::IsNullOrWhiteSpace($WorkspaceDir)) {
         Write-Step "Using existing WORKSPACE_DIR: $WorkspaceDir"
     }
     else {
-        $projectsDir = Join-Path $env:USERPROFILE "projects"
-        if (Test-Path -LiteralPath $projectsDir -PathType Leaf) {
-            throw "'$projectsDir' exists but is a file. Move it or choose a different workspace with -WorkspaceDir."
+        $workDir = Join-Path $env:USERPROFILE "work"
+        if (Test-Path -LiteralPath $workDir -PathType Leaf) {
+            throw "'$workDir' exists but is a file. Move it or choose a different workspace with -WorkspaceDir."
         }
-        if (-not (Test-Path -LiteralPath $projectsDir -PathType Container)) {
-            New-Item -ItemType Directory -Path $projectsDir -Force | Out-Null
+        if (-not (Test-Path -LiteralPath $workDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $workDir -Force | Out-Null
         }
 
-        $defaultWorkspace = $projectsDir
+        $defaultWorkspace = $workDir
         $answer = Read-Host "Folder Claude may edit [$defaultWorkspace]"
         if ([string]::IsNullOrWhiteSpace($answer)) {
             $WorkspaceDir = $defaultWorkspace

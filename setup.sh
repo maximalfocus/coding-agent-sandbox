@@ -77,14 +77,14 @@ gen_pass() {  # 20 chars; subshell disables pipefail so head closing the pipe is
     ( set +o pipefail; LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20 )
 }
 
-# Workspace: keep an existing real value, else prompt (default ~/projects).
+# Workspace: keep an existing real value, else prompt (default ~/work).
 existing_ws="$(get_env WORKSPACE_DIR)"
 if [ -n "${1:-}" ]; then
     ws="$1"
 elif [ -n "$existing_ws" ] && [ "$existing_ws" != "./workspace" ]; then
     ws="$existing_ws"; say "Using existing WORKSPACE_DIR: $ws"
 else
-    default="$HOME/projects"; mkdir -p "$default"
+    default="$HOME/work"; mkdir -p "$default"
     read -r -p "Folder the sandbox may edit [$default]: " ans
     ws="${ans:-$default}"
 fi

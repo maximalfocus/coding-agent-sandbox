@@ -72,7 +72,10 @@ if [ -n "$wk" ]; then WORK_DIR="$(validate_mount "$wk" WORK_DIR)" || exit 1; exp
 
 # Behind a TLS-inspecting proxy (Cloudflare WARP / Zscaler)? Any PEM in certs/ is trusted at build
 # + runtime (see certs/README.md). Advisory only — an empty certs/ is a no-op.
-ncerts=$(ls certs/*.crt certs/*.pem 2>/dev/null | wc -l | tr -d ' ')
+# NB: `ls certs/*.crt` would exit non-zero on no match, and under `set -o pipefail` that
+# non-zero status propagates to this assignment and `set -e` kills the script. `find` returns 0
+# even with zero matches, so an empty certs/ is genuinely a no-op (as intended).
+ncerts=$(find certs -maxdepth 1 -type f \( -name '*.crt' -o -name '*.pem' \) 2>/dev/null | wc -l | tr -d ' ')
 [ "${ncerts:-0}" -gt 0 ] && echo "  trusting ${ncerts} custom CA cert(s) from certs/ (corporate / TLS-inspecting proxy)"
 
 # Build, then run a supply-chain scan. The scan is ADVISORY by default (prints findings, doesn't
@@ -97,7 +100,8 @@ elif ! TRIVY_SUMMARY=1 ./scan.sh; then
 fi
 docker compose up -d
 
-port="$(grep -E '^TTYD_PORT=' .env | cut -d= -f2)"; port="${port:-7681}"
+# `|| true`: a missing TTYD_PORT must not trip `set -o pipefail`/`set -e` after a successful `up -d`.
+port="$(grep -E '^TTYD_PORT=' .env | cut -d= -f2 || true)"; port="${port:-7681}"
 cat <<EOF
 
   Claude Code sandbox is running.

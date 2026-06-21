@@ -45,7 +45,7 @@ It does the first-run work for you:
 
 - checks Docker is installed and running (offers to `brew install --cask orbstack` on macOS if it's missing)
 - creates `.env` from `.env.example`
-- asks which folder the sandbox may edit (defaults to `~/projects`)
+- asks which folder the sandbox may edit (defaults to `~/work`)
 - generates a web-terminal password
 - builds, scans the image (Trivy), and starts the sandbox
 - opens `http://127.0.0.1:7681` (macOS)
