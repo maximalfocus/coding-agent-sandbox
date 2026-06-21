@@ -14,7 +14,7 @@ PIN="2040f4281bae938a1d57c38d9ba257b25e2fd6a331767be3eb1aabc8791b362f"
 OUT="Cloudflare_CA.crt"
 
 echo "Downloading WARP CA: $URL"
-tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+tmp="$(mktemp "${TMPDIR:-/tmp}/warp-ca.XXXXXX")"; trap 'rm -f "$tmp"' EXIT  # template required on macOS/BSD
 curl -fsSL -o "$tmp" "$URL"
 
 openssl x509 -in "$tmp" -noout >/dev/null 2>&1 \
