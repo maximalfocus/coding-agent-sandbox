@@ -133,6 +133,10 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
 - The terminal runs inside `tmux` (session `claude`), so closing the tab doesn't kill your
   session — reopen the URL to reattach.
 - Stop: `docker compose down`. Logs: `docker compose logs -f`. Rebuild after edits: `./run.sh`.
+- Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network, this repo
+  directory, and (by default) the Docker engine — leaving your host `~/ws`, `~/projects`, and
+  `~/.docker` login untouched. Pass `--keep-docker-engine` to keep OrbStack/Docker Desktop, or
+  `--keep-dir` to keep the repo. Reinstall with `git clone … && ./setup.sh`.
 
 ## Use a local terminal instead of the browser
 
