@@ -73,6 +73,9 @@ services:
       - "claude-config:/home/node/.claude"
       # Persists the Codex subscription login (~/.codex/auth.json) across restarts.
       - "claude-codex:/home/node/.codex"
+      # Persists the GitHub CLI login (~/.config/gh) across restarts — gh's token carries the
+      # `workflow` scope, so pushes incl. .github/workflows/* work. One-time ./gh-login.sh.
+      - "claude-gh:/home/node/.config/gh"
       # ~/ws — where skills-setup clones your skill repos and the *-evolve skills hardcode their paths.
       # If WS_DIR is set (in .env), the SAME host ~/ws is mounted here AND at /workspace/ws — one
       # source of truth (host == sandbox clones, no duplication, one evolver). Unset -> isolated
@@ -90,6 +93,8 @@ volumes:
     name: coding-agent-sandbox-config
   claude-codex:
     name: coding-agent-sandbox-codex
+  claude-gh:
+    name: coding-agent-sandbox-gh
   claude-ws:
     name: coding-agent-sandbox-ws
   claude-audit:

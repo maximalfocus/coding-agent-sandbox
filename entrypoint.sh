@@ -189,17 +189,52 @@ fi
 # --- now running as `node` (proxy + CLAUDE_CONFIG_DIR come from the image ENV) ---
 cd /workspace 2>/dev/null || cd "$HOME"
 
-# GitHub auth over HTTPS. SSH (port 22) is blocked by the firewall, so GitHub works via HTTPS +
-# a token. If GITHUB_TOKEN is set, wire git to use it and rewrite SSH GitHub remotes to HTTPS so
-# existing repos (git@github.com:...) just work for clone/pull/PUSH. Regenerated each start from
-# the env (so it persists via .env). Requires ALLOW_GITHUB=true (the default).
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-    git config --global credential.helper store
+# GitHub auth over HTTPS. SSH (port 22) is blocked by the firewall, so GitHub works via HTTPS.
+# Two credential sources, with gh PREFERRED because only gh can push workflow files:
+#   - gh login (./gh-login.sh, persisted in ~/.config/gh): its token carries the `workflow` scope,
+#     so `git push` of .github/workflows/* works. `gh auth setup-git` points git at it.
+#   - GITHUB_TOKEN (.env PAT): fallback. Pushes everything EXCEPT workflow files unless the PAT
+#     itself has `workflow` — and a classic PAT's scopes are fixed at creation, so that can't be
+#     fixed from inside the sandbox (run ./gh-login.sh instead). We warn at startup if it lacks it.
+# Either way, rewrite SSH github remotes to HTTPS so existing repos just work. Needs ALLOW_GITHUB.
+_set_git_identity() {
     git config --global --replace-all url."https://github.com/".insteadOf "git@github.com:"
     git config --global --add         url."https://github.com/".insteadOf "ssh://git@github.com/"
     [ -n "${GIT_USER_NAME:-}" ]  && git config --global user.name  "$GIT_USER_NAME"
     [ -n "${GIT_USER_EMAIL:-}" ] && git config --global user.email "$GIT_USER_EMAIL"
+}
+# Detect a STORED gh login INDEPENDENT of the env token: `gh auth status` would otherwise report
+# "logged in" merely because GITHUB_TOKEN is set, so clear the env tokens for the probe.
+if command -v gh >/dev/null 2>&1 && env -u GITHUB_TOKEN -u GH_TOKEN gh auth status --hostname github.com >/dev/null 2>&1; then
+    # A persisted gh login exists; its token carries `workflow`. But gh AND git prefer the env
+    # GITHUB_TOKEN when it is set, so a bare `setup-git` would still hand git the non-workflow env
+    # PAT. Fix: UPGRADE the env token to gh's (workflow-scoped) one and use it everywhere — git
+    # store creds, gh's credential helper, and any script that reads $GITHUB_TOKEN. Exported before
+    # the final `exec ttyd`, so every web-terminal shell inherits the workflow-capable token.
+    _ghtok="$(env -u GITHUB_TOKEN -u GH_TOKEN gh auth token --hostname github.com 2>/dev/null)"
+    [ -n "${_ghtok}" ] && export GITHUB_TOKEN="${_ghtok}"
+    git config --global credential.helper store
+    _set_git_identity
     ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
+    gh auth setup-git --hostname github.com 2>/dev/null || true
+    echo "✅ git uses the gh login's workflow-scoped token for github.com (workflow-file pushes OK)."
+elif [ -n "${GITHUB_TOKEN:-}" ]; then
+    git config --global credential.helper store
+    _set_git_identity
+    ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
+    # Heads-up if this PAT can't push workflow files. Classic PATs expose scopes via the
+    # x-oauth-scopes header; fine-grained PATs don't (empty) -> we stay quiet for those.
+    if [ "${ALLOW_GITHUB:-true}" != "false" ]; then
+        _scopes="$(curl -fsS -m 8 -o /dev/null -D - -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                   https://api.github.com/user 2>/dev/null | tr -d '\r' \
+                   | awk -F': ' 'tolower($1)=="x-oauth-scopes"{print $2}')"
+        if [ -n "${_scopes}" ] && ! printf '%s' "${_scopes}" | grep -qw workflow; then
+            echo "⚠️  GITHUB_TOKEN lacks the 'workflow' scope (have: ${_scopes})." >&2
+            echo "    Pushes to .github/workflows/* WILL be rejected by GitHub. CDD impl repos ship" >&2
+            echo "    CI workflows — run ./gh-login.sh once for a permanent workflow-scoped login," >&2
+            echo "    or regenerate the PAT with the 'workflow' scope added." >&2
+        fi
+    fi
 fi
 
 # tmux config for the web terminal (regenerated each start; ~ isn't a persisted volume):
