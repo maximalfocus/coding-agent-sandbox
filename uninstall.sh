@@ -26,6 +26,7 @@ IMAGES=(coding-agent-sandbox:latest coding-agent-sandbox-mitm:latest)
 VOLUMES=(
   coding-agent-sandbox-config
   coding-agent-sandbox-codex
+  coding-agent-sandbox-gh
   coding-agent-sandbox-ws
   coding-agent-sandbox-audit
   coding-agent-sandbox-audit-mitm
@@ -88,7 +89,7 @@ if [ "$SKIP_DOCKER" -eq 0 ]; then
     say "Docker resources to remove:"
     say "  containers: ${CONTAINERS[*]}"
     [ "$KEEP_IMAGES" -eq 1 ] && say "  images:     (kept — --keep-images)" || say "  images:     ${IMAGES[*]}"
-    say "  volumes:    ${VOLUMES[*]}   <-- includes your sandbox Claude/Codex LOGIN; you'll log in again"
+    say "  volumes:    ${VOLUMES[*]}   <-- includes your sandbox Claude/Codex/gh LOGIN; you'll log in again"
     say "  network:    ${NETWORKS[*]}"
 else
     say "Docker: skipped (--skip-docker)."
