@@ -29,6 +29,10 @@ same on **macOS, Linux, and Windows**.
 - **Windows:** Docker Desktop with the **WSL2** backend enabled.
 - A Claude **Pro or Max** subscription (or Console access).
 
+> **On a managed laptop behind Cloudflare WARP / Zscaler** (TLS inspection)? Read
+> [Behind a corporate TLS-inspecting proxy](#behind-a-corporate-tls-inspecting-proxy-cloudflare-warp--zscaler)
+> first — the build will fail until you add your root CA to `certs/`.
+
 ## Easiest macOS / Linux setup
 
 Make sure Docker is installed and running (Docker Desktop or OrbStack), then run once:
@@ -353,6 +357,43 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 Most are runtime env, so a change takes effect on `docker compose up -d` (recreate, seconds) — no
 rebuild needed unless you changed a `Dockerfile`. The **mitm** variant adds `GITHUB_READONLY`,
 `ANTHROPIC_BLOCK_PATHS`, `ANTHROPIC_SINGLE_CRED`, `ANTHROPIC_PIN_TOKEN` (see below).
+
+## Behind a corporate TLS-inspecting proxy (Cloudflare WARP / Zscaler)
+
+On a managed laptop where **Cloudflare WARP / Zero Trust** (or Zscaler, etc.) inspects TLS, every
+HTTPS connection presents the proxy's own root CA. Without trusting it the **image build itself
+fails** — the `Dockerfile` runs `npm install` and the ttyd download with *direct* egress, so they
+hit `self-signed certificate in chain` before the sandbox ever starts. The same interception hits
+`claude`, `codex`, and `git` at runtime.
+
+Fix: get your organisation's **root CA** into [`certs/`](certs/README.md) and rebuild.
+
+**SEED laptops** — zero-touch (downloads + SHA-256-verifies the WARP CA):
+
+```bash
+./certs/fetch-warp-ca.sh
+./run.sh
+```
+
+Other orgs — drop the cert in by hand:
+
+```bash
+cp /path/to/your-root-ca.crt certs/        # PEM, filename must end in .crt
+./run.sh                                    # or: docker compose build
+```
+
+The CA is trusted **before** the build's network steps (system trust store + Node's OpenSSL store
+via `--use-openssl-ca`) and persists to runtime. An empty `certs/` is a no-op, so this is safe to
+leave in place on non-corporate machines; `*.crt`/`*.pem` there are git-ignored.
+
+- **Where's the cert?** It's the root CA your IT pushed to the OS trust store (Cloudflare's is
+  titled *"Gateway CA - Cloudflare Managed G1 …"*). Export it from the OS trust store, or grab it
+  from your IT portal.
+- **WSL SEED laptop?** The Windows/WSL host also needs prep (WSL2 `metadata` mount so git works on
+  `C:`, `systemd` for Docker, IPv4 preference for WARP's dead IPv6) — see
+  [`docs/wsl-warp.md`](docs/wsl-warp.md).
+- Egress is still hostname-filtered, so the proxy must allow the sandbox's destinations (npm,
+  github, anthropic, openai); add anything it blocks via `EXTRA_ALLOWED_DOMAINS`.
 
 ## Content-mediation mode (opt-in, mitmproxy)
 
