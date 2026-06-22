@@ -11,6 +11,10 @@ defense-in-depth model, and was independently peer-reviewed (cross-vendor) to co
 > High-resolution vector: [`security-architecture.svg`](./security-architecture.svg).
 > To edit: paste the `.mmd` into <https://mermaid.live> and re-export the PNG/SVG.
 
+> **Companion diagram:** [`system-design.md`](./system-design.md) shows the host → WSL → container
+> layers and how your `personal` / `work` trees map into `/workspace` (and why the sandbox repo
+> stays outside them). Source: [`system-design.mmd`](./system-design.mmd).
+
 ## The three controls that matter (read the diagram top → bottom)
 
 1. **Containment** — the agent runs inside a Docker sandbox, as an unprivileged user, with Linux
