@@ -10,15 +10,21 @@
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
-$svc = "claude-sandbox-mitm"
-
-$running = docker compose -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>$null
-if (-not ($running -match $svc)) {
-    Write-Host "The mitm sandbox isn't running. Start it first:"
+# Auto-detect which isolation stack is up: the two-container sidecar variant or the single-container
+# mitm variant. Claim runs in whichever holds the vault.
+$sidecar = docker compose -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>$null
+$mitm    = docker compose -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>$null
+if ($sidecar -match "claude-sandbox-egress") {
+    $compose = @("-f", "docker-compose.sidecar.yml"); $svc = "claude-sandbox-egress"
+} elseif ($mitm -match "claude-sandbox-mitm") {
+    $compose = @("-f", "docker-compose.mitm.yml"); $svc = "claude-sandbox-mitm"
+} else {
+    Write-Host "No isolation sandbox is running. Start one first:"
     Write-Host '  $env:ANTHROPIC_TOKEN_ISOLATION="true"; docker compose -f docker-compose.mitm.yml up -d --build'
+    Write-Host '  # or the experimental sidecar: docker compose -f docker-compose.sidecar.yml up -d --build'
     exit 1
 }
 
 # Runs as root inside the container: it must write both the tinyproxy-owned vault and the node-owned
 # placeholder. The real token never leaves the container.
-docker compose -f docker-compose.mitm.yml exec -u root $svc /usr/local/bin/claim-token
+docker compose @compose exec -u root $svc /usr/local/bin/claim-token

@@ -1,0 +1,99 @@
+# EXPERIMENTAL two-container token-isolation variant — see docs/architecture/token-isolation-sidecar.md.
+# The real OAuth login lives ONLY in the egress sidecar's vault (claude-secret), in a container the
+# agent never shares a namespace or mount with. The agent has no internet route except via the
+# sidecar's proxy. NOT YET VERIFIED end-to-end — confirm the checks in the design doc before trusting.
+#
+#   docker compose build                                   # base + mitm images first
+#   docker compose -f docker-compose.sidecar.yml up -d --build
+#
+# Reuses the existing images and the unchanged filter_addon.py / claim-token.
+services:
+  # ── Egress sidecar: the ONLY container with internet, and the ONLY holder of the credential. ──
+  claude-sandbox-egress:
+    build:
+      context: .
+      dockerfile: Dockerfile.mitm
+    image: coding-agent-sandbox-mitm:latest
+    container_name: claude-sandbox-egress
+    entrypoint: ["/usr/local/bin/sidecar-entrypoint.sh"]
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETUID, SETGID, CHOWN, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: "${MEM_LIMIT:-2g}"
+    pids_limit: ${PIDS_LIMIT:-2048}
+    networks: [internal, egress]
+    environment:
+      # Isolation is the sidecar's entire purpose — force it on regardless of .env.
+      ANTHROPIC_TOKEN_ISOLATION: "true"
+      EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
+      GITHUB_READONLY: "${GITHUB_READONLY:-true}"
+      ANTHROPIC_BLOCK_PATHS: "${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
+      ANTHROPIC_SINGLE_CRED: "${ANTHROPIC_SINGLE_CRED:-true}"
+    volumes:
+      - "claude-config:/home/node/.claude"          # shared (read login to claim, write placeholder back)
+      - "claude-secret:/var/lib/sandbox/secret"     # the vault — mounted ONLY here
+      - "claude-audit-mitm:/var/log/mitm"
+      - "claude-mitm-ca:/etc/mitmproxy"             # export the intercept CA to the agent (ro there)
+      # Experimental entrypoint, bind-mounted so the variant needs no Dockerfile change. The addon
+      # and claim-token are already baked into the mitm image (PR #11).
+      - "./mitm/sidecar-entrypoint.sh:/usr/local/bin/sidecar-entrypoint.sh:ro"
+    restart: unless-stopped
+
+  # ── Agent: runs claude/tools. No internet route, no vault mount. Talks only to the proxy. ──
+  claude-sandbox-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: coding-agent-sandbox:latest
+    container_name: claude-sandbox-node
+    entrypoint: ["/usr/local/bin/agent-entrypoint.sh"]
+    depends_on: [claude-sandbox-egress]
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETUID, SETGID, CHOWN, DAC_OVERRIDE]   # NET_ADMIN: optional agent-side firewall
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: "${MEM_LIMIT:-6g}"
+    pids_limit: ${PIDS_LIMIT:-4096}
+    networks: [internal]                            # internal-only → no route off-host except the proxy
+    ports:
+      - "127.0.0.1:${TTYD_PORT:-7681}:7681"
+    environment:
+      TTYD_USER: "${TTYD_USER:-coder}"
+      TTYD_PASS: "${TTYD_PASS:-changeme}"
+      # Point every tool at the sidecar instead of the image default (127.0.0.1:8888).
+      HTTP_PROXY: "http://claude-sandbox-egress:8888"
+      HTTPS_PROXY: "http://claude-sandbox-egress:8888"
+      http_proxy: "http://claude-sandbox-egress:8888"
+      https_proxy: "http://claude-sandbox-egress:8888"
+      NO_PROXY: "localhost,127.0.0.1,::1"
+      no_proxy: "localhost,127.0.0.1,::1"
+      # Trust the sidecar's intercept CA (shared volume); Node needs the OpenSSL store + the explicit
+      # bundle (same belt-and-braces as Dockerfile.mitm, which the base image doesn't set).
+      NODE_OPTIONS: "--use-openssl-ca"
+      NODE_EXTRA_CA_CERTS: "/etc/mitmproxy-ca/mitmproxy-ca-cert.pem"
+      ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
+      GIT_USER_NAME: "${GIT_USER_NAME:-}"
+      GIT_USER_EMAIL: "${GIT_USER_EMAIL:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+    volumes:
+      - "${WORKSPACE_DIR:-./workspace}:/workspace"
+      - "claude-config:/home/node/.claude"          # shared with the sidecar (login + placeholder)
+      - "claude-mitm-ca:/etc/mitmproxy-ca:ro"        # read-only view of the CA
+      # Experimental entrypoint, bind-mounted into the stock base image (no Dockerfile change).
+      - "./mitm/agent-entrypoint.sh:/usr/local/bin/agent-entrypoint.sh:ro"
+    restart: unless-stopped
+
+networks:
+  egress: {}                  # normal bridge: internet-capable (sidecar only)
+  internal:
+    internal: true            # NO gateway → containers here have no internet route
+
+volumes:
+  claude-config:
+    name: coding-agent-sandbox-config
+  claude-secret:
+    name: coding-agent-sandbox-secret
+  claude-audit-mitm:
+    name: coding-agent-sandbox-audit-mitm
+  claude-mitm-ca:
+    name: coding-agent-sandbox-mitm-ca
