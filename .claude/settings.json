@@ -7,8 +7,21 @@
       "Bash(docker compose exec:*)",
       "Bash(grep:*)",
       "Bash(perl:*)",
-      "Edit(./.env)",
       "Read(./*)"
+    ],
+    "deny": [
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Write(**/.env)",
+      "Write(**/.env.*)"
     ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "denyWrite": [
+        "**/.env",
+        "**/.env.*"
+      ]
+    }
   }
 }
