@@ -44,8 +44,10 @@ export OAUTH_TOKEN_URL="${OAUTH_TOKEN_URL:-https://platform.claude.com/v1/oauth/
 export OAUTH_CLIENT_ID="${OAUTH_CLIENT_ID:-22422756-60c9-4084-8eb7-27705fd5cf9a}"
 export TOKEN_REFRESH_SKEW="${TOKEN_REFRESH_SKEW:-600}"
 secret_dir="$(dirname "$TOKEN_SECRET_PATH")"
-mkdir -p "$secret_dir"; chown tinyproxy:tinyproxy "$secret_dir"; chmod 0700 "$secret_dir"
-[ -f "$TOKEN_SECRET_PATH" ] && { chown tinyproxy:tinyproxy "$TOKEN_SECRET_PATH"; chmod 0600 "$TOKEN_SECRET_PATH"; }
+# chmod AS the owner (gosu): the container drops CAP_FOWNER, so root can't chmod a tinyproxy-owned
+# path — but the owner always can. (Same idiom as the audit-log handling in entrypoint.sh.)
+mkdir -p "$secret_dir"; chown tinyproxy:tinyproxy "$secret_dir"; gosu tinyproxy chmod 0700 "$secret_dir"
+[ -f "$TOKEN_SECRET_PATH" ] && { chown tinyproxy:tinyproxy "$TOKEN_SECRET_PATH"; gosu tinyproxy chmod 0600 "$TOKEN_SECRET_PATH"; }
 # Reconcile a login already sitting in the shared config volume (claimed once the agent has /login'd).
 mkdir -p /home/node/.claude && chown node:node /home/node/.claude 2>/dev/null || true
 /usr/local/bin/claim-token || echo "  WARN: claim-token reconciliation failed (continuing)" >&2
@@ -63,7 +65,7 @@ MITM_PID=$!
 
 for _ in $(seq 1 50); do [ -f "$CA_PEM" ] && break; sleep 0.2; done
 [ -f "$CA_PEM" ] || { echo "ERROR: mitmproxy CA not generated; see /var/log/mitm.log" >&2; cat /var/log/mitm.log >&2; exit 1; }
-chmod 0644 "$CA_PEM" 2>/dev/null || true     # agent reads it (ro mount) to trust the intercept CA
+gosu tinyproxy chmod 0644 "$CA_PEM" 2>/dev/null || true   # agent reads it (ro mount) to trust the CA
 for _ in $(seq 1 50); do { exec 3<>/dev/tcp/127.0.0.1/8888; } 2>/dev/null && { exec 3>&-; break; }; sleep 0.2; done
 
 # --- firewall: fail-closed egress, plus accept :8888 only on the internal interface ---
