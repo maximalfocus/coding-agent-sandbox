@@ -70,13 +70,27 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   a live channel. Review a project's `.claude/` before pointing the sandbox at it, prefer
   `ALLOW_GITHUB=false` and a minimal allowlist for code you don't trust, and mount `:ro` if you
   only need analysis.
-- **The agent can read its own subscription token.** The login lives in the `claude-config` volume
-  at `/home/node/.claude`, owned by and readable as `node` — the same user Claude and its tools run
-  as. Anthropic's sealed-VM design keeps credentials in the host keychain, *never entering the
-  guest*; a subscription login inside a container can't fully match that. The token only authorizes
-  *your own* account, but it is reachable by the agent and therefore leakable via an allowed host.
-  This is an accepted trade-off of running a real logged-in CLI, not a defect — but don't treat the
-  container as a place where the token is hidden from the model.
+- **The agent can read its own subscription token — unless you turn on token isolation.** By
+  default the login lives in the `claude-config` volume at `/home/node/.claude`, owned by and
+  readable as `node` — the same user Claude and its tools run as. Anthropic's sealed-VM design keeps
+  credentials in the host keychain, *never entering the guest*; a plain subscription login inside a
+  container can't match that. The token only authorizes *your own* account, but it is reachable by
+  the agent and therefore leakable via an allowed host.
+  **The TLS-intercepting variant now closes most of this gap.** Set `ANTHROPIC_TOKEN_ISOLATION=true`
+  (see `docker-compose.mitm.yml`) and the real OAuth login is moved out of the node volume into a
+  **tinyproxy-only vault** (`/var/lib/sandbox/secret`, mode `0700`, unreadable by `node`); the
+  agent's copy is replaced with a far-future **placeholder** so the CLI stays "logged in" but holds
+  nothing usable, and the mitm proxy injects the real bearer into each `api.anthropic.com` request
+  and **owns the OAuth refresh itself** (the agent never sees the refresh token). Run
+  `./claim-token.sh` / `.\claim-token.ps1` once after `/login`, or just restart — the entrypoint
+  reconciles automatically. **What it buys:** the agent can no longer exfiltrate a *usable* token to
+  reuse elsewhere or after the session; the residual risk shrinks to in-session API use you already
+  authorized (it still spends your subscription while running, by design). **Boundary:** this is a
+  same-container, two-user (`0600`/`0700`) separation, not a VM — a kernel-level container escape
+  could still reach the vault; for that, move the vault + refresh loop into a separate sidecar
+  container. The default (tinyproxy) stack can't do this — injection needs TLS termination, so token
+  isolation requires the mitm variant. Don't combine it with a managed-settings `forceLoginOrgUUID`
+  policy (that makes the CLI validate the placeholder server-side and fail).
 - **DNS is restricted to the proxy user** (queries to `127.0.0.11` from Claude/tools are dropped;
   only `tinyproxy` resolves). This closes the direct DNS-tunnelling channel. It is not a *hermetic*
   seal — the proxy still forwards lookups for allowlisted names daemon-side — but a non-proxy

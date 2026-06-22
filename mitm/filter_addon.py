@@ -29,9 +29,13 @@ For each request, in order:
 Every decision is logged to stdout and, if $AUDIT_LOG is set, appended to that file (the persisted
 audit trail; see audit.sh --mitm). A prototype — deliberately small and readable.
 """
+import asyncio
 import hashlib
+import json
 import os
 import sys
+import time
+import urllib.request
 from urllib.parse import unquote
 from mitmproxy import http
 
@@ -58,6 +62,16 @@ ANTHROPIC_SINGLE_CRED = _flag("ANTHROPIC_SINGLE_CRED")
 ANTHROPIC_PIN_TOKEN = os.environ.get("ANTHROPIC_PIN_TOKEN", "").strip().lower()
 ALLOWED_CONNECT_PORTS = {int(p) for p in _csv("ALLOWED_CONNECT_PORTS", "443")}
 AUDIT_LOG = os.environ.get("AUDIT_LOG", "").strip()
+
+# Subscription-token isolation (opt-in). When on, the REAL OAuth login lives only in tinyproxy-only
+# storage; the addon injects it into api.anthropic.com requests and owns the OAuth refresh, so the
+# agent (running as `node`) never holds a usable token. See mitm/entrypoint.sh + mitm/claim-token.
+TOKEN_ISOLATION = _flag("ANTHROPIC_TOKEN_ISOLATION", "false")
+SECRET_PATH = os.environ.get("TOKEN_SECRET_PATH", "/var/lib/sandbox/secret/credentials.json").strip()
+TOKEN_PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-use").strip()
+OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token").strip()
+OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "22422756-60c9-4084-8eb7-27705fd5cf9a").strip()
+REFRESH_SKEW = int(os.environ.get("TOKEN_REFRESH_SKEW", "600"))  # refresh when <10 min remaining
 
 _audit_warned = False
 
@@ -135,6 +149,102 @@ def _deny(flow, msg):
     flow.response = http.Response.make(403, (msg + "\n").encode(), {"Content-Type": "text/plain"})
 
 
+class TokenVault:
+    """Holds the REAL subscription credentials in tinyproxy-only storage and injects a live access
+    token into outbound api.anthropic.com requests — so the agent (running as `node`) never needs,
+    and never sees, a usable token.
+
+    It also OWNS the OAuth refresh. The agent's own copy of the login carries a far-future placeholder
+    expiry, so the Claude Code CLI believes it is logged in and never refreshes locally (the CLI's
+    only expiry test is arithmetic on the stored timestamp — it never parses the token). This vault
+    refreshes the real token here, behind the agent's back, and persists the rotated refresh_token
+    atomically.
+
+    The refresh POST must NOT traverse the mitm proxy (it would loop back into us), so it goes out
+    directly with an empty ProxyHandler; the kernel firewall still permits it because this process
+    runs as the tinyproxy egress UID. Until a login has been claimed into the vault, token() returns
+    None and the caller passes the request through unchanged — so the initial /login still works."""
+
+    def __init__(self, path):
+        self.path = path
+        self._lock = None          # created lazily, inside the running loop
+        self._data = None          # parsed claudeAiOauth dict, or None if not yet claimed
+        self._mtime = None
+
+    def _load(self):
+        try:
+            st = os.stat(self.path)
+        except OSError:
+            self._data = None
+            return
+        if self._mtime == st.st_mtime and self._data is not None:
+            return                 # unchanged since last read — use cache
+        try:
+            with open(self.path) as fh:
+                raw = json.load(fh)
+            self._data = raw.get("claudeAiOauth", raw)
+            self._mtime = st.st_mtime
+        except (OSError, ValueError) as e:
+            _log("ERROR", "-", "vault", "", f"load failed: {e}")
+
+    def _expired(self):
+        exp = self._data.get("expiresAt")            # epoch milliseconds (same unit the CLI stores)
+        if not exp:
+            return True
+        return time.time() + REFRESH_SKEW >= exp / 1000.0
+
+    def _refresh_blocking(self):
+        d = dict(self._data)
+        body = json.dumps({
+            "grant_type": "refresh_token",
+            "refresh_token": d["refreshToken"],
+            "client_id": d.get("clientId") or OAUTH_CLIENT_ID,
+            "scope": " ".join(d.get("scopes") or []),
+        }).encode()
+        req = urllib.request.Request(
+            OAUTH_TOKEN_URL, data=body,
+            headers={"Content-Type": "application/json"}, method="POST")
+        # ProxyHandler({}) == no proxy: bypass the inherited HTTPS_PROXY so we don't tunnel the
+        # refresh through ourselves. The firewall still allows it — we are the tinyproxy UID.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(req, timeout=30) as resp:
+            r = json.loads(resp.read().decode())
+        d["accessToken"] = r["access_token"]
+        d["refreshToken"] = r.get("refresh_token", d["refreshToken"])   # honor rotation
+        d["expiresAt"] = int((time.time() + r.get("expires_in", 3600)) * 1000)
+        self._persist(d)
+        self._data = d
+
+    def _persist(self, d):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump({"claudeAiOauth": d}, fh)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.path)           # atomic — never a torn rotated-refresh-token write
+        try:
+            self._mtime = os.stat(self.path).st_mtime
+        except OSError:
+            self._mtime = None
+
+    async def token(self):
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:               # single-flight: one refresh on expiry, not a stampede
+            self._load()
+            if not (self._data and self._data.get("accessToken")):
+                return None                  # not claimed yet — caller passes the request through
+            if self._data.get("refreshToken") and self._expired():
+                try:
+                    await asyncio.get_running_loop().run_in_executor(None, self._refresh_blocking)
+                    _log("REFRESH", "POST", "platform.claude.com", "/v1/oauth/token", "rotated ok")
+                except Exception as e:       # keep serving the (possibly still-valid) token on failure
+                    _log("ERROR", "POST", "platform.claude.com", "/v1/oauth/token", f"refresh failed: {e}")
+            return self._data.get("accessToken")
+
+
+VAULT = TokenVault(SECRET_PATH) if TOKEN_ISOLATION else None
+
+
 def http_connect(flow: http.HTTPFlow):
     """Gate the CONNECT itself: a tunnel to a non-allowlisted host, or to a non-standard port, is
     refused before any bytes flow — closing raw-TCP/non-HTTP tunnels regardless of the inner data."""
@@ -148,7 +258,7 @@ def http_connect(flow: http.HTTPFlow):
         return _deny(flow, "Filtered: CONNECT port not allowed")
 
 
-def request(flow: http.HTTPFlow):
+async def request(flow: http.HTTPFlow):
     host = flow.request.host  # routing target — NOT pretty_host (which trusts the Host header)
     method = flow.request.method
     path = flow.request.path
@@ -179,12 +289,28 @@ def request(flow: http.HTTPFlow):
             if norm == blocked or norm.startswith(blocked.rstrip("/") + "/"):
                 _log("DENY", method, host, path, f"anthropic-blocked-path {blocked}")
                 return _deny(flow, "Filtered: this Anthropic API endpoint is blocked in this sandbox")
-        if ANTHROPIC_PIN_TOKEN:
+        # Token isolation: swap the agent's placeholder bearer for the real one held in the vault.
+        # The agent never holds a usable token, and can't influence which token is sent (we always
+        # overwrite). PIN/single-cred below are alternative modes — skipped once we inject our own.
+        injected = False
+        if VAULT is not None and _matches(host, "api.anthropic.com"):
+            tok = await VAULT.token()
+            if tok:                                  # vault populated (claimed) — enforce
+                incoming = _cred(flow.request)
+                if incoming and incoming != TOKEN_PLACEHOLDER:
+                    _log("WARN", method, host, path, "non-placeholder credential — re-run ./claim-token.sh")
+                flow.request.headers["authorization"] = f"Bearer {tok}"
+                if "x-api-key" in flow.request.headers:
+                    del flow.request.headers["x-api-key"]
+                injected = True
+                _log("INJECT", method, host, path, "subscription token injected from vault")
+            # vault empty (not claimed yet) → fall through unchanged so the initial /login works
+        if not injected and ANTHROPIC_PIN_TOKEN:
             cred = _cred(flow.request)
             if not cred or _fp(cred) != ANTHROPIC_PIN_TOKEN:
                 _log("DENY", method, host, path, "anthropic-token-mismatch")
                 return _deny(flow, "Filtered: request credential does not match the pinned token")
-        if ANTHROPIC_SINGLE_CRED and "x-api-key" in flow.request.headers:
+        if not injected and ANTHROPIC_SINGLE_CRED and "x-api-key" in flow.request.headers:
             # Subscription/setup-token auth is an OAuth bearer; an api key here is never legit.
             del flow.request.headers["x-api-key"]
             _log("STRIP", method, host, path, "removed x-api-key on anthropic host (single-cred)")

@@ -61,6 +61,31 @@ if [ "$(id -u)" = "0" ]; then
     say "Allowlist: $ALLOWLIST"
     say "GitHub read-only: $GITHUB_READONLY | Anthropic block: $ANTHROPIC_BLOCK_PATHS | token-pin: $([ -n "$ANTHROPIC_PIN_TOKEN" ] && echo on || echo off)"
 
+    # Subscription-token isolation (opt-in). When on, the real OAuth login is moved out of the
+    # node-readable config volume into a tinyproxy-only vault, and the addon injects it per-request
+    # (see mitm/filter_addon.py + mitm/claim-token).
+    export ANTHROPIC_TOKEN_ISOLATION="${ANTHROPIC_TOKEN_ISOLATION:-false}"
+    export TOKEN_SECRET_PATH="${TOKEN_SECRET_PATH:-/var/lib/sandbox/secret/credentials.json}"
+    export TOKEN_PLACEHOLDER="${TOKEN_PLACEHOLDER:-sandbox-placeholder-do-not-use}"
+    export OAUTH_TOKEN_URL="${OAUTH_TOKEN_URL:-https://platform.claude.com/v1/oauth/token}"
+    export OAUTH_CLIENT_ID="${OAUTH_CLIENT_ID:-22422756-60c9-4084-8eb7-27705fd5cf9a}"
+    export TOKEN_REFRESH_SKEW="${TOKEN_REFRESH_SKEW:-600}"
+    case "$(printf '%s' "$ANTHROPIC_TOKEN_ISOLATION" | tr '[:upper:]' '[:lower:]')" in
+        true|1|yes|on)
+            secret_dir="$(dirname "$TOKEN_SECRET_PATH")"
+            mkdir -p "$secret_dir"
+            chown tinyproxy:tinyproxy "$secret_dir"; chmod 0700 "$secret_dir"
+            [ -f "$TOKEN_SECRET_PATH" ] && { chown tinyproxy:tinyproxy "$TOKEN_SECRET_PATH"; chmod 0600 "$TOKEN_SECRET_PATH"; }
+            say "Token isolation: ON (vault $TOKEN_SECRET_PATH, agent-unreadable)"
+            # Reconcile: if a real login is sitting in the node volume (fresh /login, or first start
+            # after enabling this), move it into the vault now and leave a placeholder. No-op once
+            # claimed. node's .claude is created just below; create it here too so the read works.
+            mkdir -p /home/node/.claude && chown node:node /home/node/.claude 2>/dev/null || true
+            /usr/local/bin/claim-token || echo "  WARN: claim-token reconciliation failed (continuing)" >&2
+            ;;
+        *) say "Token isolation: off" ;;
+    esac
+
     mkdir -p "$CONFDIR"; chown tinyproxy:tinyproxy "$CONFDIR"
 
     say "Starting mitmproxy (TLS-intercepting egress) as the tinyproxy user..."
