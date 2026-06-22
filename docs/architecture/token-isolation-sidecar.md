@@ -84,6 +84,10 @@ secret lives behind a boundary the agent's container never shares.
 
 ## Verification (REQUIRED before this is trusted / merged)
 
+**One-command path:** `./sidecar-smoketest.sh --up` brings the stack up and runs the structural
+checks (3a–d below) automatically, plus the placeholder check once you've claimed. It does NOT do the
+interactive `/login` or a billed model call. The manual walk-through below covers the same ground:
+
 Run on a host with a real Docker engine (e.g. Colima):
 
 ```bash
