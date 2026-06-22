@@ -9,6 +9,10 @@ see the main [README](../README.md#easiest-windows-setup).)
 
 Each step below fixes a specific failure seen on a fresh SEED laptop.
 
+> **Shortcut:** after step 1, steps 2–4 are automated by **[`../setup-wsl.sh`](../setup-wsl.sh)** —
+> run it from the repo root inside WSL Ubuntu (`./setup-wsl.sh`). It's idempotent and tells you
+> when to `wsl --shutdown`. The manual steps below explain what it does and why.
+
 ## 1. WSL2 + Ubuntu
 
 In an **admin PowerShell**:
@@ -94,3 +98,21 @@ for how the trust is wired into the image (build-time + runtime).
 - WARP interception is transparent to the container's egress, so no firewall
   change is needed; the proxy must still permit the sandbox's allowlisted
   destinations (add any it blocks via `EXTRA_ALLOWED_DOMAINS`).
+
+## Uninstall (WSL)
+
+`./uninstall.sh` removes the sandbox's Docker resources (containers, images, volumes, network) and
+this repo directory. Its **engine** removal is macOS/Homebrew-only, so on WSL it leaves the host
+otherwise untouched — finish by hand as far as you want to go:
+
+```bash
+./uninstall.sh                 # sandbox containers/images/volumes + this repo dir
+sudo apt-get purge -y docker.io docker-compose-v2 docker-buildx   # optional: remove the engine
+```
+
+To remove the whole distro (destroys **everything** in it — SSH keys, logins, other projects), from
+**Windows PowerShell**:
+
+```powershell
+wsl --unregister Ubuntu
+```
