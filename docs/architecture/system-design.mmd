@@ -1,0 +1,55 @@
+flowchart TB
+  subgraph WIN["🪟 Windows host — your laptop"]
+    direction TB
+    DEV["💻 You · VS Code · Explorer · git<br/>edit &amp; review the real files"]
+    subgraph HOME["📁 C:/Users/you"]
+      direction LR
+      PERSONALH["👤 personal/<br/><i>personal projects</i>"]
+      WORKH["💼 work/<br/><i>work projects</i>"]
+      REPO["⚙️ coding-agent-sandbox/<br/><b>control plane — keep OUTSIDE personal/ &amp; work/</b><br/>.env · firewall · compose · CA · scripts"]
+    end
+    BROWSER["🌐 Browser → http://127.0.0.1:7681<br/>localhost only · password"]
+  end
+
+  subgraph WSL["🐧 WSL2 Ubuntu — Docker Engine + systemd"]
+    direction TB
+    subgraph BOX["🛡️ claude-sandbox container — trust boundary"]
+      direction TB
+      TTYD["🖥️ ttyd → tmux → claude<br/>unprivileged 'node' user"]
+      subgraph WSP["📂 /workspace — the only host files the agent sees"]
+        direction LR
+        PERSONALC["/workspace/personal"]
+        WORKC["/workspace/work"]
+      end
+      VOLS["🔒 sandbox-private volumes<br/>config · codex · gh · audit"]
+      PROXY["🚦 tinyproxy allowlist<br/>🧱 fail-closed firewall"]
+    end
+  end
+
+  NET(["🌐 Approved hosts only<br/>Anthropic · npm · GitHub · extras"])
+
+  PERSONALH <==>|bind mount via /mnt/c| PERSONALC
+  WORKH <==>|bind mount via /mnt/c| WORKC
+  REPO -. "NOT mounted — invisible to the agent" .-> BOX
+
+  DEV --- PERSONALH
+  DEV --- WORKH
+  DEV -.->|run.sh / setup-wsl.sh| REPO
+  BROWSER ==> TTYD
+  TTYD --> WSP
+  TTYD ==>|every connection| PROXY
+  PROXY ==>|allowed by hostname| NET
+
+  classDef dev fill:#f1f5f9,stroke:#64748b,color:#0f172a;
+  classDef repo fill:#fef9c3,stroke:#ca8a04,color:#713f12;
+  classDef tree fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+  classDef box fill:#ecfdf5,stroke:#10b981,color:#064e3b;
+  classDef vol fill:#fae8ff,stroke:#c026d3,color:#701a75;
+  classDef net fill:#dcfce7,stroke:#16a34a,color:#14532d;
+
+  class DEV,BROWSER dev;
+  class PERSONALH,WORKH,PERSONALC,WORKC tree;
+  class REPO repo;
+  class TTYD,WSP,PROXY box;
+  class VOLS vol;
+  class NET net;

@@ -153,6 +153,34 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
     `setup-windows.ps1 -InstallPrereqs` installed it, and **never** unregisters a WSL distro — that
     would also destroy your SSH keys and logins. Reinstall with `git clone … && .\setup-windows.cmd`.
 
+## Workspace: `personal` vs `work` (and keep this repo outside both)
+
+The sandbox mounts **two separate project trees** so you can keep different kinds of work apart in
+one session — see the [system-design diagram](docs/architecture/system-design.md):
+
+| Inside the sandbox | Host folder (`.env`) | For |
+|---|---|---|
+| `/workspace/personal` | `PERSONAL_DIR` (e.g. `C:/Users/you/personal`) | your personal projects — also where `skills-setup` clones skill repos |
+| `/workspace/work` | `WORK_DIR` (e.g. `C:/Users/you/work`) | your work / enterprise projects |
+
+These are **live bind mounts**, not copies: whatever the agent edits in `/workspace/personal` **is**
+the file in your host `personal/` folder, instantly. So you and the agent share one source of
+truth — review changes in **VS Code**, inspect or `git diff` them from a host terminal, or open them
+in **Explorer/Finder**. Keeping personal and work as distinct trees means a `work` task never has
+your `personal` code in scope (and vice-versa) — set only the tree(s) you need, leave the other
+unset.
+
+> **Security: keep `coding-agent-sandbox/` OUTSIDE `personal/` and `work/`.** This repo is the
+> sandbox's **control plane** — it holds `.env` (the web-terminal password and any `GITHUB_TOKEN`),
+> the egress allowlist (`init-firewall.sh`, `tinyproxy.conf`, `EXTRA_ALLOWED_DOMAINS`), the
+> `docker-compose.yml` capability drops, and the trusted CA. The agent can only ever see
+> `/workspace`. If the repo lived **inside** a mounted tree, the agent could read those secrets and
+> **rewrite its own guard rails** (which then take effect on the next rebuild/restart) — defeating
+> the containment. Put the repo somewhere neither `PERSONAL_DIR` nor `WORK_DIR` contains (e.g.
+> `C:/Users/you/coding-agent-sandbox`, with projects under `C:/Users/you/personal` and `…/work`).
+> `run.sh` / `run.ps1` also refuse to mount `$HOME` or sensitive dirs (`.ssh`, `.aws`, …) for the
+> same reason.
+
 ## Sharing this sandbox with colleagues
 
 Each install is self-configuring — paths come from `$HOME` / `%USERPROFILE%` / setup prompts, so
