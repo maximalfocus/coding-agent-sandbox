@@ -9,6 +9,20 @@ if (-not (Test-Path ".env")) {
     exit 1
 }
 
+# This launcher needs Docker on the Windows PATH (Docker Desktop) because it validates and mounts
+# Windows-style host paths from .env. If Docker instead lives inside WSL (the ./setup-wsl.sh path),
+# build + start from there with ./run.sh — its paths are already WSL paths (/mnt/c/...).
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    if (Get-Command wsl -ErrorAction SilentlyContinue) {
+        Write-Host "Docker isn't on the Windows PATH. If you provisioned Docker inside WSL (./setup-wsl.sh),"
+        Write-Host "build + start from a WSL Ubuntu shell instead:  ./run.sh"
+        Write-Host "(Once it's running, ./shell.ps1 -Attach works from Windows — it proxies through WSL.)"
+    } else {
+        Write-Host "Docker not found. Install/start Docker Desktop (WSL2 backend) and try again."
+    }
+    exit 1
+}
+
 docker info *> $null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Docker isn't running. Start Docker Desktop (WSL2 backend) and try again."
