@@ -4,9 +4,9 @@
 # push to GitHub (over HTTPS with your GITHUB_TOKEN). Unlike sync-skills.sh (which copies detached
 # content), this keeps each skill as a real git clone with a remote, so evolve can push.
 #
-# Repos are cloned into ~/ws inside the sandbox (a persisted volume) — the SAME path the *-evolve
-# skills hardcode (~/ws/cdd-skills, ~/ws/peerreview-skills) — so self-evolve/commit/push works in
-# the sandbox exactly as on the host. Independent of WORKSPACE_DIR; available in every project.
+# Repos are cloned into /workspace/personal inside the sandbox (your real PERSONAL_DIR host folder,
+# e.g. /Users/you/personal) — at /workspace/personal/cdd-skills, /workspace/personal/peerreview-skills
+# — so the clones are visible/editable on the host and self-evolve/commit/push works in the sandbox.
 # Re-run anytime to `git pull` the latest. Same behaviour on macOS, Linux, and Windows.
 #
 #   ./skills-setup.sh                          # uses SKILL_REPOS from .env
@@ -26,8 +26,9 @@ else
 fi
 [ -n "$repos" ] || { echo "No repos given. Set SKILL_REPOS in .env (space-separated HTTPS URLs) or pass them as args."; exit 1; }
 
-# One-time migration: older versions cloned into ~/.claude/skill-repos; ~/ws is the home now.
-docker compose exec -T -u node "$SVC" sh -c 'rm -rf "$HOME/.claude/skill-repos" 2>/dev/null || true'
+# One-time migration: older versions cloned into ~/.claude/skill-repos or ~/ws; /workspace/personal
+# is the home now. Drop the stale locations so we don't leave duplicate clones behind.
+docker compose exec -T -u node "$SVC" sh -c 'rm -rf "$HOME/.claude/skill-repos" "$HOME/ws" 2>/dev/null || true'
 
 # Per-repo: clone if missing else pull, then (re)link each of its skills into ~/.claude/skills.
 # Runs as `node` so git uses the token-backed config the entrypoint set up, and ownership is right.
@@ -36,7 +37,7 @@ for url in $repos; do
     docker compose exec -T -u node "$SVC" sh -c '
         set -e
         url="$1"; name="$(basename "$url" .git)"
-        base="$HOME/ws"; mkdir -p "$base" "$HOME/.claude/skills"
+        base="/workspace/personal"; mkdir -p "$base" "$HOME/.claude/skills"
         if [ -d "$base/$name/.git" ]; then
             echo "  updating $name"; git -C "$base/$name" pull --ff-only || echo "  (pull skipped — local commits?)"
         else
@@ -53,5 +54,5 @@ for url in $repos; do
 done
 
 echo
-echo "Done. Skills are symlinked to live clones under ~/ws in the sandbox (matches the *-evolve paths)."
+echo "Done. Skills are symlinked to live clones under /workspace/personal (your PERSONAL_DIR host folder)."
 echo "Restart 'claude' in the sandbox to load them. /cdd-evolve & /peerreview-evolve can commit + push."

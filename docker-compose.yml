@@ -62,14 +62,19 @@ services:
       # (Proxy env, CLAUDE_CONFIG_DIR and telemetry-off are baked into the image so every
       #  launch — compose, exec, or the claude-safe `docker run` — inherits them.)
     volumes:
-      # The host files Claude can see or edit. /workspace is the root; PERSONAL_DIR and WORK_DIR
-      # (set in .env, guarded by run.sh/run.ps1) mount your personal projects and your work /
-      # enterprise projects at /workspace/personal and /workspace/work so you can work across both in
-      # one session. Bigger mount = bigger blast radius, and mounted code is sent to Anthropic —
-      # see SECURITY.md. (PERSONAL_DIR/WORK_DIR were formerly WS_DIR/PROJECTS_DIR.)
-      - "${WORKSPACE_DIR:-./workspace}:/workspace"
-      - "${PERSONAL_DIR:-./workspace/personal}:/workspace/personal"
-      - "${WORK_DIR:-./workspace/work}:/workspace/work"
+      # The host files Claude can see or edit. ENFORCED MAPPING (symmetric two-tree):
+      #   /workspace/work     <-> WORK_DIR      (e.g. /Users/you/work)
+      #   /workspace/personal <-> PERSONAL_DIR  (e.g. /Users/you/personal)
+      # /workspace itself is just an inert umbrella (a named volume) holding those two mount points;
+      # nothing real lives at the root. Set WORK_DIR + PERSONAL_DIR to absolute host paths in .env.
+      # Defaults are NAMED VOLUMES (never repo-relative ./workspace/* paths) so an empty value can
+      # never silently bind a machine-dependent host dir — the mapping stays deterministic everywhere.
+      # Bigger mount = bigger blast radius, and mounted code is sent to Anthropic — see SECURITY.md.
+      - "${WORKSPACE_DIR:-claude-workspace}:/workspace"
+      - "${WORK_DIR:-claude-work}:/workspace/work"
+      # /workspace/personal is also the skills home: skill repos (skills-setup.sh) are cloned at
+      # /workspace/personal/<repo> and symlinked into ~/.claude/skills.
+      - "${PERSONAL_DIR:-claude-personal}:/workspace/personal"
       # Persists the subscription login + Claude settings across restarts.
       - "claude-config:/home/node/.claude"
       # Persists the Codex subscription login (~/.codex/auth.json) across restarts.
@@ -77,14 +82,6 @@ services:
       # Persists the GitHub CLI login (~/.config/gh) across restarts — gh's token carries the
       # `workflow` scope, so pushes incl. .github/workflows/* work. One-time ./gh-login.sh.
       - "claude-gh:/home/node/.config/gh"
-      # ~/ws — the skills/notes HOME. skills-setup clones your skill repos here and the *-evolve
-      # skills + /note hardcode ~/ws paths, so this in-container name stays "ws" even though the
-      # user-facing mount is /workspace/personal. If PERSONAL_DIR is set (in .env), the SAME host
-      # tree is mounted here AND at /workspace/personal — one source of truth (host == sandbox
-      # clones, one evolver). Unset -> isolated named volume (skills-setup clones into it).
-      - "${PERSONAL_DIR:-claude-ws}:/home/node/ws"
-      # The work tree mirrored to home (same host dir as /workspace/work) - live two-way.
-      - "${WORK_DIR:-./workspace/work}:/home/node/work"
       # Audit trail: every host the proxy was asked to reach (allowed + refused).
       - "claude-audit:/var/log/tinyproxy"
     restart: unless-stopped
@@ -97,7 +94,14 @@ volumes:
     name: coding-agent-sandbox-codex
   claude-gh:
     name: coding-agent-sandbox-gh
-  claude-ws:
-    name: coding-agent-sandbox-ws
   claude-audit:
     name: coding-agent-sandbox-audit
+  # Inert fallbacks so an unset WORKSPACE_DIR/WORK_DIR/PERSONAL_DIR binds an isolated volume,
+  # never a repo-relative host dir (keeps the /workspace/work + /workspace/personal mapping
+  # deterministic across machines — see volumes section above).
+  claude-workspace:
+    name: coding-agent-sandbox-workspace
+  claude-work:
+    name: coding-agent-sandbox-work
+  claude-personal:
+    name: coding-agent-sandbox-personal

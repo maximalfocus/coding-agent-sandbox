@@ -32,6 +32,9 @@ VOLUMES=(
   coding-agent-sandbox-config
   coding-agent-sandbox-codex
   coding-agent-sandbox-gh
+  coding-agent-sandbox-workspace
+  coding-agent-sandbox-work
+  coding-agent-sandbox-personal
   coding-agent-sandbox-ws
   coding-agent-sandbox-audit
   coding-agent-sandbox-audit-mitm

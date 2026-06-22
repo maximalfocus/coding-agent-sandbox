@@ -16,8 +16,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Guard every mounted host dir so a typo in .env can't expose your whole profile/credentials.
-# WORKSPACE_DIR is the /workspace root; PERSONAL_DIR + WORK_DIR (optional) mount at /workspace/personal
-# and /workspace/work (and PERSONAL_DIR also backs the skills home at /home/node/ws — see compose).
+# WORK_DIR -> /workspace/work and PERSONAL_DIR -> /workspace/personal; WORKSPACE_DIR (the /workspace
+# root) is optional and defaults to an inert umbrella volume. PERSONAL_DIR is also where skill repos
+# are cloned (skills-setup) — see compose.
 # (PERSONAL_DIR/WORK_DIR were formerly WS_DIR/PROJECTS_DIR; the old names still work below.)
 $ic = [System.StringComparison]::OrdinalIgnoreCase
 function Norm($p) { return $p.TrimEnd('\','/') }   # canonical compare form
@@ -52,8 +53,14 @@ function Resolve-Mount([string]$Raw, [string]$Label) {
 }
 
 # Mount the exact validated paths (shell env overrides .env in Compose).
-$wd = Read-DotEnv 'WORKSPACE_DIR'; if ([string]::IsNullOrWhiteSpace($wd)) { $wd = './workspace' }
-$env:WORKSPACE_DIR = Resolve-Mount $wd 'WORKSPACE_DIR'
+# WORKSPACE_DIR (the /workspace root) is optional: blank -> Compose falls back to the inert
+# claude-workspace umbrella volume (work + personal mount inside). Only validate when it's set.
+$wd = Read-DotEnv 'WORKSPACE_DIR'
+if (-not [string]::IsNullOrWhiteSpace($wd)) {
+    $env:WORKSPACE_DIR = Resolve-Mount $wd 'WORKSPACE_DIR'
+} else {
+    Write-Host "  /workspace -> inert umbrella volume (work + personal mount inside; set WORKSPACE_DIR for a real root)"
+}
 # Read-Compat NEW OLD -> value of NEW, else OLD (with a deprecation notice), else ''.
 function Read-Compat([string]$New, [string]$Old) {
     $v = Read-DotEnv $New
@@ -66,7 +73,7 @@ function Read-Compat([string]$New, [string]$Old) {
 $psRaw = Read-Compat 'PERSONAL_DIR' 'WS_DIR'
 if (-not [string]::IsNullOrWhiteSpace($psRaw)) {
     $env:PERSONAL_DIR = Resolve-Mount $psRaw 'PERSONAL_DIR'
-    Write-Host "  mounting PERSONAL_DIR  -> /workspace/personal + /home/node/ws  ($env:PERSONAL_DIR)"
+    Write-Host "  mounting PERSONAL_DIR  -> /workspace/personal  ($env:PERSONAL_DIR)"
 }
 $wkRaw = Read-Compat 'WORK_DIR' 'PROJECTS_DIR'
 if (-not [string]::IsNullOrWhiteSpace($wkRaw)) {
