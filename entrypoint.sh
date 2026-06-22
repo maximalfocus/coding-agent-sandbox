@@ -149,6 +149,11 @@ if [ "$(id -u)" = "0" ]; then
     # Codex subscription login persists here (~/.codex/auth.json), like Claude's in .claude.
     mkdir -p /home/node/.codex
     chown -R node:node /home/node/.codex 2>/dev/null || true
+    # GitHub CLI login persists here (~/.config/gh/hosts.yml), like Codex's above. A fresh
+    # claude-gh volume mounts root-owned, so without this chown `gh auth login` (run as node by
+    # ./gh-login.sh) fails to write hosts.yml with "permission denied".
+    mkdir -p /home/node/.config/gh
+    chown -R node:node /home/node/.config 2>/dev/null || true
     # Skill repos (skills-setup.sh) are cloned into /workspace/personal — a bind mount of your real
     # host folder, owned by the host user and writable via the file-sharing layer; nothing to chown.
 

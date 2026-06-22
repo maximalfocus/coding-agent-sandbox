@@ -96,19 +96,37 @@ gen_pass() {  # 20 chars; subshell disables pipefail so head closing the pipe is
     ( set +o pipefail; LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20 )
 }
 
-# Workspace: keep an existing real value, else prompt (default ~/work).
+# WORKSPACE_DIR is OPTIONAL (the /workspace root). Blank -> an inert umbrella volume; only
+# PERSONAL_DIR/WORK_DIR mount inside it. $1 (or an existing real value) sets a real root.
 existing_ws="$(get_env WORKSPACE_DIR)"
+ws_abs=""
 if [ -n "${1:-}" ]; then
-    ws="$1"
+    mkdir -p "$1"; ws_abs="$(cd "$1" && pwd -P)"
 elif [ -n "$existing_ws" ] && [ "$existing_ws" != "./workspace" ]; then
-    ws="$existing_ws"; say "Using existing WORKSPACE_DIR: $ws"
-else
-    default="$HOME/work"; mkdir -p "$default"
-    read -r -p "Folder the sandbox may edit [$default]: " ans
-    ws="${ans:-$default}"
+    ws_abs="$existing_ws"; say "Using existing WORKSPACE_DIR: $ws_abs"
 fi
-mkdir -p "$ws"
-ws_abs="$(cd "$ws" && pwd -P)"
+
+# PERSONAL_DIR -> /workspace/personal (also where skills-setup clones skill repos),
+# WORK_DIR -> /workspace/work. Keep existing .env values, else prompt with a default under $HOME.
+existing_personal="$(get_env PERSONAL_DIR)"
+if [ -n "$existing_personal" ]; then
+    personal="$existing_personal"
+else
+    default="$HOME/personal"
+    read -r -p "Host folder to mount at /workspace/personal (skills clone here) [$default]: " ans
+    personal="${ans:-$default}"
+fi
+mkdir -p "$personal"; personal_abs="$(cd "$personal" && pwd -P)"
+
+existing_work="$(get_env WORK_DIR)"
+if [ -n "$existing_work" ]; then
+    work="$existing_work"
+else
+    default="$HOME/work"
+    read -r -p "Host folder to mount at /workspace/work [$default]: " ans
+    work="${ans:-$default}"
+fi
+mkdir -p "$work"; work_abs="$(cd "$work" && pwd -P)"
 
 # Password: keep a real existing one, else generate.
 existing_pass="$(get_env TTYD_PASS)"
@@ -117,15 +135,21 @@ case "$existing_pass" in
     *) pass="$existing_pass" ;;
 esac
 
-set_env WORKSPACE_DIR "$ws_abs"
+if [ -n "$ws_abs" ]; then set_env WORKSPACE_DIR "$ws_abs"; else set_env WORKSPACE_DIR ""; fi
+set_env PERSONAL_DIR "$personal_abs"
+set_env WORK_DIR "$work_abs"
 set_env TTYD_USER "coder"
 set_env TTYD_PASS "$pass"
+# SKILL_REPOS: honor an env-var override (SKILL_REPOS="url1 url2" ./setup.sh), else keep existing.
+[ -n "${SKILL_REPOS:-}" ] && set_env SKILL_REPOS "$SKILL_REPOS"
 
 port="$(get_env TTYD_PORT)"; port="${port:-7681}"
 
 say ""
 say "Wrote .env:"
-say "  WORKSPACE_DIR = $ws_abs"
+say "  WORKSPACE_DIR = ${ws_abs:-(blank -> inert umbrella volume)}"
+say "  PERSONAL_DIR  = $personal_abs"
+say "  WORK_DIR      = $work_abs"
 say "  TTYD_USER     = coder"
 say "  TTYD_PASS     = $pass"
 say ""

@@ -54,13 +54,16 @@ Either **Docker Desktop** with WSL integration enabled for the Ubuntu distro, or
 native Engine inside WSL:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y docker.io   # matches even pre-release Ubuntu
+# docker.io = engine; docker-compose-v2 = the `docker compose` plugin run.sh needs;
+# docker-buildx = the BuildKit builder `docker compose build` uses.
+sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2 docker-buildx
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"                            # re-open the shell afterward
 ```
 
 > Docker's own apt repo has no packages for very new/unreleased Ubuntu codenames;
-> Ubuntu's `docker.io` tracks your release and is the reliable choice there.
+> Ubuntu's `docker.io` (plus `docker-compose-v2`/`docker-buildx`) tracks your release and is the
+> reliable choice there. Verify with `docker compose version` before `./run.sh`.
 
 The host already trusts the WARP CA (it's in the Windows/OS trust store), so
 `docker pull` works. The **container** needs the CA separately — step 5.
