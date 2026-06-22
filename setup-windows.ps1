@@ -20,6 +20,17 @@ function Test-Command([string]$Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+# Provenance marker: record what THIS setup installed, so uninstall-windows.ps1 only removes an
+# engine/feature this sandbox added (never a pre-existing one). Lives outside the repo so it
+# survives the repo's deletion during uninstall.
+function Set-InstallMarker([string]$Name) {
+    $markerDir = Join-Path $env:USERPROFILE ".coding-agent-sandbox"
+    if (-not (Test-Path -LiteralPath $markerDir)) {
+        New-Item -ItemType Directory -Path $markerDir -Force | Out-Null
+    }
+    Set-Content -LiteralPath (Join-Path $markerDir $Name) -Value "installed by setup-windows.ps1" -Encoding UTF8
+}
+
 function Convert-ToComposePath([string]$Path) {
     $fullPath = (Resolve-Path -Path $Path -ErrorAction Stop).Path
     return ($fullPath -replace '\\', '/')
@@ -120,6 +131,7 @@ function Ensure-WslReady {
     Write-Step "Enabling WSL2"
     & wsl --install --no-distribution
     if ($LASTEXITCODE -eq 0) {
+        Set-InstallMarker "installed-wsl2"
         Write-Host "WSL2 setup was started. Restart Windows if prompted, then run this script again."
         exit 0
     }
@@ -208,6 +220,7 @@ Ensure-WslReady
 if (-not (Test-Command "docker")) {
     if ($InstallPrereqs) {
         Install-WingetPackage "Docker Desktop" "Docker.DockerDesktop"
+        Set-InstallMarker "installed-docker-desktop"
         Add-DockerToPathForThisSession
     }
     else {

@@ -249,7 +249,7 @@ fi
 echo "    removed $REPO_DIR"
 echo ""
 echo "Done. The Mac is clean. To reinstall:"
-echo "  git clone git@github.com:maximalfocus/coding-agent-sandbox.git \"$REPO_DIR\""
+echo "  git clone https://github.com/maximalfocus/coding-agent-sandbox.git \"$REPO_DIR\""
 echo "  cd \"$REPO_DIR\" && ./setup.sh"
 rm -f "$remover"
 EOF

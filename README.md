@@ -148,6 +148,10 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
   personal/work trees (`PERSONAL_DIR` / `WORK_DIR`) and `~/.docker` login untouched. Pass
   `--remove-docker-engine` to also remove a pre-existing engine, `--keep-docker-engine` to keep it,
   or `--keep-dir` to keep the repo. Reinstall with `git clone … && ./setup.sh`.
+  - On **Windows**, use `uninstall.cmd` (same teardown; flags `-Yes`, `-KeepDir`, `-KeepImages`,
+    `-KeepDockerEngine`, `-RemoveDockerEngine`, `-SkipDocker`). It removes Docker Desktop only if
+    `setup-windows.ps1 -InstallPrereqs` installed it, and **never** unregisters a WSL distro — that
+    would also destroy your SSH keys and logins. Reinstall with `git clone … && .\setup-windows.cmd`.
 
 ## Use a local terminal instead of the browser
 
