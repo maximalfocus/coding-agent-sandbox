@@ -153,6 +153,20 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
     `setup-windows.ps1 -InstallPrereqs` installed it, and **never** unregisters a WSL distro — that
     would also destroy your SSH keys and logins. Reinstall with `git clone … && .\setup-windows.cmd`.
 
+## Sharing this sandbox with colleagues
+
+Each install is self-configuring — paths come from `$HOME` / `%USERPROFILE%` / setup prompts, so
+there's nothing machine-specific to edit. The cleanest way to share is to have colleagues
+**`git clone` this repo** and run setup themselves (`./setup.sh`, `setup-windows.cmd`, or — for WSL
+behind a TLS-inspecting proxy — `./setup-wsl.sh`; see [`docs/wsl-warp.md`](docs/wsl-warp.md)).
+
+- **Don't hand over your folder copy / zip.** Your `.env` (mount paths + the web-terminal password),
+  `certs/*.crt`, and `.git/config` (your git identity) are local-only and **git-ignored**, so a fresh
+  clone never carries them — but a zip of your working tree would. Clone instead, or strip those first.
+- **Skill repos are per-user.** `SKILL_REPOS` lives only in each person's `.env`. If your skill repos
+  are private, colleagues need their own access (or their own forks) — set their `SKILL_REPOS` to repos
+  they can reach, then `./skills-setup.sh`.
+
 ## Use a local terminal instead of the browser
 
 The browser/ttyd is just one entry point — the sandbox is the container. To code from your normal
