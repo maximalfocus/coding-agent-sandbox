@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Move a real Claude subscription login OUT of the agent-readable node config volume and into the
+tinyproxy-only credential vault, leaving a harmless far-future placeholder in its place.
+
+Run as root (it must chown files to two different users). Invoked two ways:
+  - automatically by mitm/entrypoint.sh on every start (reconciles a fresh /login), and
+  - on demand via ./claim-token.sh (host wrapper) right after you log in.
+
+Idempotent: a no-op if there's no login yet, or if the placeholder is already installed. The real
+access/refresh tokens only ever live in the vault (mode 0600, owned by tinyproxy); the agent's copy
+keeps the non-secret fields (scopes, subscriptionType, clientId) so the CLI still presents as a
+logged-in subscription, but its accessToken/refreshToken are inert and its expiresAt is ~10 years
+out so the CLI never tries to refresh locally."""
+import json
+import os
+import pwd
+import sys
+import time
+
+NODE_CRED = os.environ.get("NODE_CRED_PATH", "/home/node/.claude/.credentials.json")
+SECRET = os.environ.get("TOKEN_SECRET_PATH", "/var/lib/sandbox/secret/credentials.json")
+PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-use")
+FAR_FUTURE_MS = int((time.time() + 10 * 365 * 24 * 3600) * 1000)  # ~10 years out, in milliseconds
+
+
+def _chown(path, user):
+    pw = pwd.getpwnam(user)
+    os.chown(path, pw.pw_uid, pw.pw_gid)
+
+
+def _write(path, obj, user, mode=0o600):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(obj, fh)
+    os.chmod(tmp, mode)
+    _chown(tmp, user)
+    os.replace(tmp, path)            # atomic
+    _chown(path, user)
+
+
+def main():
+    try:
+        with open(NODE_CRED) as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError):
+        print("claim-token: no node credentials to claim (log in with /login first) — nothing to do")
+        return 0
+
+    oauth = raw.get("claudeAiOauth")
+    if not oauth or not oauth.get("accessToken"):
+        print("claim-token: no subscription login found in node credentials — nothing to do")
+        return 0
+    if oauth.get("accessToken") == PLACEHOLDER:
+        print("claim-token: already claimed (placeholder in place) — nothing to do")
+        return 0
+
+    # 1. Real credentials → tinyproxy-only vault (0600, owned by tinyproxy; node cannot read it).
+    secret_dir = os.path.dirname(SECRET)
+    os.makedirs(secret_dir, exist_ok=True)
+    _chown(secret_dir, "tinyproxy")
+    os.chmod(secret_dir, 0o700)
+    _write(SECRET, {"claudeAiOauth": oauth}, "tinyproxy")
+
+    # 2. Node copy → harmless placeholder so the CLI stays "logged in" but holds nothing usable.
+    placeholder = dict(oauth)
+    placeholder["accessToken"] = PLACEHOLDER
+    placeholder["refreshToken"] = PLACEHOLDER
+    placeholder["expiresAt"] = FAR_FUTURE_MS
+    _write(NODE_CRED, {"claudeAiOauth": placeholder}, "node")
+
+    print("claim-token: subscription token moved to the vault; placeholder installed for the agent")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
