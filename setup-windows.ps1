@@ -2,6 +2,9 @@
 #   powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -InstallPrereqs
 param(
     [string]$WorkspaceDir,
+    [string]$PersonalDir,
+    [string]$WorkDir,
+    [string[]]$SkillRepos,
     [string]$Password,
     [int]$Port = 7681,
     [switch]$InstallPrereqs,
@@ -23,6 +26,17 @@ function Test-Command([string]$Name) {
 function Convert-ToComposePath([string]$Path) {
     $fullPath = (Resolve-Path -Path $Path -ErrorAction Stop).Path
     return ($fullPath -replace '\\', '/')
+}
+
+function Get-ComposeDir([string]$Path) {
+    # Create the directory if needed and return its forward-slash absolute path for Compose.
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        throw "'$Path' exists but is a file. Move it or choose a different directory."
+    }
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    }
+    return (Convert-ToComposePath $Path)
 }
 
 function New-TerminalPassword([int]$Length = 20) {
@@ -84,7 +98,11 @@ function Set-DotEnvValue([string]$Path, [string]$Key, [string]$Value) {
         $nextContent += $newLine
     }
 
-    Set-Content -LiteralPath $Path -Value $nextContent -Encoding UTF8
+    # Write UTF-8 WITHOUT a BOM and with LF endings. Windows PowerShell 5.1's
+    # `Set-Content -Encoding UTF8` emits a BOM (which can corrupt the first .env key for
+    # `docker compose`) and CRLF (a trailing \r would break mount paths/values).
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, (($nextContent -join "`n") + "`n"), $utf8NoBom)
 }
 
 function Install-WingetPackage([string]$Name, [string]$Id) {
@@ -242,34 +260,53 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     Copy-Item -LiteralPath $envExamplePath -Destination $envPath
 }
 
+# WORKSPACE_DIR is OPTIONAL (the /workspace root). Blank -> Compose uses an inert umbrella volume
+# and only PERSONAL_DIR/WORK_DIR mount inside it. Set it only to expose a real /workspace root.
 $existingWorkspace = Get-DotEnvValue $envPath "WORKSPACE_DIR"
-if ([string]::IsNullOrWhiteSpace($WorkspaceDir)) {
-    if (-not [string]::IsNullOrWhiteSpace($existingWorkspace) -and $existingWorkspace -ne "./workspace") {
-        $WorkspaceDir = $existingWorkspace
-        Write-Step "Using existing WORKSPACE_DIR: $WorkspaceDir"
-    }
-    else {
-        $workDir = Join-Path $env:USERPROFILE "work"
-        if (Test-Path -LiteralPath $workDir -PathType Leaf) {
-            throw "'$workDir' exists but is a file. Move it or choose a different workspace with -WorkspaceDir."
-        }
-        if (-not (Test-Path -LiteralPath $workDir -PathType Container)) {
-            New-Item -ItemType Directory -Path $workDir -Force | Out-Null
-        }
-
-        $defaultWorkspace = $workDir
-        $answer = Read-Host "Folder Claude may edit [$defaultWorkspace]"
-        if ([string]::IsNullOrWhiteSpace($answer)) {
-            $WorkspaceDir = $defaultWorkspace
-        }
-        else {
-            $WorkspaceDir = $answer
-        }
-    }
+$workspaceFull = ""
+if (-not [string]::IsNullOrWhiteSpace($WorkspaceDir)) {
+    $workspaceFull = Get-ComposeDir $WorkspaceDir
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingWorkspace) -and $existingWorkspace -ne "./workspace") {
+    $workspaceFull = $existingWorkspace
+    Write-Step "Using existing WORKSPACE_DIR: $workspaceFull"
 }
 
-New-Item -ItemType Directory -Path $WorkspaceDir -Force | Out-Null
-$workspaceFull = Convert-ToComposePath $WorkspaceDir
+# PERSONAL_DIR -> /workspace/personal (also where skills-setup clones skill repos) and
+# WORK_DIR -> /workspace/work are the two host trees the sandbox edits. Use the flag, else an
+# existing .env value, else prompt with a default under the user profile.
+$existingPersonal = Get-DotEnvValue $envPath "PERSONAL_DIR"
+if ([string]::IsNullOrWhiteSpace($PersonalDir)) {
+    if (-not [string]::IsNullOrWhiteSpace($existingPersonal)) {
+        $PersonalDir = $existingPersonal
+    }
+    else {
+        $defaultPersonal = Join-Path $env:USERPROFILE "personal"
+        $answer = Read-Host "Host folder to mount at /workspace/personal (skills clone here) [$defaultPersonal]"
+        $PersonalDir = if ([string]::IsNullOrWhiteSpace($answer)) { $defaultPersonal } else { $answer }
+    }
+}
+$existingWork = Get-DotEnvValue $envPath "WORK_DIR"
+if ([string]::IsNullOrWhiteSpace($WorkDir)) {
+    if (-not [string]::IsNullOrWhiteSpace($existingWork)) {
+        $WorkDir = $existingWork
+    }
+    else {
+        $defaultWork = Join-Path $env:USERPROFILE "work"
+        $answer = Read-Host "Host folder to mount at /workspace/work [$defaultWork]"
+        $WorkDir = if ([string]::IsNullOrWhiteSpace($answer)) { $defaultWork } else { $answer }
+    }
+}
+$personalFull = Get-ComposeDir $PersonalDir
+$workFull = Get-ComposeDir $WorkDir
+
+# SKILL_REPOS (optional): space-separated HTTPS git URLs cloned into /workspace/personal by
+# skills-setup. Use the flag if given, else keep any existing value.
+$existingSkillRepos = Get-DotEnvValue $envPath "SKILL_REPOS"
+$skillReposValue = $existingSkillRepos
+if ($SkillRepos -and $SkillRepos.Count -gt 0) {
+    $skillReposValue = ($SkillRepos -join " ")
+}
 
 $existingPassword = Get-DotEnvValue $envPath "TTYD_PASS"
 if ([string]::IsNullOrWhiteSpace($Password)) {
@@ -285,9 +322,14 @@ if ([string]::IsNullOrWhiteSpace($Password)) {
 
 Write-Step "Writing .env"
 Set-DotEnvValue $envPath "WORKSPACE_DIR" $workspaceFull
+Set-DotEnvValue $envPath "PERSONAL_DIR" $personalFull
+Set-DotEnvValue $envPath "WORK_DIR" $workFull
 Set-DotEnvValue $envPath "TTYD_USER" "coder"
 Set-DotEnvValue $envPath "TTYD_PASS" $Password
 Set-DotEnvValue $envPath "TTYD_PORT" ([string]$Port)
+if (-not [string]::IsNullOrWhiteSpace($skillReposValue)) {
+    Set-DotEnvValue $envPath "SKILL_REPOS" $skillReposValue
+}
 
 Wait-ForDocker
 
@@ -308,6 +350,8 @@ Write-Host "Ready."
 Write-Host "Open:     $url"
 Write-Host "User:     coder"
 Write-Host "Password: $Password"
+Write-Host "personal: $personalFull -> /workspace/personal"
+Write-Host "work:     $workFull -> /workspace/work"
 Write-Host ""
 Write-Host "Inside the browser terminal, run:"
 Write-Host "  claude"
