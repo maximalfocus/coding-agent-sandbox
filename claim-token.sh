@@ -11,12 +11,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SVC=claude-sandbox-mitm
-COMPOSE=(docker compose -f docker-compose.mitm.yml)
-
-if ! "${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$SVC"; then
-    echo "The mitm sandbox isn't running. Start it first:"
+# Auto-detect which isolation stack is up: the two-container sidecar variant (egress container) or
+# the single-container mitm variant. Claim runs in whichever holds the vault.
+if docker compose -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -q claude-sandbox-egress; then
+    SVC=claude-sandbox-egress
+    COMPOSE=(docker compose -f docker-compose.sidecar.yml)
+elif docker compose -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -q claude-sandbox-mitm; then
+    SVC=claude-sandbox-mitm
+    COMPOSE=(docker compose -f docker-compose.mitm.yml)
+else
+    echo "No isolation sandbox is running. Start one first:"
     echo "  ANTHROPIC_TOKEN_ISOLATION=true docker compose -f docker-compose.mitm.yml up -d --build"
+    echo "  # or the experimental sidecar: docker compose -f docker-compose.sidecar.yml up -d --build"
     exit 1
 fi
 

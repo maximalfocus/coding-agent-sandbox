@@ -74,8 +74,10 @@ if [ "$(id -u)" = "0" ]; then
         true|1|yes|on)
             secret_dir="$(dirname "$TOKEN_SECRET_PATH")"
             mkdir -p "$secret_dir"
-            chown tinyproxy:tinyproxy "$secret_dir"; chmod 0700 "$secret_dir"
-            [ -f "$TOKEN_SECRET_PATH" ] && { chown tinyproxy:tinyproxy "$TOKEN_SECRET_PATH"; chmod 0600 "$TOKEN_SECRET_PATH"; }
+            # chmod AS the owner (gosu): the container drops CAP_FOWNER, so root can't chmod a
+            # tinyproxy-owned path — but the owner always can (same idiom as the audit-log handling).
+            chown tinyproxy:tinyproxy "$secret_dir"; gosu tinyproxy chmod 0700 "$secret_dir"
+            [ -f "$TOKEN_SECRET_PATH" ] && { chown tinyproxy:tinyproxy "$TOKEN_SECRET_PATH"; gosu tinyproxy chmod 0600 "$TOKEN_SECRET_PATH"; }
             say "Token isolation: ON (vault $TOKEN_SECRET_PATH, agent-unreadable)"
             # Reconcile: if a real login is sitting in the node volume (fresh /login, or first start
             # after enabling this), move it into the vault now and leave a placeholder. No-op once
