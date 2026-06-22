@@ -68,12 +68,14 @@ else
     no "agent could not reach api.anthropic.com through the proxy (got '${code:-none}') — CA/proxy issue"
 fi
 
-# 4. The allowlist still denies a non-allowlisted host (content-mediation intact).
-code=$(aexec "curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://example.com/")
+# 4. The allowlist still denies a non-allowlisted host (content-mediation intact). For HTTPS through
+#    a proxy the refusal is the CONNECT status, so read %{http_connect} — a denied tunnel leaves
+#    %{http_code}=000 even though the proxy returned 403 (matches the repo's mitm self-test).
+code=$(aexec "curl -sS -o /dev/null -w '%{http_connect}' --max-time 20 https://example.com/")
 if [ "$code" = "403" ]; then
-    ok "non-allowlisted host (example.com) denied with 403"
+    ok "non-allowlisted host (example.com) denied at CONNECT (403)"
 else
-    no "example.com not denied as expected (got '${code:-none}')"
+    no "example.com not denied as expected (http_connect='${code:-none}')"
 fi
 
 # 5. The sidecar actually holds the vault directory (sanity on the other side of the boundary).
