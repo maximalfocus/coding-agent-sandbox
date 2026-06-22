@@ -315,11 +315,10 @@ with your `GITHUB_TOKEN`). Set the repos in `.env`, then with the sandbox runnin
 ./skills-setup.sh          # clone (or git pull) each, then symlink their skills; re-run to update
 ```
 
-The clones live in **`~/ws`** inside the sandbox (a persisted volume) — the same path the
-`*-evolve` skills hardcode (`~/ws/cdd-skills`, `~/ws/peerreview-skills`), so self-evolve/commit/push
-works in the sandbox exactly as on the host. They're independent of `WORKSPACE_DIR` (available in
-every project), identical on macOS and Windows (`skills-setup.cmd`). Pushing needs a `GITHUB_TOKEN`
-with write access.
+The clones live in **`/workspace/personal`** inside the sandbox — i.e. your `PERSONAL_DIR` host
+folder (`/workspace/personal/cdd-skills`, `/workspace/personal/peerreview-skills`), so they're
+visible and editable on the host **and** self-evolve/commit/push works in the sandbox. Identical on
+macOS and Windows (`skills-setup.cmd`). Pushing needs a `GITHUB_TOKEN` with write access.
 
 **One evolver across environments.** `peerreview` self-evolves + pushes `peerreview-skills` after
 *every* run; if more than one environment (this sandbox + your host) does that, the clones race on
@@ -357,7 +356,7 @@ Putting the pieces together for the agentic dev workflow, in order:
    machine that should **not** be the evolver (leave it unset on your one primary evolver).
 2. **Start** — `./run.sh` (macOS/Linux) or `start-sandbox.cmd` (Windows).
 3. **Log in** — in the web terminal `claude` → `/login`; then `./codex-login.sh` (Codex device-auth, one-time); and `./gh-login.sh` if you'll push repos with GitHub Actions workflows (one-time, for the `workflow` scope).
-4. **Load skills** — `./skills-setup.sh` (clones your skill repos into `~/ws`, symlinks them; re-run to update).
+4. **Load skills** — `./skills-setup.sh` (clones your skill repos into `/workspace/personal`, symlinks them; re-run to update).
 5. **Use** — restart `claude`, then `/cdd`, `/cdd-plan`, `/peerreview`, …; `*-evolve` commands commit + push to GitHub.
 
 ## Configuration reference (`.env`)
@@ -366,9 +365,9 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 
 | Variable | Default | What it does |
 |---|---|---|
-| `WORKSPACE_DIR` | `./workspace` | Host folder mounted at `/workspace` (the root the sandbox sees/edits). |
-| `PERSONAL_DIR` | — | Optional. Your **personal** project tree, mounted at `/workspace/personal` **and** `/home/node/ws` — lets you work across a whole tree in one session, and makes the sandbox's skills your real host clones (one source). Guarded like `WORKSPACE_DIR`. _(formerly `WS_DIR`, still honored.)_ |
-| `WORK_DIR` | — | Optional. Your **work** / enterprise project tree, mounted at `/workspace/work`. ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. _(formerly `PROJECTS_DIR`, still honored.)_ |
+| `WORKSPACE_DIR` | *(inert umbrella volume)* | Optional host folder for the `/workspace` **root**. Leave blank to make `/workspace` an inert umbrella that just holds the `work` + `personal` mount points below. |
+| `WORK_DIR` | *(isolated volume)* | Your **work** project tree, mounted at `/workspace/work`. Set an absolute host path (e.g. `/Users/you/work`). _(formerly `PROJECTS_DIR`, still honored.)_ |
+| `PERSONAL_DIR` | *(isolated volume)* | Your **personal** project tree, mounted at `/workspace/personal`. This is also where `skills-setup.sh` clones skill repos and symlinks them into the skills dir. Guarded like `WORK_DIR`. ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. _(formerly `WS_DIR`, still honored.)_ |
 | `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
 | `TTYD_PORT` | `7681` | Local port for the browser terminal. |
 | `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |
@@ -376,7 +375,7 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | `ALLOW_OPENAI` | `false` | OpenAI egress (openai.com + chatgpt.com) — needed for Codex / peer-review. |
 | `GITHUB_TOKEN` | — | PAT for git clone/pull/**push** over HTTPS (see *GitHub access*). |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | — | Commit identity used inside the sandbox. |
-| `SKILL_REPOS` | — | Space-separated HTTPS skill-repo URLs that `skills-setup.sh` clones into `~/ws`. |
+| `SKILL_REPOS` | — | Space-separated HTTPS skill-repo URLs that `skills-setup.sh` clones into `/workspace/personal`. |
 | `PEERREVIEW_EVOLVE` | *(unset = evolve)* | Set `off` to make peerreview log-only (skip self-evolve/push) — designate **one** evolver. |
 | `MEM_LIMIT` / `PIDS_LIMIT` | `6g` / `4096` | Container resource ceilings. |
 | `AUDIT_LOG_MAX_BYTES` / `AUDIT_LOG_KEEP` / `AUDIT_ROTATE_INTERVAL` | `20971520` / `5` / `3600` | Egress-log rotation (size, files kept, seconds). |
@@ -532,7 +531,7 @@ macOS / Linux launchers (thin wrappers around `docker compose`)
   watch-egress.sh  alert on / auto-assess refused hosts (--auto, --llm)
   codex-login.sh   Codex device-auth sign-in
   gh-login.sh      GitHub CLI device sign-in (workflow-scope token for pushing .github/workflows)
-  skills-setup.sh  clone your skill repos into the sandbox (~/ws)
+  skills-setup.sh  clone your skill repos into the sandbox (/workspace/personal)
   sync-skills.sh   copy host skills into the sandbox (read-only use)
 
 Windows launchers (parallel .ps1 + .cmd wrappers — same behavior)

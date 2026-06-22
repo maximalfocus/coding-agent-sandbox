@@ -73,7 +73,7 @@ services:
       - "${WORKSPACE_DIR:-claude-workspace}:/workspace"
       - "${WORK_DIR:-claude-work}:/workspace/work"
       # /workspace/personal is also the skills home: skill repos (skills-setup.sh) are cloned at
-      # /workspace/personal/<repo> and symlinked into ~/.claude/skills. There is no ~/ws indirection.
+      # /workspace/personal/<repo> and symlinked into ~/.claude/skills.
       - "${PERSONAL_DIR:-claude-personal}:/workspace/personal"
       # Persists the subscription login + Claude settings across restarts.
       - "claude-config:/home/node/.claude"
