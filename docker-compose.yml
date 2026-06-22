@@ -59,8 +59,14 @@ services:
       AUDIT_LOG_MAX_BYTES: "${AUDIT_LOG_MAX_BYTES:-20971520}"
       AUDIT_LOG_KEEP: "${AUDIT_LOG_KEEP:-5}"
       AUDIT_ROTATE_INTERVAL: "${AUDIT_ROTATE_INTERVAL:-3600}"
-      # (Proxy env, CLAUDE_CONFIG_DIR and telemetry-off are baked into the image so every
-      #  launch — compose, exec, or the claude-safe `docker run` — inherits them.)
+      # Telemetry/feature-flag egress is OFF by default (hardened) — but the same flag also gates
+      # /remote-control (/rc), which is feature-flag-gated. Leave as 1 to keep telemetry off; set
+      # it EMPTY in .env to re-enable that traffic and unlock /rc. The `-1` (no colon) lets an
+      # explicit empty value pass through to disable hardening; unset stays 1.
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC-1}"
+      # (Proxy env and CLAUDE_CONFIG_DIR are baked into the image so every launch — compose, exec,
+      #  or the claude-safe `docker run` — inherits them. The telemetry-off default is baked too,
+      #  so a bare `docker run` stays hardened; the line above lets compose override it from .env.)
     volumes:
       # The host files Claude can see or edit. ENFORCED MAPPING (symmetric two-tree):
       #   /workspace/work     <-> WORK_DIR      (e.g. /Users/you/work)

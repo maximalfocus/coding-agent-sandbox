@@ -112,8 +112,10 @@ it runs, or a prompt-injection in some file or web page) does something you didn
 - Set a strong `TTYD_PASS`; consider an SSH tunnel instead of publishing the port if remote.
 - Keep `EXTRA_ALLOWED_DOMAINS` as small as possible; treat every entry as a capability grant.
   Set `ALLOW_GITHUB=false` to drop GitHub egress for analysis-only or untrusted-workspace runs, and
-  trim `BASE_DOMAINS` in `entrypoint.sh` if you don't need npm. Telemetry egress is already off
-  (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
+  trim `BASE_DOMAINS` in `entrypoint.sh` if you don't need npm. Telemetry egress is off by default
+  (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`); set that var empty in `.env` to re-enable it. That
+  is also required for `/remote-control` (`/rc`), which is feature-flag-gated and so silently stays
+  unavailable while nonessential traffic is disabled.
 - The Claude CLI version is pinned and its **runtime auto-updater is disabled** (`DISABLE_AUTOUPDATER=1`),
   so the binary can't change mid-session. Bump `CLAUDE_CODE_VERSION` and rebuild to update it.
 - Mount `WORKSPACE_DIR` read-only (`:ro` in `docker-compose.yml`) if you only want analysis, not edits.
