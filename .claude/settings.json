@@ -11,16 +11,16 @@
     ],
     "deny": [
       "Edit(**/.env)",
-      "Edit(**/.env.*)",
-      "Write(**/.env)",
-      "Write(**/.env.*)"
+      "Write(**/.env)"
     ]
   },
   "sandbox": {
     "filesystem": {
       "denyWrite": [
-        "**/.env",
-        "**/.env.*"
+        "**/.env"
+      ],
+      "allowRead": [
+        "**/.env.example"
       ]
     }
   }
