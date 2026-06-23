@@ -216,7 +216,10 @@ docker compose exec -u node -w /workspace claude-sandbox claude
 ```
 
 Open as many terminals as you like; they all share one container, one egress policy, one login.
-(On Windows: `./shell.ps1` / `./shell.ps1 -Attach`.)
+(On Windows: `./shell.ps1` / `./shell.ps1 -Attach`. These work whether Docker is Docker Desktop or
+runs inside WSL via [`./setup-wsl.sh`](setup-wsl.sh) — when `docker` isn't on the Windows PATH they
+proxy through `wsl -d <distro> -- docker` automatically; set `$env:SANDBOX_WSL_DISTRO` if the daemon
+isn't in your default distro.)
 
 ### `claude-safe` — run it from anywhere, on the current folder
 

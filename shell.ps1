@@ -1,19 +1,62 @@
 # Open a local terminal INSIDE the running sandbox (Windows PowerShell).
 #   ./shell.ps1            # fresh shell in /workspace
-#   ./shell.ps1 -Attach    # attach to the same tmux session the browser shows
+#   ./shell.ps1 -Attach    # attach to the same tmux session the browser shows (the 2x2 grid)
+#
+# Works whether Docker is Docker Desktop (the `docker` CLI is on the Windows PATH) OR runs inside
+# a WSL2 distro (the ./setup-wsl.sh path, where dockerd lives in Ubuntu and never reaches the
+# Windows PATH). When `docker` isn't on the PATH we transparently proxy through
+# `wsl -d <distro> -- docker`. Set $env:SANDBOX_WSL_DISTRO if the daemon isn't in your default distro.
 param([switch]$Attach)
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
-$running = docker compose ps --status running --format '{{.Name}}' 2>$null
+# Resolve how to reach the Docker CLI and stash it in script-scope vars used by Invoke-Docker:
+#   $DockerExe / $DockerLead = 'docker' / @()                         -> Docker Desktop
+#   $DockerExe / $DockerLead = 'wsl'    / @('-d','Ubuntu','--','docker') -> docker inside WSL
+# Returns $true on success, $false if no working Docker could be found.
+function Resolve-Docker {
+    if (Get-Command docker -ErrorAction SilentlyContinue) {
+        $script:DockerExe = 'docker'; $script:DockerLead = @()
+        return $true
+    }
+    if (Get-Command wsl -ErrorAction SilentlyContinue) {
+        $distro = $env:SANDBOX_WSL_DISTRO
+        # [string[]] keeps this an ARRAY: PowerShell would otherwise unwrap a 1-element @('--')
+        # to the scalar '--', turning the later '+' into string concat ('--docker version ...').
+        [string[]]$pre = if ([string]::IsNullOrWhiteSpace($distro)) { @('--') } else { @('-d', $distro, '--') }
+        # Confirm docker actually answers inside WSL before committing to this path.
+        & wsl @($pre + @('docker', 'version', '--format', '{{.Server.Version}}')) *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $script:DockerExe = 'wsl'; $script:DockerLead = $pre + 'docker'
+            return $true
+        }
+    }
+    return $false
+}
+
+function Invoke-Docker {
+    param([Parameter(ValueFromRemainingArguments = $true)]$DockerArgs)
+    & $script:DockerExe @($script:DockerLead + $DockerArgs)
+}
+
+if (-not (Resolve-Docker)) {
+    Write-Host "Docker not found. Start Docker Desktop, or — if you provisioned Docker inside WSL"
+    Write-Host "(./setup-wsl.sh) — run './shell.sh --attach' from a WSL Ubuntu shell instead."
+    exit 1
+}
+
+# Is the sandbox container up? (Match by the fixed container_name so we don't depend on being
+# invoked from the compose project directory — works the same through Docker Desktop or WSL.)
+$running = Invoke-Docker ps --filter 'name=^claude-sandbox$' --filter 'status=running' --format '{{.Names}}'
 if ([string]::IsNullOrWhiteSpace($running)) {
-    Write-Host "Sandbox isn't running. Start it first:  ./run.ps1"; exit 1
+    Write-Host "Sandbox isn't running. Start it first:  ./run.ps1   (or ./run.sh inside WSL)"
+    exit 1
 }
 
 if ($Attach) {
     # Shared launcher: attaches to the 'claude' session, building the 2x2 grid on first use
     # (same script the browser uses), so you get the same grid here.
-    docker compose exec -u node claude-sandbox sandbox-tmux
+    Invoke-Docker exec -it -u node claude-sandbox sandbox-tmux
 } else {
-    docker compose exec -u node -w /workspace claude-sandbox bash -l
+    Invoke-Docker exec -it -u node -w /workspace claude-sandbox bash -l
 }
