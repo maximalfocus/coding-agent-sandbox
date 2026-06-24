@@ -9,10 +9,10 @@
 # — so the clones are visible/editable on the host and self-evolve/commit/push works in the sandbox.
 # Re-run anytime to `git pull` the latest. Same behaviour on macOS, Linux, and Windows.
 #
-#   ./skills-setup.sh                          # uses SKILL_REPOS from .env
-#   ./skills-setup.sh https://github.com/you/x-skills.git ...   # or pass HTTPS git URLs
+#   ./scripts/skills/skills-setup.sh                          # uses SKILL_REPOS from .env
+#   ./scripts/skills/skills-setup.sh https://github.com/you/x-skills.git ...   # or pass HTTPS git URLs
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 SVC=claude-sandbox
 
 if ! docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -q .; then

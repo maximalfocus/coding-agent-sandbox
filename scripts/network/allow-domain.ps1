@@ -2,13 +2,13 @@
 # Mirror of allow-domain.sh. Effect is immediate but TEMPORARY — for a permanent rule, also add the
 # host to EXTRA_ALLOWED_DOMAINS in .env (it's re-applied on every container (re)start).
 #
-#   ./allow-domain.ps1 pypi.org files.pythonhosted.org
+#   ./scripts/network/allow-domain.ps1 pypi.org files.pythonhosted.org
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Domains)
 $ErrorActionPreference = "Stop"
-Set-Location -Path $PSScriptRoot
+Set-Location -Path (Join-Path $PSScriptRoot '../..')
 
 if (-not $Domains -or $Domains.Count -lt 1) {
-    Write-Host "usage: ./allow-domain.ps1 <domain> [domain ...]"; exit 1
+    Write-Host "usage: ./scripts/network/allow-domain.ps1 <domain> [domain ...]"; exit 1
 }
 $running = docker compose ps --status running --format '{{.Name}}' 2>$null
 if ([string]::IsNullOrWhiteSpace($running)) {

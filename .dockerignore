@@ -8,4 +8,4 @@ run.sh
 run.ps1
 shell.sh
 shell.ps1
-allow-domain.sh
+scripts/

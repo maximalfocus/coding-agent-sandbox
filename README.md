@@ -198,7 +198,7 @@ behind a TLS-inspecting proxy — `./setup-wsl.sh`; see [`docs/wsl-warp.md`](doc
   clone never carries them — but a zip of your working tree would. Clone instead, or strip those first.
 - **Skill repos are per-user.** `SKILL_REPOS` lives only in each person's `.env`. If your skill repos
   are private, colleagues need their own access (or their own forks) — set their `SKILL_REPOS` to repos
-  they can reach, then `./skills-setup.sh`.
+  they can reach, then `./scripts/skills/skills-setup.sh`.
 
 ## Use a local terminal instead of the browser
 
@@ -283,7 +283,7 @@ so add specific registrable domains (`yourco.co.uk`), not the suffix.
 the proxy out), you can hot-reload the allowlist on the running container:
 
 ```bash
-./allow-domain.sh pypi.org files.pythonhosted.org   # immediate, no restart
+./scripts/network/allow-domain.sh pypi.org files.pythonhosted.org   # immediate, no restart
 ```
 
 That edit is **temporary** (lost on the next container (re)start). For a **permanent** rule, put
@@ -322,7 +322,7 @@ firewall) as Claude. Two steps to enable it:
 2. **Sign in with your ChatGPT/OpenAI subscription** (once — it persists in the `coding-agent-sandbox-codex` volume):
 
    ```bash
-   ./codex-login.sh
+   ./scripts/auth/codex-login.sh
    ```
 
    This uses Codex's **device-auth** flow (the right one for a container — no `localhost` callback).
@@ -346,10 +346,10 @@ persists in the `coding-agent-sandbox-gh` volume, and the entrypoint wires git t
 start, preferred over `GITHUB_TOKEN`):
 
 ```bash
-./gh-login.sh
+./scripts/auth/gh-login.sh
 ```
 
-Device flow, same as `codex-login.sh`: it prints a URL + one-time code, you approve in any browser
+Device flow, same as `scripts/auth/codex-login.sh`: it prints a URL + one-time code, you approve in any browser
 (the consent screen includes **workflow**), and you never hit the workflow-scope wall again. The
 entrypoint prints `✅ git authenticated via gh …` on start when the login is present, and warns at
 start if a `GITHUB_TOKEN` fallback lacks `workflow`.
@@ -359,20 +359,20 @@ start if a `GITHUB_TOKEN` fallback lacks `workflow`.
 Claude in the sandbox reads skills from `/home/node/.claude/skills` (a persisted volume), which
 starts empty. There are two ways to populate it — pick by whether you want to *evolve* the skills:
 
-**Clone — recommended for skill repos you develop/evolve (`skills-setup.sh`).** Clones your skill
+**Clone — recommended for skill repos you develop/evolve (`scripts/skills/skills-setup.sh`).** Clones your skill
 repos into the sandbox as live git working copies and symlinks them into the skills dir, so the
 commands work **and** their `*-evolve` variants can `git commit` + `git push` to GitHub (over HTTPS
 with your `GITHUB_TOKEN`). Set the repos in `.env`, then with the sandbox running:
 
 ```bash
 # .env:  SKILL_REPOS=https://github.com/you/cdd-skills.git https://github.com/you/peerreview-skills.git
-./skills-setup.sh          # clone (or git pull) each, then symlink their skills; re-run to update
+./scripts/skills/skills-setup.sh          # clone (or git pull) each, then symlink their skills; re-run to update
 ```
 
 The clones live in **`/workspace/personal`** inside the sandbox — i.e. your `PERSONAL_DIR` host
 folder (`/workspace/personal/cdd-skills`, `/workspace/personal/peerreview-skills`), so they're
 visible and editable on the host **and** self-evolve/commit/push works in the sandbox. Identical on
-macOS and Windows (`skills-setup.cmd`). Pushing needs a `GITHUB_TOKEN` with write access.
+macOS and Windows (`scripts/skills/skills-setup.cmd`). Pushing needs a `GITHUB_TOKEN` with write access.
 
 **One evolver across environments.** `peerreview` self-evolves + pushes `peerreview-skills` after
 *every* run; if more than one environment (this sandbox + your host) does that, the clones race on
@@ -380,15 +380,15 @@ git. Pick ONE evolver and set `PEERREVIEW_EVOLVE=off` in `.env` on the others (t
 push). `cdd-evolve` and the updated `peerreview` also `git pull --rebase` before pushing and
 union-merge their append-only `evolution/` logs, so an accidental dual-push self-heals.
 
-**Copy — for read-only use of skills you won't change (`sync-skills.sh`).** Copies skill *content*
+**Copy — for read-only use of skills you won't change (`scripts/skills/sync-skills.sh`).** Copies skill *content*
 (no `.git`) from your host `~/.claude/skills` + matching `~/.claude/commands/*.md` into the volume:
 
 ```bash
-./sync-skills.sh                      # default: cdd* and peerreview/peer-review*
+./scripts/skills/sync-skills.sh                      # default: cdd* and peerreview/peer-review*
 ```
 
 Either way, restart `claude` inside the sandbox to load the skills. (Skills that call `codex` — like
-peer-review — need `ALLOW_OPENAI=true` and a one-time `./codex-login.sh`.)
+peer-review — need `ALLOW_OPENAI=true` and a one-time `./scripts/auth/codex-login.sh`.)
 
 ### UI acceptance tests & cdd tooling (bundled)
 
@@ -409,8 +409,8 @@ Putting the pieces together for the agentic dev workflow, in order:
    `SKILL_REPOS=<your cdd-skills + peerreview-skills HTTPS URLs>`, and `PEERREVIEW_EVOLVE=off` on every
    machine that should **not** be the evolver (leave it unset on your one primary evolver).
 2. **Start** — `./run.sh` (macOS/Linux) or `start-sandbox.cmd` (Windows).
-3. **Log in** — in the web terminal `claude` → `/login`; then `./codex-login.sh` (Codex device-auth, one-time); and `./gh-login.sh` if you'll push repos with GitHub Actions workflows (one-time, for the `workflow` scope).
-4. **Load skills** — `./skills-setup.sh` (clones your skill repos into `/workspace/personal`, symlinks them; re-run to update).
+3. **Log in** — in the web terminal `claude` → `/login`; then `./scripts/auth/codex-login.sh` (Codex device-auth, one-time); and `./scripts/auth/gh-login.sh` if you'll push repos with GitHub Actions workflows (one-time, for the `workflow` scope).
+4. **Load skills** — `./scripts/skills/skills-setup.sh` (clones your skill repos into `/workspace/personal`, symlinks them; re-run to update).
 5. **Use** — restart `claude`, then `/cdd`, `/cdd-plan`, `/peerreview`, …; `*-evolve` commands commit + push to GitHub.
 
 ## Configuration reference (`.env`)
@@ -421,7 +421,7 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 |---|---|---|
 | `WORKSPACE_DIR` | *(inert umbrella volume)* | Optional host folder for the `/workspace` **root**. Leave blank to make `/workspace` an inert umbrella that just holds the `work` + `personal` mount points below. |
 | `WORK_DIR` | *(isolated volume)* | Your **work** project tree, mounted at `/workspace/work`. Set an absolute host path (e.g. `/Users/you/work`). _(formerly `PROJECTS_DIR`, still honored.)_ |
-| `PERSONAL_DIR` | *(isolated volume)* | Your **personal** project tree, mounted at `/workspace/personal`. This is also where `skills-setup.sh` clones skill repos and symlinks them into the skills dir. Guarded like `WORK_DIR`. ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. _(formerly `WS_DIR`, still honored.)_ |
+| `PERSONAL_DIR` | *(isolated volume)* | Your **personal** project tree, mounted at `/workspace/personal`. This is also where `scripts/skills/skills-setup.sh` clones skill repos and symlinks them into the skills dir. Guarded like `WORK_DIR`. ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. _(formerly `WS_DIR`, still honored.)_ |
 | `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
 | `TTYD_PORT` | `7681` | Local port for the browser terminal. |
 | `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |
@@ -429,7 +429,7 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | `ALLOW_OPENAI` | `false` | OpenAI egress (openai.com + chatgpt.com) — needed for Codex / peer-review. |
 | `GITHUB_TOKEN` | — | PAT for git clone/pull/**push** over HTTPS (see *GitHub access*). |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | — | Commit identity used inside the sandbox. |
-| `SKILL_REPOS` | — | Space-separated HTTPS skill-repo URLs that `skills-setup.sh` clones into `/workspace/personal`. |
+| `SKILL_REPOS` | — | Space-separated HTTPS skill-repo URLs that `scripts/skills/skills-setup.sh` clones into `/workspace/personal`. |
 | `PEERREVIEW_EVOLVE` | *(unset = evolve)* | Set `off` to make peerreview log-only (skip self-evolve/push) — designate **one** evolver. |
 | `MEM_LIMIT` / `PIDS_LIMIT` | `6g` / `4096` | Container resource ceilings. |
 | `AUDIT_LOG_MAX_BYTES` / `AUDIT_LOG_KEEP` / `AUDIT_ROTATE_INTERVAL` | `20971520` / `5` / `3600` | Egress-log rotation (size, files kept, seconds). |
@@ -560,49 +560,61 @@ See `SECURITY.md` for the threat model and its limits.
 
 ## Repo layout
 
-The sandbox itself is the **shared core** — that's where all the logic and the security model live, and
-it runs *inside the Linux container, identically on every OS*. Everything else is a thin per-OS
-launcher or docs. The macOS/Linux and Windows scripts are **1:1 parallel pairs** (`run.sh` ↔ `run.ps1`)
-and are meant to behave the same — change one and you almost always change its twin.
+A one-glance map. Three things live here: the **container build** (the shared core — all the logic
+and the security model, running *inside the Linux container, identically on every OS*), the
+**entrypoints you type** (in the repo root), and **grouped helper scripts** under `scripts/`. The
+macOS/Linux and Windows scripts are **1:1 parallel pairs** (`run.sh` ↔ `run.ps1`) and are meant to
+behave the same — change one and you almost always change its twin.
 
 ```
-Shared core — the sandbox (runs in the container; same on macOS, Linux, Windows)
-  Dockerfile, Dockerfile.mitm      image build (default + content-mediation variant)
-  docker-compose.yml, *.mitm.yml   services, named volumes, capabilities, resource limits
-  entrypoint.sh                    build allowlist → start proxy → install firewall → drop to
-                                   node → launch the ttyd/tmux web terminal (2x2 grid, mouse on)
-  init-firewall.sh                 fail-closed iptables egress rules
-  tinyproxy.conf                   hostname-filtering proxy config
-  mitm/                            TLS-intercepting proxy addon (opt-in mitm variant)
-
-macOS / Linux launchers (thin wrappers around `docker compose`)
-  setup.sh         first run: create .env → build → scan → start
-  run.sh           build → scan → start
-  shell.sh         exec a shell / attach the tmux session
-  scan.sh          Trivy image scan (advisory; TRIVY_STRICT=1 to gate)
-  audit.sh         read the egress audit trail (--refused, --dump, --mitm)
-  allow-domain.sh  hot-add host(s) to the running allowlist
-  watch-egress.sh  alert on / auto-assess refused hosts (--auto, --llm)
-  codex-login.sh   Codex device-auth sign-in
-  gh-login.sh      GitHub CLI device sign-in (workflow-scope token for pushing .github/workflows)
-  skills-setup.sh  clone your skill repos into the sandbox (/workspace/personal)
-  sync-skills.sh   copy host skills into the sandbox (read-only use)
-
-Windows launchers (parallel .ps1 + .cmd wrappers — same behavior)
-  setup-windows.ps1 / .cmd   first run (WSL2 + Docker + Git + .env + start)
-  start-sandbox.cmd          start (calls run.ps1)
-  run.ps1 · shell.ps1 · scan.ps1 · allow-domain.ps1 · watch-egress.ps1
-  codex-login.ps1 / .cmd · skills-setup.ps1 / .cmd
-
-Config & docs
-  .env.example      every knob, with defaults (copy to .env)
-  .gitattributes    forces LF on container scripts so a Windows `git clone` can't break the build
-  README.md · SECURITY.md · CONTRIBUTING.md · docs/
+coding-agent-sandbox/
+│
+├─ Container build — the shared core (runs in the container; same on every OS)
+│   Dockerfile, Dockerfile.mitm      image build (default + content-mediation variant)
+│   docker-compose.yml, *.mitm.yml,  services, named volumes, capabilities, resource limits
+│     *.sidecar.yml                  (sidecar.yml = experimental token-isolation variant)
+│   entrypoint.sh                    build allowlist → start proxy → install firewall → drop to
+│                                    node → launch the ttyd/tmux web terminal (2x2 grid, mouse on)
+│   init-firewall.sh                 fail-closed iptables egress rules
+│   tinyproxy.conf                   hostname-filtering proxy config
+│   tmux-grid.sh                     the in-container 2x2 tmux layout
+│   mitm/                            TLS-intercepting proxy addon (opt-in mitm variant)
+│   certs/                           extra root CAs (corporate TLS-inspecting proxies)
+│
+├─ Entrypoints — the commands you actually type (kept in root on purpose)
+│   setup.sh / setup-windows.ps1·.cmd / setup-wsl.sh   first run: .env → build → scan → start
+│   run.sh   · run.ps1                                 build → scan → start
+│   shell.sh · shell.ps1                               exec a shell / attach the tmux session
+│   scan.sh  · scan.ps1                                Trivy image scan (TRIVY_STRICT=1 to gate)
+│   audit.sh                                           read the egress audit trail
+│   uninstall.sh · uninstall.cmd · uninstall-windows.ps1   remove containers/volumes/images
+│   start-sandbox.cmd                                  Windows: start (calls run.ps1)
+│
+├─ scripts/                  grouped helpers (each is a thin `docker compose exec` wrapper)
+│   ├─ auth/                 sign-ins
+│   │    gh-login.*          GitHub CLI device sign-in (workflow-scope token for pushing workflows)
+│   │    codex-login.*       Codex device-auth sign-in
+│   │    claim-token.*       move the Anthropic OAuth token into the tinyproxy vault (mitm/sidecar)
+│   ├─ network/              egress allowlist management
+│   │    allow-domain.*      hot-add host(s) to the running allowlist
+│   │    watch-egress.*      alert on / auto-assess refused hosts (--auto, --llm)
+│   └─ skills/               bring your skills into the sandbox
+│        skills-setup.*      clone your skill repos into /workspace/personal (live, evolvable)
+│        sync-skills.sh      copy host skills in (read-only use)
+│
+└─ Config & docs
+    .env.example      every knob, with defaults (copy to .env)
+    .gitattributes    forces LF on container scripts so a Windows `git clone` can't break the build
+    README.md · SECURITY.md · CONTRIBUTING.md · docs/  (docs/architecture/ = diagrams)
 ```
 
-Rule of thumb: **logic belongs in the shared core; a launcher only translates a `docker compose`
-invocation for its OS.** This is why the project isn't split into separate Windows/macOS trees —
-keeping the pairs side by side is what keeps them from drifting.
+`.*` = the cross-platform set (`.sh` for macOS/Linux, `.ps1`/`.cmd` for Windows). Helpers run from
+the repo root — e.g. `./scripts/network/allow-domain.sh pypi.org` — and self-locate, so they work
+regardless of where you invoke them.
+
+Rule of thumb: **logic belongs in the container build / shared core; a launcher only translates a
+`docker compose` invocation for its OS.** This is why the project isn't split into separate
+Windows/macOS trees — keeping the pairs side by side is what keeps them from drifting.
 
 ## Contributing
 

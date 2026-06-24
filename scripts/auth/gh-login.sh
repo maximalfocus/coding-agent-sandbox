@@ -11,12 +11,12 @@
 # the workflow-scope wall again.
 #
 # Uses the DEVICE flow (a URL + short code you authorize in any browser) — the same headless-
-# friendly pattern as ./codex-login.sh, no localhost callback. When prompted choose
+# friendly pattern as ./scripts/auth/codex-login.sh, no localhost callback. When prompted choose
 # "Login with a web browser".
 #
-#   ./gh-login.sh
+#   ./scripts/auth/gh-login.sh
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
 SVC=claude-sandbox
 

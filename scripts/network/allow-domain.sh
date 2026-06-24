@@ -3,11 +3,11 @@
 # Effect is immediate but TEMPORARY — for a permanent rule, also add it to
 # EXTRA_ALLOWED_DOMAINS in .env (it's re-applied on every container (re)start).
 #
-#   ./allow-domain.sh pypi.org files.pythonhosted.org
+#   ./scripts/network/allow-domain.sh pypi.org files.pythonhosted.org
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
-[ "$#" -ge 1 ] || { echo "usage: ./allow-domain.sh <domain> [domain ...]"; exit 1; }
+[ "$#" -ge 1 ] || { echo "usage: ./scripts/network/allow-domain.sh <domain> [domain ...]"; exit 1; }
 if ! docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -q .; then
     echo "Sandbox isn't running. Start it first:  ./run.sh"; exit 1
 fi

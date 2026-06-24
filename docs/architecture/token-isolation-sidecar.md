@@ -97,7 +97,7 @@ docker compose -f docker-compose.sidecar.yml up -d --build
 
 # 2. Log in from the AGENT container, then claim the token into the sidecar vault.
 docker compose -f docker-compose.sidecar.yml exec -u node claude-sandbox-node claude   # /login
-./claim-token.sh                                                                        # auto-detects sidecar
+./scripts/auth/claim-token.sh                                                                        # auto-detects sidecar
 
 # 3. CONFIRM the guarantees:
 #  a) Claude still works (injection path): run a prompt in the agent container — it should reach the API.

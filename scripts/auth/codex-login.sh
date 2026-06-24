@@ -7,9 +7,9 @@
 # proxy) to finish. No localhost:1455 loopback callback — that flow is unreliable through Docker.
 # The login is saved in the persisted claude-codex volume, so you only do this once.
 #
-#   ./codex-login.sh
+#   ./scripts/auth/codex-login.sh
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
 SVC=claude-sandbox
 

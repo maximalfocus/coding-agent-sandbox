@@ -14,7 +14,7 @@ init-firewall.sh text eol=lf
 Dockerfile       text eol=lf
 Dockerfile.*     text eol=lf
 
-# PowerShell: LF keeps the embedded `sh -c` here-strings (skills-setup.ps1) clean; pwsh tolerates LF.
+# PowerShell: LF keeps the embedded `sh -c` here-strings (scripts/skills/skills-setup.ps1) clean; pwsh tolerates LF.
 *.ps1 text eol=lf
 
 # Windows batch wrappers: cmd.exe is happiest with CRLF.

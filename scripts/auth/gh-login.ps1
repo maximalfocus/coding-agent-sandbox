@@ -4,7 +4,7 @@
 # `workflow`. Device flow (URL + code in any browser); saved in the persisted gh-config volume so
 # you only do this once, and the entrypoint wires git to use it on every start.
 $ErrorActionPreference = "Stop"
-Set-Location -Path $PSScriptRoot
+Set-Location -Path (Join-Path $PSScriptRoot '../..')
 
 $svc = "claude-sandbox"
 

@@ -8,7 +8,7 @@
 # Windows PATH). When `docker` isn't on the PATH we transparently proxy through
 # `wsl -d <distro> -- docker`. Set $env:SANDBOX_WSL_DISTRO if the daemon isn't in your default distro.
 $ErrorActionPreference = "Stop"
-Set-Location -Path $PSScriptRoot
+Set-Location -Path (Join-Path $PSScriptRoot '../..')
 
 # Resolve how to reach the Docker CLI and stash it in script-scope vars used by Invoke-Docker:
 #   $DockerExe / $DockerLead = 'docker' / @()                         -> Docker Desktop
@@ -41,7 +41,7 @@ function Invoke-Docker {
 
 if (-not (Resolve-Docker)) {
     Write-Host "Docker not found. Start Docker Desktop, or — if you provisioned Docker inside WSL"
-    Write-Host "(./setup-wsl.sh) — run './codex-login.sh' from a WSL Ubuntu shell instead."
+    Write-Host "(./setup-wsl.sh) — run './scripts/auth/codex-login.sh' from a WSL Ubuntu shell instead."
     exit 1
 }
 

@@ -42,8 +42,8 @@ services:
       ANTHROPIC_SINGLE_CRED: "${ANTHROPIC_SINGLE_CRED:-true}"
       ANTHROPIC_PIN_TOKEN: "${ANTHROPIC_PIN_TOKEN:-}"
       # Subscription-token isolation (opt-in): move the real OAuth login into a tinyproxy-only vault
-      # and inject it per-request, so the agent never holds a usable token. Run ./claim-token.sh
-      # (or ./claim-token.ps1) once after `/login` — or just restart; the entrypoint reconciles.
+      # and inject it per-request, so the agent never holds a usable token. Run ./scripts/auth/claim-token.sh
+      # (or ./scripts/auth/claim-token.ps1) once after `/login` — or just restart; the entrypoint reconciles.
       ANTHROPIC_TOKEN_ISOLATION: "${ANTHROPIC_TOKEN_ISOLATION:-false}"
     volumes:
       - "${WORKSPACE_DIR:-./workspace}:/workspace"

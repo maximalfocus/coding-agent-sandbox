@@ -151,10 +151,10 @@ if [ "$(id -u)" = "0" ]; then
     chown -R node:node /home/node/.codex 2>/dev/null || true
     # GitHub CLI login persists here (~/.config/gh/hosts.yml), like Codex's above. A fresh
     # claude-gh volume mounts root-owned, so without this chown `gh auth login` (run as node by
-    # ./gh-login.sh) fails to write hosts.yml with "permission denied".
+    # ./scripts/auth/gh-login.sh) fails to write hosts.yml with "permission denied".
     mkdir -p /home/node/.config/gh
     chown -R node:node /home/node/.config 2>/dev/null || true
-    # Skill repos (skills-setup.sh) are cloned into /workspace/personal — a bind mount of your real
+    # Skill repos (scripts/skills/skills-setup.sh) are cloned into /workspace/personal — a bind mount of your real
     # host folder, owned by the host user and writable via the file-sharing layer; nothing to chown.
 
     # Audit log handling (stays local — this is the persisted egress trail in the claude-audit
@@ -195,11 +195,11 @@ cd /workspace 2>/dev/null || cd "$HOME"
 
 # GitHub auth over HTTPS. SSH (port 22) is blocked by the firewall, so GitHub works via HTTPS.
 # Two credential sources, with gh PREFERRED because only gh can push workflow files:
-#   - gh login (./gh-login.sh, persisted in ~/.config/gh): its token carries the `workflow` scope,
+#   - gh login (./scripts/auth/gh-login.sh, persisted in ~/.config/gh): its token carries the `workflow` scope,
 #     so `git push` of .github/workflows/* works. `gh auth setup-git` points git at it.
 #   - GITHUB_TOKEN (.env PAT): fallback. Pushes everything EXCEPT workflow files unless the PAT
 #     itself has `workflow` — and a classic PAT's scopes are fixed at creation, so that can't be
-#     fixed from inside the sandbox (run ./gh-login.sh instead). We warn at startup if it lacks it.
+#     fixed from inside the sandbox (run ./scripts/auth/gh-login.sh instead). We warn at startup if it lacks it.
 # Either way, rewrite SSH github remotes to HTTPS so existing repos just work. Needs ALLOW_GITHUB.
 _set_git_identity() {
     git config --global --replace-all url."https://github.com/".insteadOf "git@github.com:"
@@ -239,7 +239,7 @@ elif [ -n "${GITHUB_TOKEN:-}" ]; then
         if [ -n "${_scopes}" ] && ! printf '%s' "${_scopes}" | grep -qw workflow; then
             echo "⚠️  GITHUB_TOKEN lacks the 'workflow' scope (have: ${_scopes})." >&2
             echo "    Pushes to .github/workflows/* WILL be rejected by GitHub. CDD impl repos ship" >&2
-            echo "    CI workflows — run ./gh-login.sh once for a permanent workflow-scoped login," >&2
+            echo "    CI workflows — run ./scripts/auth/gh-login.sh once for a permanent workflow-scoped login," >&2
             echo "    or regenerate the PAT with the 'workflow' scope added." >&2
         fi
     fi
