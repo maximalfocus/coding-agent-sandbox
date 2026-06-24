@@ -58,6 +58,11 @@ It does the first-run work for you:
 
 After setup, start it again any time with `./run.sh`.
 
+> Setting up by hand, or `setup.sh` isn't an option? See
+> **[docs/MANUAL_SETUP.md](docs/MANUAL_SETUP.md)** — a single linear runbook covering
+> the Docker-context gotcha, both login paths (interactive and rebuild-proof headless
+> token), verification commands, and troubleshooting.
+
 ## Easiest Windows setup
 
 On a new Windows machine, copy or extract this folder onto the machine. No Git setup is needed

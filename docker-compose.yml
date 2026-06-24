@@ -39,6 +39,9 @@ services:
       # Browser terminal layout: 2x2 (default, four tiled panes) or 1 (single pane).
       TTYD_GRID: "${TTYD_GRID:-2x2}"
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      # Headless Claude login: a long-lived token from `claude setup-token`, kept in .env.
+      # Present -> the web terminal's claude is already authenticated (no /login needed).
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
       # GitHub egress is a capability grant (read payloads in / push data out). On by default;
       # set ALLOW_GITHUB=false in .env for analysis-only or untrusted-workspace runs.
       ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
