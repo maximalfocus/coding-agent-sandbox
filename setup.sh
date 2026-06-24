@@ -44,20 +44,48 @@ if ! command -v docker >/dev/null 2>&1; then
         say "Install Docker Engine (https://docs.docker.com/engine/install/), then re-run ./setup.sh"; exit 1
     fi
 fi
+# Is *some* engine reachable right now? A machine can have several docker contexts (orbstack,
+# desktop-linux, colima, default/var-run) from past installs, and the ACTIVE one may point at a
+# dead socket while another answers fine. So don't just trust the active context: if it fails,
+# probe the others and switch to the first that responds. Returns 0 once `docker info` succeeds.
+docker_up() {
+    command -v docker >/dev/null 2>&1 || return 1
+    docker info >/dev/null 2>&1 && return 0
+    # Active context is dead — try every other known context before giving up.
+    local ctx
+    for ctx in $(docker context ls --format '{{.Name}}' 2>/dev/null); do
+        if docker --context "$ctx" info >/dev/null 2>&1; then
+            docker context use "$ctx" >/dev/null 2>&1 || true
+            say "Switched docker context to '$ctx' (the active one wasn't responding)."
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Make sure the engine is actually up. On a fresh OrbStack install the daemon (and its `docker`
 # CLI shim) aren't running yet, so launch it and wait rather than bailing on the first try.
-if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+if ! docker_up; then
     say "Starting the Docker engine (waiting up to ~2 min)..."
     open -a OrbStack 2>/dev/null || open -a Docker 2>/dev/null || true
     for _ in $(seq 1 60); do
         hash -r 2>/dev/null || true
-        if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then break; fi
+        if docker_up; then break; fi
         sleep 2
     done
-    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-        say "Docker still isn't running. Launch OrbStack / Docker Desktop, then re-run ./setup.sh"
-        say "(If OrbStack reports 'virtualization not available' on newer Apple Silicon, use Colima instead:"
-        say "   brew install colima && colima start --vm-type qemu  — then re-run ./setup.sh.)"
+    if ! docker_up; then
+        say "Docker still isn't running."
+        if [ -d "/Applications/OrbStack.app" ]; then
+            # Almost always a fresh-install first-run: OrbStack's initial launch shows a setup /
+            # permissions dialog that an unattended `open -a` can't click through, so the daemon
+            # never comes up within the wait window.
+            say "Open OrbStack from Spotlight/Finder and complete its one-time first-run setup"
+            say "(approve the permission prompts), wait for its menu-bar icon to settle, then re-run ./setup.sh."
+            say "(If OrbStack reports 'virtualization not available' on newer Apple Silicon, use Colima instead:"
+            say "   brew install colima && colima start --vm-type qemu  — then re-run ./setup.sh.)"
+        else
+            say "Launch OrbStack / Docker Desktop, then re-run ./setup.sh"
+        fi
         exit 1
     fi
     say "Docker engine is up."
