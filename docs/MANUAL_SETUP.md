@@ -99,10 +99,12 @@ logging in again. For rebuild-proof login, use Path B.
    **Copy it now — it is shown only once.**
 
 2. Put that token in `.env` (this repo's `docker-compose.yml` already passes
-   `CLAUDE_CODE_OAUTH_TOKEN` through to the container):
+   `CLAUDE_CODE_OAUTH_TOKEN` through to the container). From the repo root, replace
+   the placeholder with the token you just copied:
+   ```bash
+   printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' 'PASTE_YOUR_TOKEN_HERE' >> .env
    ```
-   CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...your-token...
-   ```
+   Or just open `.env` in an editor and add the line `CLAUDE_CODE_OAUTH_TOKEN=<your-token>`.
 
 3. Recreate the container so it picks up the new env:
    ```bash
