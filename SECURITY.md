@@ -82,7 +82,7 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   agent's copy is replaced with a far-future **placeholder** so the CLI stays "logged in" but holds
   nothing usable, and the mitm proxy injects the real bearer into each `api.anthropic.com` request
   and **owns the OAuth refresh itself** (the agent never sees the refresh token). Run
-  `./claim-token.sh` / `.\claim-token.ps1` once after `/login`, or just restart — the entrypoint
+  `./scripts/auth/claim-token.sh` / `.\scripts\auth\claim-token.ps1` once after `/login`, or just restart — the entrypoint
   reconciles automatically. **What it buys:** the agent can no longer exfiltrate a *usable* token to
   reuse elsewhere or after the session; the residual risk shrinks to in-session API use you already
   authorized (it still spends your subscription while running, by design). **Boundary:** this is a

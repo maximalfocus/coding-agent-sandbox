@@ -54,7 +54,7 @@ ARG CLAUDE_CODE_VERSION=2.1.158
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
 # Codex CLI (OpenAI) for cross-vendor peer review, pinned at BUILD time. Authenticated separately
-# with your ChatGPT/OpenAI subscription via ./codex-login.sh; egress is gated by ALLOW_OPENAI.
+# with your ChatGPT/OpenAI subscription via ./scripts/auth/codex-login.sh; egress is gated by ALLOW_OPENAI.
 ARG CODEX_VERSION=0.140.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 
@@ -62,7 +62,7 @@ RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 # `repo`/Contents PAT (GITHUB_TOKEN) cannot create/update `.github/workflows/*`: GitHub rejects it
 # without the `workflow` scope, and a classic PAT's scopes are immutable after creation, so it
 # can't be fixed from inside the sandbox. `gh auth login`'s token DOES carry `workflow`, so authing
-# once via ./gh-login.sh (device flow, persisted in the gh-config volume) makes such pushes just
+# once via ./scripts/auth/gh-login.sh (device flow, persisted in the gh-config volume) makes such pushes just
 # work, every session — the entrypoint runs `gh auth setup-git` when that login is present so git
 # uses gh's token for github.com. Installed from the official gh apt repo (arch-correct).
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

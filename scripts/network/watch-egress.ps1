@@ -1,10 +1,10 @@
 # Watch the sandbox's egress audit trail and ALERT the moment a NEW host is refused (403/filtered).
 # Mirror of watch-egress.sh. For each new blocked host: a Windows toast + a console beep.
 #
-#   ./watch-egress.ps1              # interactive: notify + prompt allow/skip per host
-#   ./watch-egress.ps1 -NotifyOnly  # only alert (toast + beep), never act
-#   ./watch-egress.ps1 -Auto        # AUTO-ASSESS: classify by risk and act automatically
-#   ./watch-egress.ps1 -Auto -Llm   # same, but route gray-zone hosts to headless `claude -p /assess`
+#   ./scripts/network/watch-egress.ps1              # interactive: notify + prompt allow/skip per host
+#   ./scripts/network/watch-egress.ps1 -NotifyOnly  # only alert (toast + beep), never act
+#   ./scripts/network/watch-egress.ps1 -Auto        # AUTO-ASSESS: classify by risk and act automatically
+#   ./scripts/network/watch-egress.ps1 -Auto -Llm   # same, but route gray-zone hosts to headless `claude -p /assess`
 #
 # -Auto tiers (mirrors the /assess skill):
 #   ALLOW  : known-safe first-party read-only / cloud APIs -> allow-domain.ps1 + persist + notify
@@ -15,7 +15,7 @@
 # Allowing is IMMEDIATE; -Auto also persists to EXTRA_ALLOWED_DOMAINS in .env. Ctrl-C to stop.
 param([switch]$NotifyOnly, [switch]$Auto, [switch]$Llm)
 $ErrorActionPreference = "Stop"
-Set-Location -Path $PSScriptRoot
+Set-Location -Path (Join-Path $PSScriptRoot '../..')
 
 $SVC = "claude-sandbox"
 $LOG = "/var/log/tinyproxy/tinyproxy.log"
@@ -110,7 +110,7 @@ docker compose exec -T $SVC tail -F -n0 $LOG 2>$null | ForEach-Object {
                         claude -p "/assess $h" *> $null
                         Write-Host "       /assess finished for $h (see audit.sh / .env)"
                     } else {
-                        Write-Host "       NEEDS REVIEW $h - run: /assess $h  (or ./allow-domain.ps1 $h)"
+                        Write-Host "       NEEDS REVIEW $h - run: /assess $h  (or ./scripts/network/allow-domain.ps1 $h)"
                         Show-Alert "Sandbox: needs your review" "$h - not auto-classified. Run /assess."
                     }
                 }

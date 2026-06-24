@@ -6,9 +6,9 @@
 # Safe to re-run: a no-op once the placeholder is in place, and the mitm entrypoint also does this
 # automatically on every container start (so a restart works too).
 #
-#   .\claim-token.ps1
+#   .\scripts\auth\claim-token.ps1
 $ErrorActionPreference = "Stop"
-Set-Location -Path $PSScriptRoot
+Set-Location -Path (Join-Path $PSScriptRoot '../..')
 
 # Auto-detect which isolation stack is up: the two-container sidecar variant or the single-container
 # mitm variant. Claim runs in whichever holds the vault.

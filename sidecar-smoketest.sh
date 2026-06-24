@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Automated smoke test for the experimental sidecar token-isolation variant
 # (docs/architecture/token-isolation-sidecar.md). Runs the STRUCTURAL guarantees that don't need a
-# live login, and — if you've already done /login + ./claim-token.sh — the placeholder check too.
+# live login, and — if you've already done /login + ./scripts/auth/claim-token.sh — the placeholder check too.
 #
 #   ./sidecar-smoketest.sh                 # assumes the stack is already up
 #   ./sidecar-smoketest.sh --up            # bring the stack up (build) first, then test
@@ -88,11 +88,11 @@ fi
 echo "Login-dependent checks:"
 creds=$(aexec 'cat /home/node/.claude/.credentials.json' || true)
 if [ -z "$creds" ]; then
-    note "no login yet — run 'claude' + /login in the agent, then ./claim-token.sh, then re-run"
+    note "no login yet — run 'claude' + /login in the agent, then ./scripts/auth/claim-token.sh, then re-run"
 elif printf '%s' "$creds" | grep -q "\"accessToken\"[[:space:]]*:[[:space:]]*\"$PLACEHOLDER\""; then
     ok "agent config holds ONLY the placeholder token (claim succeeded; real token is in the vault)"
 else
-    note "a real token is still in the agent config — run ./claim-token.sh to move it into the vault"
+    note "a real token is still in the agent config — run ./scripts/auth/claim-token.sh to move it into the vault"
 fi
 
 echo

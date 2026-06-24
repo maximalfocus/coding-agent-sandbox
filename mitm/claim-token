@@ -4,7 +4,7 @@ tinyproxy-only credential vault, leaving a harmless far-future placeholder in it
 
 Run as root (it must chown files to two different users). Invoked two ways:
   - automatically by mitm/entrypoint.sh on every start (reconciles a fresh /login), and
-  - on demand via ./claim-token.sh (host wrapper) right after you log in.
+  - on demand via ./scripts/auth/claim-token.sh (host wrapper) right after you log in.
 
 Idempotent: a no-op if there's no login yet, or if the placeholder is already installed. The real
 access/refresh tokens only ever live in the vault (mode 0600, owned by tinyproxy); the agent's copy

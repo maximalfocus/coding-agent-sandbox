@@ -7,9 +7,9 @@
 # Safe to re-run: it's a no-op once the placeholder is in place, and the mitm entrypoint already
 # does this automatically on every container start (so a restart works too).
 #
-#   ./claim-token.sh
+#   ./scripts/auth/claim-token.sh
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
 # Auto-detect which isolation stack is up: the two-container sidecar variant (egress container) or
 # the single-container mitm variant. Claim runs in whichever holds the vault.

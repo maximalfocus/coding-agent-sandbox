@@ -4,13 +4,13 @@
 # the whole source repo of each matched skill is pulled in (so sibling/approach skills come too).
 # Re-run after you change a skill on the host. Skills persist in the claude-config volume.
 #
-#   ./sync-skills.sh                      # default: cdd* and peerreview/peer-review*
-#   ./sync-skills.sh cdd peerreview note  # name prefixes to include
+#   ./scripts/skills/sync-skills.sh                      # default: cdd* and peerreview/peer-review*
+#   ./scripts/skills/sync-skills.sh cdd peerreview note  # name prefixes to include
 #
 # Reads from ~/.claude/skills and ~/.claude/commands (override with CLAUDE_SKILLS_DIR /
 # CLAUDE_COMMANDS_DIR). bash 3.2-compatible (default macOS bash).
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
 SVC=claude-sandbox
 HOST_SKILLS="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"

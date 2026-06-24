@@ -16,7 +16,7 @@ services:
       - SETGID        # ditto (setgroups/setgid on privilege drop)
       - CHOWN         # entrypoint owns the config volume for the node user
       - DAC_OVERRIDE  # tinyproxy (root) writes its pid/log into tinyproxy-owned dirs at startup
-      # (KILL dropped — allow-domain.sh now signals tinyproxy as the tinyproxy user, not root.)
+      # (KILL dropped — scripts/network/allow-domain.sh now signals tinyproxy as the tinyproxy user, not root.)
     # Block privilege escalation via setuid binaries (Claude runs as the unprivileged `node`).
     security_opt:
       - "no-new-privileges:true"
@@ -46,7 +46,7 @@ services:
       # set ALLOW_GITHUB=false in .env for analysis-only or untrusted-workspace runs.
       ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
       # OpenAI/Codex egress (api/auth.openai.com + chatgpt.com) for cross-vendor peer review.
-      # Off by default; set true in .env to use the bundled Codex CLI (./codex-login.sh).
+      # Off by default; set true in .env to use the bundled Codex CLI (./scripts/auth/codex-login.sh).
       ALLOW_OPENAI: "${ALLOW_OPENAI:-false}"
       # GitHub over HTTPS (SSH/22 is blocked). Set GITHUB_TOKEN in .env to a PAT for full
       # clone/pull/push; SSH github remotes are auto-rewritten to HTTPS. Needs ALLOW_GITHUB=true.
@@ -81,7 +81,7 @@ services:
       # Bigger mount = bigger blast radius, and mounted code is sent to Anthropic — see SECURITY.md.
       - "${WORKSPACE_DIR:-claude-workspace}:/workspace"
       - "${WORK_DIR:-claude-work}:/workspace/work"
-      # /workspace/personal is also the skills home: skill repos (skills-setup.sh) are cloned at
+      # /workspace/personal is also the skills home: skill repos (scripts/skills/skills-setup.sh) are cloned at
       # /workspace/personal/<repo> and symlinked into ~/.claude/skills.
       - "${PERSONAL_DIR:-claude-personal}:/workspace/personal"
       # Persists the subscription login + Claude settings across restarts.
@@ -89,7 +89,7 @@ services:
       # Persists the Codex subscription login (~/.codex/auth.json) across restarts.
       - "claude-codex:/home/node/.codex"
       # Persists the GitHub CLI login (~/.config/gh) across restarts — gh's token carries the
-      # `workflow` scope, so pushes incl. .github/workflows/* work. One-time ./gh-login.sh.
+      # `workflow` scope, so pushes incl. .github/workflows/* work. One-time ./scripts/auth/gh-login.sh.
       - "claude-gh:/home/node/.config/gh"
       # Audit trail: every host the proxy was asked to reach (allowed + refused).
       - "claude-audit:/var/log/tinyproxy"

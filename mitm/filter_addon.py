@@ -298,7 +298,7 @@ async def request(flow: http.HTTPFlow):
             if tok:                                  # vault populated (claimed) — enforce
                 incoming = _cred(flow.request)
                 if incoming and incoming != TOKEN_PLACEHOLDER:
-                    _log("WARN", method, host, path, "non-placeholder credential — re-run ./claim-token.sh")
+                    _log("WARN", method, host, path, "non-placeholder credential — re-run ./scripts/auth/claim-token.sh")
                 flow.request.headers["authorization"] = f"Bearer {tok}"
                 if "x-api-key" in flow.request.headers:
                     del flow.request.headers["x-api-key"]

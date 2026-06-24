@@ -2,10 +2,10 @@
 # Watch the sandbox's egress audit trail and ALERT the moment a NEW host is refused (403/filtered).
 # For each new blocked host you get a macOS desktop notification + a terminal bell.
 #
-#   ./watch-egress.sh              # interactive: notify + prompt allow/skip per host
-#   ./watch-egress.sh --notify-only  # only alert (toast + bell), never act
-#   ./watch-egress.sh --auto         # AUTO-ASSESS: classify by risk and act automatically
-#   ./watch-egress.sh --auto --llm   # same, but route gray-zone hosts to headless `claude -p /assess`
+#   ./scripts/network/watch-egress.sh              # interactive: notify + prompt allow/skip per host
+#   ./scripts/network/watch-egress.sh --notify-only  # only alert (toast + bell), never act
+#   ./scripts/network/watch-egress.sh --auto         # AUTO-ASSESS: classify by risk and act automatically
+#   ./scripts/network/watch-egress.sh --auto --llm   # same, but route gray-zone hosts to headless `claude -p /assess`
 #
 # --auto tiers (mirrors the /assess skill):
 #   ALLOW  : known-safe first-party read-only / cloud APIs -> allow-domain + persist + notify
@@ -15,7 +15,7 @@
 #
 # Allowing is IMMEDIATE; --auto also persists to EXTRA_ALLOWED_DOMAINS in .env. Ctrl-C to stop.
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
 SVC=claude-sandbox
 LOG=/var/log/tinyproxy/tinyproxy.log
@@ -73,7 +73,7 @@ persist_env() {
 
 do_allow() {  # hot-add + persist + notify
     local h="$1"
-    if ./allow-domain.sh "$h" >/dev/null 2>&1; then
+    if ./scripts/network/allow-domain.sh "$h" >/dev/null 2>&1; then
         persist_env "$h"
         printf '       \xe2\x9c\x93 AUTO-ALLOWED %s (persisted)\n' "$h"
         notify "✅ Sandbox auto-allowed" "$h — known-safe, allowed + persisted."
@@ -121,7 +121,7 @@ docker compose exec -T "$SVC" tail -F -n0 "$LOG" 2>/dev/null \
                       && printf '       /assess finished for %s (see audit.sh / .env)\n' "$host" \
                       || printf '       /assess could not complete for %s (left blocked)\n' "$host"
                 else
-                    printf '       ⚠ NEEDS REVIEW %s — run: /assess %s  (or ./allow-domain.sh %s)\n' "$host" "$host" "$host"
+                    printf '       ⚠ NEEDS REVIEW %s — run: /assess %s  (or ./scripts/network/allow-domain.sh %s)\n' "$host" "$host" "$host"
                     notify "⚠️ Sandbox: needs your review" "$host — not auto-classified. Run /assess."
                 fi ;;
             esac ;;
