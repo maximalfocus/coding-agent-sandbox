@@ -30,29 +30,28 @@ fi
 # is the home now. Drop the stale locations so we don't leave duplicate clones behind.
 docker compose exec -T -u node "$SVC" sh -c 'rm -rf "$HOME/.claude/skill-repos" "$HOME/ws" 2>/dev/null || true'
 
-# Per-repo: clone if missing else pull, then (re)link each of its skills into ~/.claude/skills.
-# Runs as `node` so git uses the token-backed config the entrypoint set up, and ownership is right.
+# Per-repo: clone if missing else pull. Runs as `node` so git uses the token-backed config the
+# entrypoint set up, and ownership is right. Linking is delegated below to the shared helper.
 for url in $repos; do
     echo "=== $url ==="
     docker compose exec -T -u node "$SVC" sh -c '
         set -e
         url="$1"; name="$(basename "$url" .git)"
-        base="/workspace/personal"; mkdir -p "$base" "$HOME/.claude/skills"
+        base="/workspace/personal"; mkdir -p "$base"
         if [ -d "$base/$name/.git" ]; then
             echo "  updating $name"; git -C "$base/$name" pull --ff-only || echo "  (pull skipped — local commits?)"
         else
             echo "  cloning $name"; git clone "$url" "$base/$name"
         fi
-        n=0
-        for sk in "$base/$name"/skills/*/; do
-            [ -f "${sk}SKILL.md" ] || continue
-            tgt="$HOME/.claude/skills/$(basename "${sk%/}")"
-            rm -rf "$tgt"; ln -s "${sk%/}" "$tgt"; n=$((n+1))
-        done
-        echo "  linked $n skills from $name (live git clone)"
     ' _ "$url"
 done
 
+# Link via the SINGLE source of truth — the same /usr/local/bin/sandbox-link-skills the entrypoint
+# runs on every boot — so the host path and the boot path can never drift. It manages a manifest,
+# replaces only symlinks it owns (never your copied/sync-skills content), and prunes stale links.
+echo "=== linking skills ==="
+docker compose exec -T -u node "$SVC" sandbox-link-skills $repos
+
 echo
 echo "Done. Skills are symlinked to live clones under /workspace/personal (your PERSONAL_DIR host folder)."
-echo "Restart 'claude' in the sandbox to load them. /cdd-evolve & /peerreview-evolve can commit + push."
+echo "They also auto-load on every sandbox start. /cdd-evolve & /peerreview-evolve can commit + push."

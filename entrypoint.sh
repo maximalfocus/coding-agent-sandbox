@@ -211,6 +211,12 @@ _set_git_identity() {
     # (this script) would kill the entrypoint as soon as a gh login/token exists. Always succeed.
     return 0
 }
+# Rewrite SSH github remotes -> HTTPS UNCONDITIONALLY (it needs no credentials). Previously this
+# only ran inside the gh/token branches, so a no-credential boot left SSH-remote clones in
+# /workspace/personal unusable (SSH/22 is firewalled — `git` could not even resolve the host).
+_set_git_identity
+# Set when a usable github credential is wired below; gates boot-time skill cloning + the reminder.
+GIT_CREDS_OK=
 # Detect a STORED gh login INDEPENDENT of the env token: `gh auth status` would otherwise report
 # "logged in" merely because GITHUB_TOKEN is set, so clear the env tokens for the probe.
 if command -v gh >/dev/null 2>&1 && env -u GITHUB_TOKEN -u GH_TOKEN gh auth status --hostname github.com >/dev/null 2>&1; then
@@ -222,14 +228,14 @@ if command -v gh >/dev/null 2>&1 && env -u GITHUB_TOKEN -u GH_TOKEN gh auth stat
     _ghtok="$(env -u GITHUB_TOKEN -u GH_TOKEN gh auth token --hostname github.com 2>/dev/null)"
     [ -n "${_ghtok}" ] && export GITHUB_TOKEN="${_ghtok}"
     git config --global credential.helper store
-    _set_git_identity
     ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
     gh auth setup-git --hostname github.com 2>/dev/null || true
+    GIT_CREDS_OK=1
     echo "✅ git uses the gh login's workflow-scoped token for github.com (workflow-file pushes OK)."
 elif [ -n "${GITHUB_TOKEN:-}" ]; then
     git config --global credential.helper store
-    _set_git_identity
     ( umask 077; printf 'https://x-access-token:%s@github.com\n' "$GITHUB_TOKEN" > "$HOME/.git-credentials" )
+    GIT_CREDS_OK=1
     # Heads-up if this PAT can't push workflow files. Classic PATs expose scopes via the
     # x-oauth-scopes header; fine-grained PATs don't (empty) -> we stay quiet for those.
     if [ "${ALLOW_GITHUB:-true}" != "false" ]; then
@@ -243,6 +249,71 @@ elif [ -n "${GITHUB_TOKEN:-}" ]; then
             echo "    or regenerate the PAT with the 'workflow' scope added." >&2
         fi
     fi
+fi
+
+# --- Skills: clone (best-effort) + link on every boot, then compute the first-run reminder --------
+# Skills load from $CLAUDE_CONFIG_DIR/skills. The link step is credential-free (it just symlinks
+# repos already present in /workspace/personal), so skills auto-load on every boot and survive
+# claude-config volume resets — no manual skills-setup.sh needed. Everything here is wrapped to be
+# NON-FATAL: the entrypoint runs under `set -euo pipefail` and has a history of startup restart-loops
+# (commit 04805e8), so a skills hiccup must never stop the container from booting.
+SKILLS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
+clone_failed=
+personal_writable=1
+[ -w /workspace/personal ] 2>/dev/null || personal_writable=
+# Optional boot-time clone of any SKILL_REPOS not yet on disk — only when we have a usable credential
+# AND GitHub egress. Non-interactive + time-bounded so a network stall can't hang startup. The host
+# scripts/skills/skills-setup.sh remains the canonical clone/pull path; this is just convenience.
+if [ -n "${SKILL_REPOS:-}" ] && [ -n "${GIT_CREDS_OK:-}" ] && [ "${ALLOW_GITHUB:-true}" != "false" ] \
+   && [ -n "$personal_writable" ]; then
+    for _url in $SKILL_REPOS; do
+        _name="${_url##*/}"; _name="${_name%.git}"
+        _dir="/workspace/personal/$_name"
+        [ -d "$_dir/.git" ] && continue
+        echo "  cloning skill repo $_name ..."
+        if ! GIT_TERMINAL_PROMPT=0 timeout 180 git clone "$_url" "$_dir" >/dev/null 2>&1; then
+            echo "  (clone of $_name failed — recorded for the setup reminder)" >&2
+            clone_failed=1
+        fi
+    done
+fi
+# Link the managed skill set (reads SKILL_REPOS, else the prior-run manifest). Always non-fatal.
+if command -v sandbox-link-skills >/dev/null 2>&1; then
+    sandbox-link-skills || echo "  (skill linking reported an error — non-fatal)" >&2
+fi
+# Build ~/.sandbox-todo from ACTUAL unmet state. The shell hint (/etc/profile.d/zz-sandbox-todo.sh)
+# prints it in every interactive shell until it's gone; recomputed each boot ($HOME is ephemeral).
+_linked=0
+[ -r "$SKILLS_DIR/.sandbox-skills-status" ] && \
+    _linked="$(awk -F= '$1=="linked"{print $2}' "$SKILLS_DIR/.sandbox-skills-status" 2>/dev/null)"
+_todo="$HOME/.sandbox-todo"; _items=""
+if [ -z "${GIT_CREDS_OK:-}" ]; then
+    _items="${_items}
+  [ ] GitHub credentials not set — needed for skill *-evolve push/pull and to auto-clone skill repos.
+      Fix once (persists): on the HOST run  ./scripts/auth/gh-login.sh   (workflow-scoped, recommended)
+      or set GITHUB_TOKEN=... in .env and restart the sandbox."
+fi
+if [ -z "${SKILL_REPOS:-}" ] && [ "${_linked:-0}" = "0" ]; then
+    _items="${_items}
+  [ ] No skills configured — set SKILL_REPOS=\"https://github.com/you/cdd-skills.git ...\" in .env
+      and restart (or run ./scripts/skills/skills-setup.sh with the sandbox running)."
+elif [ "${_linked:-0}" = "0" ] && [ -n "${SKILL_REPOS:-}" ]; then
+    _items="${_items}
+  [ ] No skills linked yet — the SKILL_REPOS aren't cloned under /workspace/personal.
+      Run  ./scripts/skills/skills-setup.sh  (needs GitHub credentials)."
+fi
+[ -n "$clone_failed" ] && _items="${_items}
+  [ ] Some skill repos failed to clone at boot (no GitHub access yet).
+      After setting credentials, run  ./scripts/skills/skills-setup.sh."
+[ -z "$personal_writable" ] && _items="${_items}
+  [ ] /workspace/personal is not writable — skill clones/links can't be created. Check PERSONAL_DIR."
+if [ -n "$_items" ]; then
+    {
+        echo "⚙️  Sandbox setup — finish these once (this note clears itself when done):"
+        printf '%s\n' "$_items"
+    } > "$_todo" 2>/dev/null || true
+else
+    rm -f "$_todo" 2>/dev/null || true
 fi
 
 # tmux config for the web terminal (regenerated each start; ~ isn't a persisted volume):
