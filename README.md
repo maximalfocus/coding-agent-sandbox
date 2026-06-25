@@ -614,7 +614,8 @@ coding-agent-sandbox/
 │   │    claim-token.*       move the Anthropic OAuth token into the tinyproxy vault (mitm/sidecar)
 │   ├─ network/              egress allowlist management
 │   │    allow-domain.*      hot-add host(s) to the running allowlist
-│   │    watch-egress.*      alert on / auto-assess refused hosts (--auto, --llm)
+│   │    watch-egress.*      alert on / auto-assess refused hosts (--auto, --llm, --wait)
+│   │    install-egress-watcher.sh  macOS LaunchAgent: keep watch-egress running (autostart)
 │   └─ skills/               bring your skills into the sandbox
 │        skills-setup.*      clone your skill repos into /workspace/personal (live, evolvable)
 │        sync-skills.sh      copy host skills in (read-only use)
