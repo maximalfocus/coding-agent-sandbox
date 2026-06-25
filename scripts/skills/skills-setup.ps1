@@ -23,23 +23,17 @@ if (-not $Repos -or $Repos.Count -eq 0) {
     Write-Host "No repos given. Set SKILL_REPOS in .env (space-separated HTTPS URLs) or pass them as args."; exit 1
 }
 
-# Same per-repo routine as skills-setup.sh, run in-container as node.
+# Same per-repo clone/pull as skills-setup.sh, run in-container as node. Linking is delegated below
+# to the shared /usr/local/bin/sandbox-link-skills helper (same code the entrypoint runs on boot).
 $routine = @'
 set -e
 url="$1"; name="$(basename "$url" .git)"
-base="/workspace/personal"; mkdir -p "$base" "$HOME/.claude/skills"
+base="/workspace/personal"; mkdir -p "$base"
 if [ -d "$base/$name/.git" ]; then
   echo "  updating $name"; git -C "$base/$name" pull --ff-only || echo "  (pull skipped)"
 else
   echo "  cloning $name"; git clone "$url" "$base/$name"
 fi
-n=0
-for sk in "$base/$name"/skills/*/; do
-  [ -f "${sk}SKILL.md" ] || continue
-  tgt="$HOME/.claude/skills/$(basename "${sk%/}")"
-  rm -rf "$tgt"; ln -s "${sk%/}" "$tgt"; n=$((n+1))
-done
-echo "  linked $n skills from $name (live git clone)"
 '@
 
 # One-time migration: older versions cloned into ~/.claude/skill-repos or ~/ws; /workspace/personal
@@ -51,5 +45,10 @@ foreach ($url in $Repos) {
     docker compose exec -T -u node $svc sh -c $routine _ $url
 }
 
+# Link via the SINGLE source of truth (manifest-managed; never touches your copied/sync-skills
+# content), the same helper the entrypoint runs on every boot.
+Write-Host "=== linking skills ==="
+docker compose exec -T -u node $svc sandbox-link-skills @Repos
+
 Write-Host ""
-Write-Host "Done. Restart 'claude' in the sandbox to load them. /cdd-evolve & /peerreview-evolve can commit + push."
+Write-Host "Done. Skills also auto-load on every sandbox start. /cdd-evolve & /peerreview-evolve can commit + push."

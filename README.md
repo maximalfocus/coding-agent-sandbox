@@ -356,23 +356,39 @@ start if a `GITHUB_TOKEN` fallback lacks `workflow`.
 
 ### Bringing your own skills / slash-commands into the sandbox
 
-Claude in the sandbox reads skills from `/home/node/.claude/skills` (a persisted volume), which
-starts empty. There are two ways to populate it — pick by whether you want to *evolve* the skills:
-
-**Clone — recommended for skill repos you develop/evolve (`scripts/skills/skills-setup.sh`).** Clones your skill
-repos into the sandbox as live git working copies and symlinks them into the skills dir, so the
-commands work **and** their `*-evolve` variants can `git commit` + `git push` to GitHub (over HTTPS
-with your `GITHUB_TOKEN`). Set the repos in `.env`, then with the sandbox running:
+Claude in the sandbox reads skills from `/home/node/.claude/skills` (a persisted volume). **Set
+`SKILL_REPOS` in `.env` and the sandbox links them automatically on every start** — no manual step,
+and the links are rebuilt each boot so they survive a volume reset:
 
 ```bash
 # .env:  SKILL_REPOS=https://github.com/you/cdd-skills.git https://github.com/you/peerreview-skills.git
-./scripts/skills/skills-setup.sh          # clone (or git pull) each, then symlink their skills; re-run to update
+```
+
+On boot the entrypoint runs `sandbox-link-skills`, which symlinks every skill from the listed repos
+(already cloned under `/workspace/personal`) into the skills dir, and — when a GitHub credential and
+egress are present — clones any repo not yet on disk. There are then two ways to *populate* the
+clones, picked by whether you want to *evolve* the skills:
+
+**Clone — recommended for skill repos you develop/evolve (`scripts/skills/skills-setup.sh`).** Clones your skill
+repos into the sandbox as live git working copies (then delegates linking to the same
+`sandbox-link-skills` helper the entrypoint uses), so the commands work **and** their `*-evolve`
+variants can `git commit` + `git push` to GitHub. Run it any time to clone/`git pull` and re-link:
+
+```bash
+./scripts/skills/skills-setup.sh          # clone (or git pull) each from SKILL_REPOS, then re-link; re-run to update
 ```
 
 The clones live in **`/workspace/personal`** inside the sandbox — i.e. your `PERSONAL_DIR` host
 folder (`/workspace/personal/cdd-skills`, `/workspace/personal/peerreview-skills`), so they're
 visible and editable on the host **and** self-evolve/commit/push works in the sandbox. Identical on
-macOS and Windows (`scripts/skills/skills-setup.cmd`). Pushing needs a `GITHUB_TOKEN` with write access.
+macOS and Windows (`scripts/skills/skills-setup.cmd`). Pushing needs a GitHub credential
+(`./scripts/auth/gh-login.sh`, or a `GITHUB_TOKEN` with write access).
+
+> **First-run reminder.** Until the manual bits are done (e.g. a GitHub credential for `*-evolve`),
+> the sandbox shows a self-clearing `~/.sandbox-todo` checklist in every terminal; it disappears once
+> the conditions are met. Linking is **non-destructive** — it tracks only the symlinks it creates (a
+> `.managed-by-sandbox` manifest) and never overwrites copied skills from `sync-skills.sh` or your own
+> directories; on a skill-name collision the first repo (sorted) wins and the rest are reported.
 
 **One evolver across environments.** `peerreview` self-evolves + pushes `peerreview-skills` after
 *every* run; if more than one environment (this sandbox + your host) does that, the clones race on
@@ -387,8 +403,9 @@ union-merge their append-only `evolution/` logs, so an accidental dual-push self
 ./scripts/skills/sync-skills.sh                      # default: cdd* and peerreview/peer-review*
 ```
 
-Either way, restart `claude` inside the sandbox to load the skills. (Skills that call `codex` — like
-peer-review — need `ALLOW_OPENAI=true` and a one-time `./scripts/auth/codex-login.sh`.)
+Restart `claude` inside the sandbox to pick up newly linked skills (the linking itself is automatic
+on each container start). (Skills that call `codex` — like peer-review — need `ALLOW_OPENAI=true` and
+a one-time `./scripts/auth/codex-login.sh`.)
 
 ### UI acceptance tests & cdd tooling (bundled)
 
