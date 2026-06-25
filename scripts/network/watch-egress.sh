@@ -6,6 +6,9 @@
 #   ./scripts/network/watch-egress.sh --notify-only  # only alert (toast + bell), never act
 #   ./scripts/network/watch-egress.sh --auto         # AUTO-ASSESS: classify by risk and act automatically
 #   ./scripts/network/watch-egress.sh --auto --llm   # same, but route gray-zone hosts to headless `claude -p /assess`
+#   ./scripts/network/watch-egress.sh --notify-only --wait  # supervised: wait for the sandbox, self-heal across
+#                                                            # restarts (used by the LaunchAgent — see
+#                                                            # install-egress-watcher.sh)
 #
 # --auto tiers (mirrors the /assess skill):
 #   ALLOW  : known-safe first-party read-only / cloud APIs -> allow-domain + persist + notify
@@ -20,17 +23,35 @@ cd "$(dirname "$0")/../.."
 SVC=claude-sandbox
 LOG=/var/log/tinyproxy/tinyproxy.log
 
-MODE=interactive; LLM=0
+MODE=interactive; LLM=0; WAIT=0
 for a in "$@"; do
     case "$a" in
         --notify-only) MODE=notify ;;
         --auto)        MODE=auto ;;
         --llm)         LLM=1 ;;
+        --wait)        WAIT=1 ;;
         *) echo "unknown arg: $a" >&2; exit 1 ;;
     esac
 done
 
-if ! docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -q .; then
+# True iff the claude-sandbox compose service is running (the SPECIFIC service, not just any
+# container in the project) — both the readiness gate and the --wait supervisor use this.
+service_running() {
+    docker compose ps --status running --format '{{.Service}}' 2>/dev/null | grep -qx "$SVC"
+}
+
+# Block until the service is up, with capped exponential backoff. Only used in --wait mode.
+wait_for_service() {
+    local delay=2
+    until service_running; do
+        sleep "$delay"
+        [ "$delay" -lt 30 ] && delay=$((delay * 2))
+    done
+}
+
+# Without --wait, fail fast (manual/interactive use). With --wait (LaunchAgent), the supervisor
+# loop below waits the sandbox into existence instead of exiting.
+if [ "$WAIT" != "1" ] && ! service_running; then
     echo "Sandbox isn't running. Start it first:  ./run.sh"; exit 1
 fi
 
@@ -83,11 +104,15 @@ do_allow() {  # hot-add + persist + notify
     fi
 }
 
-echo "Watching sandbox egress for refused hosts… mode=$MODE${LLM:+ llm=$LLM} (Ctrl-C to stop)"
+wlabel=""; [ "$WAIT" = "1" ] && wlabel=" wait=on"
+echo "Watching sandbox egress for refused hosts… mode=$MODE${LLM:+ llm=$LLM}$wlabel (Ctrl-C to stop)"
 seen=$(mktemp "${TMPDIR:-/tmp}/sandbox-egress-seen.XXXXXX")
 trap 'rm -f "$seen"' EXIT
 
-docker compose exec -T "$SVC" tail -F -n0 "$LOG" 2>/dev/null \
+# Tail the proxy log and alert per newly-refused host. Blocks while the container is up; returns
+# when the tail/exec pipeline ends (container stop/restart, dropped exec, etc.).
+run_pipeline() {
+  docker compose exec -T "$SVC" tail -F -n0 "$LOG" 2>/dev/null \
   | grep --line-buffered -i "refused on filtered" \
   | while IFS= read -r line; do
         host=$(printf '%s' "$line" | sed -E 's/.*filtered domain "([^"]+)".*/\1/')
@@ -127,3 +152,17 @@ docker compose exec -T "$SVC" tail -F -n0 "$LOG" 2>/dev/null \
             esac ;;
         esac
     done
+}
+
+if [ "$WAIT" = "1" ]; then
+    # Supervisor: keep watching across container stop/restart cycles WITHOUT relying on launchd
+    # to relaunch us. `run_pipeline || true` keeps a nonzero pipeline exit (pipefail) from killing
+    # the loop; the 5s backoff stops a persistent immediate-fail from hot-spinning.
+    while true; do
+        wait_for_service
+        run_pipeline || true
+        sleep 5
+    done
+else
+    run_pipeline
+fi
