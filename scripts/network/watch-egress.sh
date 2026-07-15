@@ -14,7 +14,8 @@
 #   ALLOW  : known-safe first-party read-only / cloud APIs -> allow-domain + persist + notify
 #   REJECT : trackers / ads / metadata / IP literals       -> leave blocked + notify
 #   GRAY   : everything else (incl. storage/drive)          -> notify "needs review"
-#            (with --llm: hand to `claude -p "/assess <host>"`, which defaults to reject-on-uncertainty)
+#            (with --llm: hand to `claude -p "/assess --headless <host>"`, which fails closed:
+#             reject-on-uncertainty, allow only unambiguous no-risk hosts, live-only, never persist)
 #
 # Allowing is IMMEDIATE; --auto also persists to EXTRA_ALLOWED_DOMAINS in .env. Ctrl-C to stop.
 set -uo pipefail
@@ -142,7 +143,9 @@ run_pipeline() {
                 if [ "$LLM" = "1" ]; then
                     printf '       🤖 gray zone → headless /assess %s …\n' "$host"
                     notify "🤖 Sandbox assessing" "$host — running /assess…"
-                    claude -p "/assess $host" >/dev/null 2>&1 \
+                    # Pass --headless explicitly so /assess fails closed (reject-on-uncertainty,
+                    # live-only, never persist) without having to infer the mode from its context.
+                    claude -p "/assess --headless $host" >/dev/null 2>&1 \
                       && printf '       /assess finished for %s (see audit.sh / .env)\n' "$host" \
                       || printf '       /assess could not complete for %s (left blocked)\n' "$host"
                 else
