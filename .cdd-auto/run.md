@@ -17,12 +17,13 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 | A | plan | 0 | green | 12m | `d85d6d8` | Frozen contract and safe outer-fallback plan from measured default/MITM/sidecar controls |
 | B | conformance | 0 | red as required | 6m | `0a9990e` | Seven deterministic behavioral cases plus three variant control guards; baseline fails because verifier is absent |
+| C | implementation | 0 | green | 14m | `0c332d5` | Real `codex sandbox` nested/fallback verifier, 16 behavioral cases, parsed controls, measured runtime docs, and live default fallback green |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 31m / 2h
-- Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
+- Wall clock: 50m / 2h
+- Iterations: A:1 B:1 C:1 D:0 (per-wave; cap 5 each)
 - Review rounds: contract:3 arch:0 conf:2 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
@@ -36,7 +37,7 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
-| `scripts/test-codex-sandbox-verifier.sh` | Add | 0 | Frozen issue-32 real-command, fail-closed classifier, fallback restriction, and static variant-control contract |
+| `scripts/test-codex-sandbox-verifier.sh` | Add + modify | 0 | Frozen issue-32 real-command, fail-closed classifier, separate proxy/direct network mutations, live-control rejection, delivery-hygiene, and parsed variant-control contract |
 
 ## Out-of-scope edits
 | Path | Reason |
