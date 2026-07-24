@@ -15,16 +15,36 @@ say() { [ -n "${SANDBOX_QUIET:-}" ] || echo "$@"; }
 
 # --- allowlist (compact parity with mitm/entrypoint.sh) ---
 BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev opencode.ai pi.dev)
+TOOL_UPGRADE_DOMAINS=(
+    awscli.amazonaws.com bun.sh nodejs.org
+    pypi.org files.pythonhosted.org bootstrap.pypa.io astral.sh
+    rustup.rs static.rust-lang.org crates.io static.crates.io index.crates.io
+    repo.maven.apache.org repo1.maven.org services.gradle.org plugins.gradle.org
+    deb.debian.org security.debian.org cdn.playwright.dev
+)
 domains=("${BASE_DOMAINS[@]}")
 case "$(printf '%s' "${ALLOW_GITHUB:-true}" | tr '[:upper:]' '[:lower:]')" in
-    true|1|yes|on) domains+=(github.com githubusercontent.com) ;;
+    true|1|yes|on) gh=1; domains+=(github.com githubusercontent.com) ;;
+    false|0|no|off) gh=0 ;;
+    *) gh=0; echo "  WARN: unrecognized ALLOW_GITHUB='${ALLOW_GITHUB}' — treating as OFF (fail-closed)" >&2 ;;
+esac
+case "$(printf '%s' "${ALLOW_TOOL_UPGRADES:-false}" | tr '[:upper:]' '[:lower:]')" in
+    true|1|yes|on) domains+=("${TOOL_UPGRADE_DOMAINS[@]}") ;;
+    false|0|no|off) ;;
+    *) echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='${ALLOW_TOOL_UPGRADES}' — treating as OFF (fail-closed)" >&2 ;;
 esac
 if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
     OLDIFS=$IFS; IFS=','; set -f
     for d in $EXTRA_ALLOWED_DOMAINS; do
         d=$(printf '%s' "$d" | tr -d '[:space:]')
-        printf '%s' "$d" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$' \
-            && ! printf '%s' "$d" | grep -qE '^[0-9.]+$' && domains+=("$d") || echo "  WARN: ignoring invalid domain '$d'" >&2
+        if ! printf '%s' "$d" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$' \
+           || printf '%s' "$d" | grep -qE '^[0-9.]+$'; then
+            echo "  WARN: ignoring invalid domain '$d'" >&2; continue
+        fi
+        if [ "$gh" = "0" ] && printf '%s' "$d" | grep -qiE '(^|\.)(github\.com|githubusercontent\.com)$'; then
+            echo "  WARN: ignoring '$d' — GitHub egress is disabled (ALLOW_GITHUB)" >&2; continue
+        fi
+        domains+=("$d")
     done
     IFS=$OLDIFS; set +f
 fi

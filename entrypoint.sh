@@ -42,6 +42,25 @@ OPENAI_DOMAINS=(
     "chatgpt.com"  # ChatGPT subscription backend + "Sign in with ChatGPT"
 )
 
+# Official download/package endpoints used to deliberately upgrade bundled tools and the common
+# development toolchains shipped/supported by this sandbox. This is opt-in because every package
+# registry is also a payload-ingress channel. GitHub-hosted upgrades (Herdr, gh, Bun/OpenCode
+# releases) remain governed by ALLOW_GITHUB; npm-hosted upgrades (Claude, Codex, Pi, OpenCode,
+# Playwright) already use the always-required npm registry.
+TOOL_UPGRADE_DOMAINS=(
+    "awscli.amazonaws.com"   # AWS CLI v2 installers
+    "bun.sh"                 # Bun installer metadata (release assets are GitHub-gated)
+    "nodejs.org"             # Node.js distributions
+    "pypi.org" "files.pythonhosted.org" "bootstrap.pypa.io"
+    "astral.sh"              # uv/ruff installers
+    "rustup.rs" "static.rust-lang.org"
+    "crates.io" "static.crates.io" "index.crates.io"
+    "repo.maven.apache.org" "repo1.maven.org"
+    "services.gradle.org" "plugins.gradle.org"
+    "deb.debian.org" "security.debian.org"
+    "cdn.playwright.dev"
+)
+
 build_filter() {
     : > "$FILTER_FILE"
     local domains=("${BASE_DOMAINS[@]}") gh
@@ -60,6 +79,13 @@ build_filter() {
         *) oai=0; echo "  WARN: unrecognized ALLOW_OPENAI='${ALLOW_OPENAI}' — treating as OFF (fail-closed)" >&2 ;;
     esac
     [ "$oai" = "1" ] && domains+=("${OPENAI_DOMAINS[@]}")
+    local upgrades
+    case "$(printf '%s' "${ALLOW_TOOL_UPGRADES:-false}" | tr '[:upper:]' '[:lower:]')" in
+        true|1|yes|on) upgrades=1; say "  (tool-upgrade egress ON — ALLOW_TOOL_UPGRADES=${ALLOW_TOOL_UPGRADES})" ;;
+        false|0|no|off) upgrades=0 ;;
+        *) upgrades=0; echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='${ALLOW_TOOL_UPGRADES}' — treating as OFF (fail-closed)" >&2 ;;
+    esac
+    [ "$upgrades" = "1" ] && domains+=("${TOOL_UPGRADE_DOMAINS[@]}")
     if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
         local OLDIFS=$IFS; IFS=','; set -f   # noglob: a stray '*' must not expand to /workspace files
         for d in $EXTRA_ALLOWED_DOMAINS; do

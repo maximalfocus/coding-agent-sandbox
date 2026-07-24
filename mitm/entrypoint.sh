@@ -14,6 +14,13 @@ say() { [ -n "${SANDBOX_QUIET:-}" ] || echo "$@"; }
 # Always-on hosts (parity with the default entrypoint's BASE_DOMAINS); GitHub + extras layered on.
 BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev opencode.ai pi.dev)
 GITHUB_DOMAINS=(github.com githubusercontent.com)
+TOOL_UPGRADE_DOMAINS=(
+    awscli.amazonaws.com bun.sh nodejs.org
+    pypi.org files.pythonhosted.org bootstrap.pypa.io astral.sh
+    rustup.rs static.rust-lang.org crates.io static.crates.io index.crates.io
+    repo.maven.apache.org repo1.maven.org services.gradle.org plugins.gradle.org
+    deb.debian.org security.debian.org cdn.playwright.dev
+)
 
 build_allowlist() {
     local domains=("${BASE_DOMAINS[@]}") gh
@@ -25,6 +32,13 @@ build_allowlist() {
         *) gh=0; echo "  WARN: unrecognized ALLOW_GITHUB='${ALLOW_GITHUB}' — treating as OFF (fail-closed)" >&2 ;;
     esac
     [ "$gh" = "1" ] && domains+=("${GITHUB_DOMAINS[@]}")
+    local upgrades
+    case "$(printf '%s' "${ALLOW_TOOL_UPGRADES:-false}" | tr '[:upper:]' '[:lower:]')" in
+        true|1|yes|on) upgrades=1; say "  (tool-upgrade egress ON — ALLOW_TOOL_UPGRADES=${ALLOW_TOOL_UPGRADES})" ;;
+        false|0|no|off) upgrades=0 ;;
+        *) upgrades=0; echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='${ALLOW_TOOL_UPGRADES}' — treating as OFF (fail-closed)" >&2 ;;
+    esac
+    [ "$upgrades" = "1" ] && domains+=("${TOOL_UPGRADE_DOMAINS[@]}")
     if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
         local OLDIFS=$IFS; IFS=','; set -f   # noglob: a stray '*' must not expand to /workspace files
         for d in $EXTRA_ALLOWED_DOMAINS; do
