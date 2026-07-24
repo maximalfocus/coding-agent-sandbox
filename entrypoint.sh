@@ -319,23 +319,6 @@ else
     rm -f "$_todo" 2>/dev/null || true
 fi
 
-# tmux config (regenerated each start; ~ isn't a persisted volume):
-#  - mouse on        -> click a pane to focus, drag borders to resize, scroll to scroll
-#  - set-clipboard external + terminal-features clipboard -> a tmux selection is copied to the host
-#    via OSC 52, while pane applications cannot write the host clipboard (clipboard-poisoning guard).
-#    The custom ttyd web client includes xterm's ClipboardAddon, so browser selections work too.
-# Ctrl-b y remains a fallback for browser-native selection: zoom the active pane, disable tmux's
-# mouse handling, drag-select, and press Cmd/Ctrl+C; press Ctrl-b y again to restore the grid.
-cat > "$HOME/.tmux.conf" <<'TMUXCONF'
-set -g mouse on
-set -g set-clipboard external
-set -as terminal-features ',*:clipboard'
-bind m set -g mouse \; display-message "tmux mouse #{?mouse,ON (click panes),OFF (drag-select)}"
-bind y if -F '#{window_zoomed_flag}' \
-  'resize-pane -Z ; set -g mouse on  ; display-message "copy mode OFF (panes clickable)"' \
-  'resize-pane -Z ; set -g mouse off ; display-message "copy mode ON: drag-select THIS pane, then Cmd/Ctrl+C, then Ctrl-b y"'
-TMUXCONF
-
 # A command was passed (e.g. `claude`, `bash -l`) -> run it. This is how the local-terminal
 # `docker exec` / claude-safe `docker run` paths work.
 if [ "$#" -gt 0 ]; then
@@ -354,11 +337,10 @@ case "$TTYD_PASS" in
         exit 1 ;;
 esac
 say "Open http://127.0.0.1:7681 — log in as '${TTYD_USER}'."
-say "First run: type 'claude', then '/login' and paste the code from your browser."
-# Open the browser terminal via the shared launcher: attach to the 'claude' session, building the
-# 2x2 grid on first use. The SAME script backs shell.sh/shell.ps1 --attach, so the grid is identical
-# however you connect. Override the grid with TTYD_GRID=1 (single pane) in .env.
+say "Herdr is the primary terminal. Start an agent from its terminal pane."
+# Run Herdr directly. Herdr already persists its own server/session, so an outer tmux layer only
+# interferes with mouse handling and OSC 52 clipboard delivery.
 exec ttyd -p 7681 -i 0.0.0.0 -W \
     -I /usr/local/share/ttyd/index.html \
     -c "${TTYD_USER}:${TTYD_PASS}" \
-    /usr/local/bin/sandbox-tmux
+    /usr/local/bin/herdr

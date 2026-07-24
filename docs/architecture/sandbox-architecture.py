@@ -72,7 +72,7 @@ with Diagram(
         deny = Internet("Everything else — DENIED\ndirect IP · DNS · IPv6\nprivate / cloud-metadata")
 
     # ---- host → container (two equal entry points, same container/isolation;
-    #      ./shell.sh --attach shares the 'claude' tmux session) ----
+    #      ./shell.sh --attach starts another Herdr client) ----
     browser >> Edge(label="web terminal", color=FLOW) >> agent
     term >> Edge(label="local terminal\n(same isolation)", color=FLOW) >> agent
     proj >> Edge(label="bind mount", style="dashed", color=FLOW) >> ws

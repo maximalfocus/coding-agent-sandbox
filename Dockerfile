@@ -47,13 +47,13 @@ RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
     echo "${TTYD_SHA}  /usr/local/bin/ttyd" | sha256sum -c - ; \
     chmod +x /usr/local/bin/ttyd
 
-# ttyd 1.7.7's embedded xterm.js ignores OSC 52, so tmux can receive host paste but cannot copy
-# back to the host clipboard. This custom index is ttyd's ClipboardAddon-enabled web client built
+# ttyd 1.7.7's embedded xterm.js ignores OSC 52, so Herdr cannot copy selected text back to the
+# host clipboard. This custom index is ttyd's ClipboardAddon-enabled web client built
 # from immutable upstream commit 647d55ad865f5ad85ad89ba5e1b28d9b6ac8fd55, plus the compatibility
 # patch documented in ttyd/README.md. Serve it through 1.7.7's --index option; the released server
 # binary remains architecture/checksum-pinned above.
 COPY ttyd/index.html /usr/local/share/ttyd/index.html
-RUN echo "b69cbd04d33d915f9567491ddf5d0d7d3c3ccbcb2fa156f6e3cb78e43eb54e6a  /usr/local/share/ttyd/index.html" \
+RUN echo "85baf6f288791e6012feec6257a8dd3665a449891692e7142debffbe24f99003  /usr/local/share/ttyd/index.html" \
     | sha256sum -c -
 
 # The real Claude Code CLI, pinned at BUILD time (override with --build-arg). Runtime auto-update
@@ -126,25 +126,22 @@ RUN npm install -g "@playwright/test@${PLAYWRIGHT_VERSION}" \
 
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 COPY entrypoint.sh    /usr/local/bin/entrypoint.sh
-# Shared tmux launcher: attach to the 'claude' session, building the 2x2 grid on first use. Used by
-# every entry point (browser ttyd + shell.sh/shell.ps1 --attach) so the grid is identical everywhere.
-COPY tmux-grid.sh     /usr/local/bin/sandbox-tmux
 # Single source of truth for symlinking skill repos into Claude's skills dir — called by the
 # entrypoint (auto-load on every boot) and by scripts/skills/skills-setup.sh/.ps1 (host helpers).
 COPY scripts/skills/link-skills.sh /usr/local/bin/sandbox-link-skills
 # First-run setup reminder, sourced by every interactive shell (login shells via profile.d; the
-# /etc/bash.bashrc line below covers interactive non-login shells such as tmux panes). It prints
+# /etc/bash.bashrc line below covers interactive non-login shells such as Herdr panes). It prints
 # ~/.sandbox-todo, which the entrypoint writes only while a manual setup step is still unmet.
 COPY scripts/skills/sandbox-todo-hint.sh /etc/profile.d/zz-sandbox-todo.sh
-RUN printf '\n# Sandbox first-run setup reminder (interactive non-login shells, e.g. tmux panes).\n[ -r /etc/profile.d/zz-sandbox-todo.sh ] && . /etc/profile.d/zz-sandbox-todo.sh\n' >> /etc/bash.bashrc
+RUN printf '\n# Sandbox first-run setup reminder (interactive non-login shells, e.g. Herdr panes).\n[ -r /etc/profile.d/zz-sandbox-todo.sh ] && . /etc/profile.d/zz-sandbox-todo.sh\n' >> /etc/bash.bashrc
 # Strip any CR line endings so the container boots even if the build context was checked out on
 # Windows with CRLF (a `bash\r` shebang otherwise fails with "no such file"). Belt-and-suspenders
 # with .gitattributes (which forces LF on checkout); also normalize the proxy config copied above.
 RUN sed -i 's/\r$//' /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh \
-        /usr/local/bin/sandbox-tmux /usr/local/bin/sandbox-link-skills \
-        /etc/profile.d/zz-sandbox-todo.sh /etc/tinyproxy/tinyproxy.conf \
+        /usr/local/bin/sandbox-link-skills /etc/profile.d/zz-sandbox-todo.sh \
+        /etc/tinyproxy/tinyproxy.conf \
     && chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh \
-        /usr/local/bin/sandbox-tmux /usr/local/bin/sandbox-link-skills
+        /usr/local/bin/sandbox-link-skills
 
 # Claude's view of your files: only what gets mounted here.
 RUN mkdir -p /workspace && chown node:node /workspace
@@ -153,7 +150,9 @@ WORKDIR /workspace
 # Runtime env baked into the image so EVERY launch — compose, `docker exec`, or a one-off
 # `docker run` (the claude-safe alias) — routes through the proxy and persists config.
 # Placed after all network-using build steps so the build itself doesn't try to use the proxy.
-ENV CLAUDE_CONFIG_DIR=/home/node/.claude \
+# Herdr chooses new pane shells from $SHELL; set Bash explicitly so command and path completion work.
+ENV SHELL=/bin/bash \
+    CLAUDE_CONFIG_DIR=/home/node/.claude \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
     CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1 \
     DISABLE_AUTOUPDATER=1 \

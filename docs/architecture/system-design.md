@@ -22,7 +22,7 @@ flowchart TB
     direction TB
     subgraph BOX["🛡️ claude-sandbox container — trust boundary"]
       direction TB
-      TTYD["🖥️ ttyd → tmux → claude<br/>unprivileged 'node' user"]
+      TTYD["🖥️ ttyd → Herdr<br/>unprivileged 'node' user"]
       subgraph WSP["📂 /workspace — the only host files the agent sees"]
         direction LR
         PERSONALC["/workspace/personal"]

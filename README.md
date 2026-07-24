@@ -31,8 +31,8 @@ same on **macOS, Linux, and Windows**.
   instead (`brew install colima && colima start --vm-type qemu`) — setup.sh accepts any running daemon.
 - **Windows:** Docker Desktop with the **WSL2** backend enabled.
 - A Claude **Pro or Max** subscription (or Console access).
-- **Optional:** [iTerm2](https://iterm2.com/) (recommended over Terminal.app for the 2×2 tmux grid in
-  sandbox sessions) — `./setup.sh` offers to install it on macOS.
+- **Optional:** [iTerm2](https://iterm2.com/) for local-terminal access — `./setup.sh` offers to
+  install it on macOS.
 
 > **On a managed laptop behind Cloudflare WARP / Zscaler** (TLS inspection)? Read
 > [Behind a corporate TLS-inspecting proxy](#behind-a-corporate-tls-inspecting-proxy-cloudflare-warp--zscaler)
@@ -49,7 +49,7 @@ Make sure Docker is installed and running (Docker Desktop or OrbStack), then run
 It does the first-run work for you:
 
 - checks Docker is installed and running (on macOS, offers to install Homebrew if missing, then `brew install --cask orbstack`)
-- optionally installs iTerm2 (recommended for the 2×2 tmux grid)
+- optionally installs iTerm2 for local-terminal access
 - creates `.env` from `.env.example`
 - asks which folder the sandbox may edit (defaults to `~/work`)
 - generates a web-terminal password
@@ -145,12 +145,11 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
 
 - Code exactly as you do now — `claude`, `/`-commands, editing, running tests — all inside
   `/workspace`, which **is** your `WORKSPACE_DIR` on the host. Changes appear on your real files.
-- The terminal runs inside `tmux` (session `claude`), so closing the tab doesn't kill your
-  session — reopen the URL to reattach.
-- Clipboard works in both directions in macOS Chrome (the verified browser): paste from the host
-  normally; drag across text in a tmux pane to copy it back through OSC 52. The browser may ask once
-  for clipboard permission. Pane applications cannot write the host clipboard directly. On other
-  browsers, or for wrapped output, `Ctrl-b y` toggles a zoomed browser-selection fallback.
+- Herdr is the primary terminal environment. Its server persists the workspace session when the
+  browser disconnects; reopen the URL to attach a new Herdr client.
+- Clipboard works in both directions: paste from the host normally; select or double-click text in
+  Herdr to copy it back through OSC 52. ttyd includes a fallback for browsers that deny the async
+  Clipboard API request.
 - Stop: `docker compose down`. Logs: `docker compose logs -f`. Rebuild after edits: `./run.sh`.
 - Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network and this repo
   directory, and — only if this sandbox installed it — the Docker engine, leaving your host
@@ -211,17 +210,20 @@ terminal with the **same isolation** (egress proxy, `/workspace` scope, your log
 
 ```bash
 chmod +x shell.sh                 # first time
-./shell.sh                        # a fresh shell in /workspace — then run `claude`
-./shell.sh --attach               # share the SAME session the browser tab shows
+./shell.sh                        # attach another client to Herdr's persistent session
+./shell.sh --shell                # escape hatch: a fresh Bash shell in /workspace
 ```
+
+On macOS, `shell.sh` transparently bridges Herdr's OSC 52 copy events to `pbcopy`, so copy works even
+in Apple Terminal (which does not support OSC 52 itself). Paste remains ordinary terminal input.
 
 Equivalent raw commands (no wrapper):
 
 ```bash
 cd /path/to/coding-agent-sandbox
-docker compose exec -u node -w /workspace claude-sandbox bash -l   # then: claude
-# or run Claude Code directly:
-docker compose exec -u node -w /workspace claude-sandbox claude
+docker compose exec -u node -w /workspace claude-sandbox herdr
+# Or open a plain Bash shell:
+docker compose exec -u node -w /workspace claude-sandbox bash -l
 ```
 
 Open as many terminals as you like; they all share one container, one egress policy, one login.
@@ -581,7 +583,7 @@ here, and a half-applied firewall is worse than none.)
 
 ```
 your browser ──http://127.0.0.1:7681 (ttyd, password)──▶ ┌──────────── container ─────────────────┐
-                                                          │ tmux → bash → `claude` (as node)       │
+                                                          │ ttyd → Herdr (as unprivileged node)    │
 your project dir ──bind mount──────────────────────────▶ │ /workspace  (only files it sees)       │
                                                           │ ~/.claude   (subscription token)       │
                                                           │ all egress ─▶ tinyproxy (by hostname): │
@@ -609,17 +611,16 @@ coding-agent-sandbox/
 │   docker-compose.yml, *.mitm.yml,  services, named volumes, capabilities, resource limits
 │     *.sidecar.yml                  (sidecar.yml = experimental token-isolation variant)
 │   entrypoint.sh                    build allowlist → start proxy → install firewall → drop to
-│                                    node → launch the ttyd/tmux web terminal (2x2 grid, mouse on)
+│                                    node → launch ttyd with Herdr as the primary terminal
 │   init-firewall.sh                 fail-closed iptables egress rules
 │   tinyproxy.conf                   hostname-filtering proxy config
-│   tmux-grid.sh                     the in-container 2x2 tmux layout
 │   mitm/                            TLS-intercepting proxy addon (opt-in mitm variant)
 │   certs/                           extra root CAs (corporate TLS-inspecting proxies)
 │
 ├─ Entrypoints — the commands you actually type (kept in root on purpose)
 │   setup.sh / setup-windows.ps1·.cmd / setup-wsl.sh   first run: .env → build → scan → start
 │   run.sh   · run.ps1                                 build → scan → start
-│   shell.sh · shell.ps1                               exec a shell / attach the tmux session
+│   shell.sh · shell.ps1                               attach Herdr (or open a plain shell)
 │   scan.sh  · scan.ps1                                Trivy image scan (TRIVY_STRICT=1 to gate)
 │   audit.sh                                           read the egress audit trail
 │   uninstall.sh · uninstall.cmd · uninstall-windows.ps1   remove containers/volumes/images

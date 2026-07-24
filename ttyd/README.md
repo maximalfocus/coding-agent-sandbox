@@ -18,4 +18,9 @@ to:
 "" !== selection && "c" !== selection
 ```
 
+The client also falls back to a temporary hidden textarea plus `document.execCommand("copy")` when
+`navigator.clipboard.writeText()` is denied. This keeps OSC 52 copy working when the browser has not
+granted persistent clipboard-write permission—a common case because Herdr's selection reaches the
+browser asynchronously, after the mouse gesture has ended.
+
 The resulting artifact is checksum-pinned in `Dockerfile`.
