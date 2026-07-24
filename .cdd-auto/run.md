@@ -60,5 +60,5 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 
 ## Final
 - Status: green — verified; issue/PR delivery in progress
-- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-31-20260724-145223` @ pending delivery SHA)
-- PR / issue: pending / https://github.com/maximalfocus/coding-agent-sandbox/issues/31
+- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-31-20260724-145223`)
+- PR / issue: https://github.com/maximalfocus/coding-agent-sandbox/pull/36 (Closes) / https://github.com/maximalfocus/coding-agent-sandbox/issues/31
