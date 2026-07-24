@@ -1,0 +1,9 @@
+# OPT-IN AWS IAM Identity Center state for the content-mediation stack.
+services:
+  claude-sandbox-mitm:
+    volumes:
+      - "claude-aws:/home/node/.aws"
+
+volumes:
+  claude-aws:
+    name: coding-agent-sandbox-aws

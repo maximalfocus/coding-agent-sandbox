@@ -27,7 +27,7 @@ ARG DEBIAN_SECURITY_REFRESH=2026-07-24
 RUN : "${DEBIAN_SECURITY_REFRESH}" \
     && apt-get update && apt-get install -y --no-install-recommends \
       git ripgrep fd-find tmux less procps \
-      curl ca-certificates dnsutils \
+      curl ca-certificates dnsutils unzip \
       tinyproxy iptables iproute2 \
       gosu socat \
       openjdk-17-jdk-headless maven \
@@ -57,6 +57,26 @@ RUN update-ca-certificates
 # OpenSSL store (where update-ca-certificates lands the CA). Harmless without a custom CA — the
 # system bundle already holds every public root. Same approach the mitm variant uses.
 ENV NODE_OPTIONS=--use-openssl-ca
+
+# AWS CLI v2 — exact release and per-architecture installer digests. AWS does not publish
+# checksum sidecars for these versioned zips, so both SHA-256 values are pinned here and verified
+# before extraction. The root-owned install is immutable to the runtime node user.
+ARG AWS_CLI_VERSION=2.36.7
+ARG AWS_CLI_SHA256_AMD64=d641283d37f1a2168457a9f26a20d4e29167652e9ab1719b37114ef1ebe859f4
+ARG AWS_CLI_SHA256_ARM64=85826b67912b44bb45d1e46c6e66f383c14405ee0b2f4686f73bdf949c93bd61
+ARG TARGETARCH
+RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+      amd64) AWS_ARCH=x86_64; AWS_SHA="$AWS_CLI_SHA256_AMD64" ;; \
+      arm64) AWS_ARCH=aarch64; AWS_SHA="$AWS_CLI_SHA256_ARM64" ;; \
+      *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}-${AWS_CLI_VERSION}.zip" \
+      -o /tmp/awscliv2.zip; \
+    echo "${AWS_SHA}  /tmp/awscliv2.zip" | sha256sum -c -; \
+    unzip -q /tmp/awscliv2.zip -d /tmp/aws-cli-install; \
+    /tmp/aws-cli-install/aws/install; \
+    test "$(aws --version 2>&1 | cut -d/ -f2 | cut -d' ' -f1)" = "$AWS_CLI_VERSION"; \
+    rm -rf /tmp/awscliv2.zip /tmp/aws-cli-install
 
 COPY maven-settings.xml /etc/maven/settings.xml
 
@@ -196,6 +216,7 @@ COPY entrypoint.sh    /usr/local/bin/entrypoint.sh
 # Single source of truth for symlinking skill repos into Claude's skills dir — called by the
 # entrypoint (auto-load on every boot) and by scripts/skills/skills-setup.sh/.ps1 (host helpers).
 COPY scripts/skills/link-skills.sh /usr/local/bin/sandbox-link-skills
+COPY scripts/network/aws-sso-domains.sh /usr/local/bin/aws-sso-domains
 # First-run setup reminder, sourced by every interactive shell (login shells via profile.d; the
 # /etc/bash.bashrc line below covers interactive non-login shells such as Herdr panes). It prints
 # ~/.sandbox-todo, which the entrypoint writes only while a manual setup step is still unmet.
@@ -205,10 +226,10 @@ RUN printf '\n# Sandbox first-run setup reminder (interactive non-login shells, 
 # Windows with CRLF (a `bash\r` shebang otherwise fails with "no such file"). Belt-and-suspenders
 # with .gitattributes (which forces LF on checkout); also normalize the proxy config copied above.
 RUN sed -i 's/\r$//' /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh \
-        /usr/local/bin/sandbox-link-skills /etc/profile.d/zz-sandbox-todo.sh \
-        /etc/tinyproxy/tinyproxy.conf \
+        /usr/local/bin/sandbox-link-skills /usr/local/bin/aws-sso-domains \
+        /etc/profile.d/zz-sandbox-todo.sh /etc/tinyproxy/tinyproxy.conf \
     && chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh \
-        /usr/local/bin/sandbox-link-skills
+        /usr/local/bin/sandbox-link-skills /usr/local/bin/aws-sso-domains
 
 # Claude's view of your files: only what gets mounted here.
 RUN mkdir -p /workspace && chown node:node /workspace

@@ -33,6 +33,12 @@ case "$(printf '%s' "${ALLOW_TOOL_UPGRADES:-false}" | tr '[:upper:]' '[:lower:]'
     false|0|no|off) ;;
     *) echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='${ALLOW_TOOL_UPGRADES}' — treating as OFF (fail-closed)" >&2 ;;
 esac
+if [ -n "${AWS_SSO_REGIONS:-}" ]; then
+    aws_output=$(/usr/local/bin/aws-sso-domains "$AWS_SSO_REGIONS") || {
+        echo "ERROR: invalid AWS_SSO_REGIONS; refusing to start" >&2; exit 1;
+    }
+    while IFS= read -r d; do [ -n "$d" ] && domains+=("$d"); done <<< "$aws_output"
+fi
 if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
     OLDIFS=$IFS; IFS=','; set -f
     for d in $EXTRA_ALLOWED_DOMAINS; do

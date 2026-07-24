@@ -33,6 +33,7 @@ services:
       TTYD_USER: "${TTYD_USER:-coder}"
       TTYD_PASS: "${TTYD_PASS:-changeme}"
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      AWS_SSO_REGIONS: "${AWS_SSO_REGIONS:-}"
       ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"
       ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
       # Content-level rule unique to this variant: allow GitHub clone/fetch, block push/writes.

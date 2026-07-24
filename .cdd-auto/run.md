@@ -15,19 +15,21 @@ Five scenarios pin architecture-matched checksum-verified AWS CLI v2.36.7, opt-i
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 | A | plan | 0 | green | 18m | `c4bbe8e` | Frozen contract + plan; OpenCode degraded peer converged after 1 edit round + verdict |
-| B | conformance | 0 | red as required | 4m | pending | 35 packaging/isolation/egress/docs checks; baseline red before implementation |
+| B | conformance | 0 | red as required | 9m | `823c61a` | 42 checks after peer hardening; baseline red and faithful fixture green |
+| C | implementation | 0 | green | 12m | pending | Pinned CLI, exact region helper, three agent-only overlays, docs and config wiring |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
 - Wall clock: 12m / 2h
-- Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
-- Review rounds: contract:1 arch:0 conf:0 impl:0 acceptance:0
+- Iterations: A:1 B:1 C:1 D:0 (per-wave; cap 5 each)
+- Review rounds: contract:1 arch:0 conf:1 impl:0 acceptance:0
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
 | Contract + Wave A | coding-agent-sandbox | converged-via-OpenCode (degraded) | 1 + verdict | OpenCode / Kimi K3 | Claude CLI unavailable; corrected MITM service mapping, frozen env input, and architecture path |
+| Wave B | coding-agent-sandbox | converged-via-OpenCode (degraded) | 1 + verdict | OpenCode / Kimi K3 | Closed missing-file, unrelated-checksum, helper-bypass, and missing-observable false-greens |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |

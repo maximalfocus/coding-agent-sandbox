@@ -26,6 +26,7 @@ services:
       # Isolation is the sidecar's entire purpose — force it on regardless of .env.
       ANTHROPIC_TOKEN_ISOLATION: "true"
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      AWS_SSO_REGIONS: "${AWS_SSO_REGIONS:-}"
       ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"
       ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
       GITHUB_READONLY: "${GITHUB_READONLY:-true}"

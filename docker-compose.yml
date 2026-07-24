@@ -38,6 +38,8 @@ services:
       TTYD_PASS: "${TTYD_PASS:-changeme}"
       # Browser terminal layout: 2x2 (default, four tiled panes) or 1 (single pane).
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      # Exact IAM Identity Center region identifiers; empty keeps all AWS service egress off.
+      AWS_SSO_REGIONS: "${AWS_SSO_REGIONS:-}"
       # Official package/download endpoints for deliberate CLI/toolchain upgrades. Off by default
       # because registries are payload-ingress channels; image-pinned tools still require rebuilds.
       ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"

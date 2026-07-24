@@ -87,6 +87,14 @@ build_filter() {
         *) upgrades=0; echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='${ALLOW_TOOL_UPGRADES}' — treating as OFF (fail-closed)" >&2 ;;
     esac
     [ "$upgrades" = "1" ] && domains+=("${TOOL_UPGRADE_DOMAINS[@]}")
+    if [ -n "${AWS_SSO_REGIONS:-}" ]; then
+        local aws_output d
+        aws_output=$(/usr/local/bin/aws-sso-domains "$AWS_SSO_REGIONS") || {
+            echo "ERROR: invalid AWS_SSO_REGIONS; refusing to start" >&2; return 1;
+        }
+        while IFS= read -r d; do [ -n "$d" ] && domains+=("$d"); done <<< "$aws_output"
+        say "  (AWS IAM Identity Center egress ON — exact regional OIDC/portal/STS hosts)"
+    fi
     if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
         local OLDIFS=$IFS; IFS=','; set -f   # noglob: a stray '*' must not expand to /workspace files
         for d in $EXTRA_ALLOWED_DOMAINS; do
