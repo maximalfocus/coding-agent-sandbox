@@ -16,11 +16,12 @@ Four scenarios require patched ImageMagick-family and linux-libc-dev versions, f
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 | A | plan | 0 | green | 7m | `76dd5a2` | Frozen issue contract + remediation plan; peer removed an accidental strict-scan overconstraint |
+| B | conformance | 0 | red as required | 4m | `0650774` | Debian-aware package and fail-closed Trivy JSON verifier fails on ImageMagick deb12u12 |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 12m / 2h
+- Wall clock: 16m / 2h
 - Iterations: A:1 B:0 C:0 D:0 (per-wave; cap 5 each)
 - Review rounds: contract:1 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
@@ -31,6 +32,7 @@ Four scenarios require patched ImageMagick-family and linux-libc-dev versions, f
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
+| `scripts/verify-debian-security.sh` | Add | 0 | Frozen issue-29 regression contract; baseline fails on ImageMagick deb12u12 |
 
 ## Out-of-scope edits
 | Path | Reason |
