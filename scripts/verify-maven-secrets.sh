@@ -74,6 +74,7 @@ cleanup() {
   rm -f "$repo_settings" "$image_settings"
   [ "$owned_report" = 1 ] && rm -f "$REPORT"
   [ -n "$tarball" ] && rm -f "$tarball"
+  return 0
 }
 trap cleanup EXIT
 cp maven-settings.xml "$repo_settings"
