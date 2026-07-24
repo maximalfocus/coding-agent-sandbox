@@ -58,6 +58,7 @@ TOOL_UPGRADE_DOMAINS=(
     "repo.maven.apache.org" "repo1.maven.org"
     "services.gradle.org" "plugins.gradle.org"
     "deb.debian.org" "security.debian.org"
+    "download.docker.com"     # Docker CLI/Buildx/Compose apt repository
     "cdn.playwright.dev"
 )
 
@@ -170,6 +171,33 @@ if [ "$(id -u)" = "0" ]; then
         echo "ERROR: direct IPv6 egress succeeded — v6 not locked" >&2; exit 1
     fi
     say "  ok: direct IPv6 egress is blocked"
+
+    # Host Docker access is an explicit, high-impact opt-in. The override mounts the socket but
+    # socket ownership varies by host (Docker Desktop commonly presents gid 0; Linux uses its
+    # docker group gid). Add node to that existing numeric group without changing the bind-mounted
+    # socket's host ownership. Never infer enablement merely from a socket that happens to exist.
+    case "$(printf '%s' "${ENABLE_DOCKER_HOST:-false}" | tr '[:upper:]' '[:lower:]')" in
+        true|1|yes|on)
+            if [ ! -S /var/run/docker.sock ]; then
+                echo "ERROR: ENABLE_DOCKER_HOST is on but /var/run/docker.sock is not a socket." >&2
+                echo "       Start with docker-compose.host.yml or disable the option." >&2
+                exit 1
+            fi
+            docker_gid="$(stat -c '%g' /var/run/docker.sock)"
+            docker_group="$(getent group "$docker_gid" | cut -d: -f1 || true)"
+            if [ -z "$docker_group" ]; then
+                docker_group=sandbox-docker-host
+                groupadd --gid "$docker_gid" "$docker_group"
+            fi
+            usermod -aG "$docker_group" node
+            say "  WARNING: host Docker daemon access ENABLED (host containment is not preserved)"
+            ;;
+        false|0|no|off) ;;
+        *)
+            echo "ERROR: unrecognized ENABLE_DOCKER_HOST='${ENABLE_DOCKER_HOST}' (fail-closed)." >&2
+            exit 1
+            ;;
+    esac
 
     # Own the config volume only. Do NOT `chown -R /workspace`: it's a bind mount of your real
     # project, and on Linux/WSL that would rewrite your host files' ownership (and be slow).
