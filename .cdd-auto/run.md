@@ -16,7 +16,7 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 |---|---|---:|---|---|---|---|
-| A | PLAN/contract | 0 | green | 2m | pending | Frozen contract and issue-specific conformance plan authored |
+| A | PLAN/contract | 0 | green | 2m | `e928fa7` | Frozen contract and issue-specific conformance plan authored |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
