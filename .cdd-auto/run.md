@@ -37,6 +37,7 @@ Four scenarios require commit-pinned upstream source builds, absence of all issu
 | Wave B | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass bound supplied evidence to the image tag; second pass verified strict target/ID typing, test-only report seam, exact affected-binary coverage, immutable source pins, CLI execution, and daemon isolation |
 | Wave C | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass exposed optional corporate CA omission in isolated builder and uninformative dev versions; fixes copied certs into builder and set source-version ldflags. Second pass verified commit checkout, go.sum path, exact toolchain, amd64/arm64 dispatch, docker/docker non-linkage, Compose→patched-Buildx replacement, runtime-only copies, and live scan |
 | Wave D | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass replaced a registry-dependent busybox smoke and shell-form scratch healthcheck with a local static ttyd build plus exec healthcheck, and isolated entrypoint stdout from byte-stable output. Second pass verified scan/CLI/denial/lifecycle ordering, cleanup, output diff, rendered artifact, and explicit high-impact host-socket disclosure |
+| Final charter | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Reconciled issue→contract→PLAN→verifier→source build→demo closure and deterministic verification commands; no remaining Medium/High findings |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
@@ -56,6 +57,7 @@ Four scenarios require commit-pinned upstream source builds, absence of all issu
 | methodology-evolved | Prior pause | `/cdd-evolve` added this hard-pause class and published `maximalfocus/cdd-skills@d7c4b0a` |
 
 ## Final
-- Status: running — resumed after user-amended scope
+- Status: green — all waves and disclosed degraded per-wave reviews converged; final direct re-verification green; PR delivery pending
+- Verification: digest-pinned source build; live image-bound Trivy scan; all CLI/node and daemon-boundary scenarios; host-Docker lifecycle; affected/missing/foreign/malformed/output mutations red
 - Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-30-20260724-143252`)
-- PR / issue: no PR until green delivery; https://github.com/maximalfocus/coding-agent-sandbox/issues/30 remains open
+- PR / issue: pending / https://github.com/maximalfocus/coding-agent-sandbox/issues/30

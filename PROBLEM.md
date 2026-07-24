@@ -2,52 +2,60 @@
 
 - **Producer:** cdd-auto
 - **Generated:** 2026-07-24
-- **Source of truth:** GitHub issue 29 and `.cdd-auto/contracts/issue-29.md`
+- **Source of truth:** GitHub issue 30 and `.cdd-auto/contracts/issue-30.md`
 
 ## Problem
 
-The pinned Debian 12 base contains ImageMagick `deb12u12` and `linux-libc-dev 6.1.176-1`, producing 63 HIGH Trivy package occurrences across 15 fixed advisories. The image needs patched Debian packages without regressing its bundled development tools or network-isolation boundary.
+The packaged GitHub CLI, Docker Buildx, and Docker Compose binaries embed fixed HIGH-vulnerability Go components. Fixed stable packages are unavailable, so the affected binaries must be rebuilt from immutable upstream source without weakening their operation or the sandbox's Docker-daemon isolation boundary.
 
 ## Scope
 
-- Refresh the existing apt layer to install every present ImageMagick-family package at `deb12u13` or newer and `linux-libc-dev` at `6.1.177-1` or newer.
-- Verify package floors with Debian version semantics and prove all 15 named CVEs absent from a successful Trivy container-image scan.
-- Verify Java, Maven, Playwright, bundled npm agent CLIs, proxy health, and firewall bypass prevention.
+- Build gh, Buildx, and Compose with digest-pinned Go 1.26.5 from full upstream commit pins.
+- Remove the vulnerable docker/docker module from linked Buildx and Compose metadata while preserving its frozen random-name behavior.
+- Prove all issue-listed findings absent from a successful, image-bound Trivy scan.
+- Prove all CLIs work as `node`, default daemon access is denied, and the explicit host-Docker build/start/health/remove lifecycle passes.
 
 ## Non-goals
 
 - Remediating unrelated Trivy findings.
-- Changing the Node base tag/digest, runtime firewall, egress allowlist, proxy model, or container privileges.
-- Upgrading unrelated bundled toolchains.
+- Replacing the fixed-version packaged Docker CLI, which has no issue-listed finding.
+- Changing runtime firewall, egress allowlist, proxy model, container privileges, or normal Docker-daemon denial.
+- Shipping Go source or a Go compiler in the runtime image.
 
 ## Acceptance criteria
 
-- [x] Every installed `imagemagick*`, `libmagickcore-*`, and `libmagickwand-*` occurrence is at least `8:6.9.11.60+dfsg-1.6+deb12u13`.
-- [x] Installed `linux-libc-dev` is at least `6.1.177-1`.
-- [x] A successful HIGH/CRITICAL Trivy JSON container-image scan contains none of the 15 CVEs named by issue 29; missing, empty, malformed, no-result, failed, or affected evidence is red.
-- [x] Java, Maven, Playwright, npm-installed agent CLIs, proxy health/refusal, and direct-bypass firewall checks remain green.
+- [x] `/usr/bin/gh` contains none of GHSA-hrxh-6v49-42gf or CVE-2026-39822.
+- [x] Buildx contains none of CVE-2026-53488, CVE-2026-53489, CVE-2026-53492, CVE-2026-34040, GHSA-hrxh-6v49-42gf, or CVE-2026-39822.
+- [x] Compose contains none of CVE-2026-34040, GHSA-hrxh-6v49-42gf, or CVE-2026-39822.
+- [x] A digest-pinned Go 1.26.5 builder and full source commits produce Linux amd64/arm64 binaries; docker/docker is not linked into Buildx or Compose.
+- [x] gh, docker, buildx, and compose run as `node`; default daemon access fails; explicit host-Docker build/start/health/remove succeeds.
+- [x] Missing, malformed, foreign-image, missing-target, or affected Trivy evidence is red.
 
 ## Verification
 
 ```sh
 set -euo pipefail
-bash -n scripts/verify-debian-security.sh .cdd-auto/demo/verify.sh
+bash -n scripts/build-pinned-go-clis.sh scripts/verify-cli-security.sh .cdd-auto/demo/verify.sh
 docker compose config >/dev/null
-docker compose build claude-sandbox
-.cdd-auto/demo/verify.sh
+for f in docker-compose.host.yml docker-compose.mitm.yml docker-compose.sidecar.yml; do
+  docker compose -f docker-compose.yml -f "$f" config >/dev/null
+done
+docker build -t coding-agent-sandbox:issue30 .
+.cdd-auto/demo/verify.sh coding-agent-sandbox:issue30
+bun run ~/personal/cdd-skills/tools/impl-stub-scan.ts .
 
 bad="$(mktemp)"; trap 'rm -f "$bad"' EXIT
 cp .cdd-auto/demo/expected-output.txt "$bad"
-printf 'unexpected-line\n' >> "$bad"
-if EXPECTED_OUTPUT="$bad" .cdd-auto/demo/verify.sh >/tmp/issue29-negative.out 2>&1; then
+printf 'mutated\n' >>"$bad"
+if EXPECTED_OUTPUT="$bad" .cdd-auto/demo/verify.sh coding-agent-sandbox:issue30 >/tmp/issue30-negative.out 2>&1; then
   echo 'acceptance output mutation unexpectedly passed' >&2
   exit 1
 fi
 ```
 
-The build, container recreation, and live Trivy scan use Docker state/cache and require registry/network access on a cold cache.
+The source build and live vulnerability scan require network/registry access on a cold cache. The final lifecycle check intentionally and temporarily mounts the host Docker socket, creates a uniquely named scratch-based image/container, and removes both.
 
 ## Residuals & assumptions
 
-- Verification was executed on arm64. The Node base is a multi-architecture manifest and the explicitly named Debian packages are available under the same names on amd64; CI/maintainer builds retain the second-architecture confirmation.
-- Unrelated fixed HIGH findings may remain and are outside issue 29. The gate rejects the named advisories rather than claiming the entire image has zero HIGH findings.
+- Verification was executed on arm64. The builder accepts only Linux amd64/arm64 and uses architecture-neutral Go sources, but an amd64 build remains a maintainer/CI confirmation.
+- The Claude peer CLI was absent, so every mandatory artifact review converged through the disclosed Codex host-native degraded fallback; the cross-vendor pass remains owed.
