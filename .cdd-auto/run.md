@@ -17,15 +17,15 @@ Five scenarios pin architecture-matched checksum-verified AWS CLI v2.36.7, opt-i
 | A | plan | 0 | green | 18m | `c4bbe8e` | Frozen contract + plan; OpenCode degraded peer converged after 1 edit round + verdict |
 | B | conformance | 0 | red as required | 9m | `823c61a` | 42 checks after peer hardening; baseline red and faithful fixture green |
 | C | implementation | 0 | green | 26m | `5df8d94` | Pinned CLI, exact region helper, agent-only overlays; peer caught region parsing + MITM SigV4 defects |
-| C | implementation | 1 | green | 8m | `db pending` | Build-context omission fixed after first image build failed; rebuilt image green |
-| D | acceptance/demo | 0 | green | 7m | pending | 47/47 + built aws-cli/2.36.7 + endpoint rejection + volume matrix; differ mutation red |
+| C | implementation | 1 | green | 8m | `95ea9cd` | Build-context omission fixed after first image build failed; rebuilt image green |
+| D | acceptance/demo | 0 | green | 7m | `3f32be1` | 47/47 + built aws-cli/2.36.7 + endpoint rejection + volume matrix; differ mutation red |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 72m / 2h
+- Wall clock: 94m / 2h
 - Iterations: A:1 B:1 C:2 D:1 (per-wave; cap 5 each)
-- Review rounds: contract:1 arch:0 conf:1 impl:1 acceptance:0
+- Review rounds: contract:1 arch:0 conf:1 impl:1 acceptance:1
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
@@ -33,6 +33,7 @@ Five scenarios pin architecture-matched checksum-verified AWS CLI v2.36.7, opt-i
 | Contract + Wave A | coding-agent-sandbox | converged-via-OpenCode (degraded) | 1 + verdict | OpenCode / Kimi K3 | Claude CLI unavailable; corrected MITM service mapping, frozen env input, and architecture path |
 | Wave B | coding-agent-sandbox | converged-via-OpenCode (degraded) | 1 + verdict | OpenCode / Kimi K3 | Closed missing-file, unrelated-checksum, helper-bypass, and missing-observable false-greens |
 | Wave C | coding-agent-sandbox | converged-via-OpenCode (degraded) | 1 interrupted + 1 fresh verdict | OpenCode / Kimi K3 | Broad round surfaced region parser + SigV4 defects; focused fresh pass converged after fixes |
+| Wave D | coding-agent-sandbox | converged-via-host-native (degraded) | 2 OpenCode provider failures + 1 host-native | Codex host | Demo gate + negative differ mutation independently rerun; preferred and OpenCode peers unavailable at verdict |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
@@ -45,8 +46,10 @@ Five scenarios pin architecture-matched checksum-verified AWS CLI v2.36.7, opt-i
 
 ## Flags
 | Type | Wave | Detail |
+| cross-vendor-review-owed | all | Claude CLI unavailable; OpenCode fallback converged A/B/C but provider failed for D |
+| impl-bug | C→D | `.dockerignore` excluded the new helper; fixed and rebuilt successfully |
 
 ## Final
-- Status: running — Wave A
+- Status: green — acceptance complete; delivery pending
 - Repos: https://github.com/maximalfocus/coding-agent-sandbox (cdd-auto/issue-33-20260724-165718)
 - PR / issue: pending / https://github.com/maximalfocus/coding-agent-sandbox/issues/33
