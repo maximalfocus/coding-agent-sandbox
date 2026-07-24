@@ -340,6 +340,14 @@ firewall) as Claude. Two steps to enable it:
 Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
 allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.
 
+> **Codex Linux sandbox:** the shipped Docker seccomp profile blocks Codex bubblewrap from creating
+> a nested user namespace. Installing Debian `bubblewrap` only removes the PATH warning; it does not
+> make the sandbox functional. Keep the stronger outer Docker boundary and use
+> `codex -s danger-full-access` **only inside this container**. Run the real-command smoke with
+> `./scripts/verify-codex-sandbox.sh --variant default` (also supports `mitm` and `sidecar`). See
+> [Codex Linux sandbox inside the agent container](docs/codex-sandbox.md) for the measured control
+> matrix, supported runtimes, exact fallback, and security trade-offs.
+
 ## Other bundled coding tools
 
 The image also installs pinned versions of:

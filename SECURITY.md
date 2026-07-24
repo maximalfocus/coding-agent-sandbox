@@ -120,6 +120,14 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   of scope here; this is strong defense-in-depth, not a hypervisor boundary. If you need a stronger
   boundary, install gVisor and uncomment `runtime: runsc` in `docker-compose.yml` (see *Hardening*)
   — a user-space kernel of the same class Anthropic uses for claude.ai.
+- **Codex relies on this outer boundary in the shipped profiles.** Codex's Linux `workspace-write`
+  sandbox uses bubblewrap, whose nested user-namespace operation is blocked by Docker's built-in
+  seccomp profile in the default, MITM, and sidecar agent variants. We deliberately do not add
+  `SYS_ADMIN`, privileged mode, host namespace sharing, or `seccomp=unconfined` to make it work:
+  those weaken the primary boundary for every process. Use `codex -s danger-full-access` only
+  inside this already-contained environment, and verify the actual filesystem/network behavior
+  with `scripts/verify-codex-sandbox.sh`; details and the runtime matrix are in
+  [`docs/codex-sandbox.md`](docs/codex-sandbox.md).
 - **One layer, mostly.** This is an *environment-layer* containment (sandbox + egress + caps).
   Anthropic's write-up stresses that defenses should overlap: model-layer and tool-permission
   checks exist precisely because no single layer is 100%. The cheap complementary layer here is
