@@ -4,7 +4,7 @@ Source: `.cdd-auto/contracts/issue-32.md` (frozen)
 
 ## Approach
 
-Keep Docker's built-in seccomp profile, `no-new-privileges`, and minimal capability set unchanged. The controlled matrix shows that Docker's built-in seccomp profile blocks the user-namespace syscall path used by both Codex's bundled bubblewrap and Debian bubblewrap; removing `no-new-privileges` alone does not help, while `seccomp=unconfined` does. Because replacing or broadly disabling the outer seccomp boundary to add a second inner layer expands host-kernel attack surface and is not portable across Docker/runtime versions, select the documented outer-container fallback rather than weakening the primary boundary.
+Keep Docker's built-in seccomp profile, `no-new-privileges`, and minimal capability set unchanged. The measured preflight matrix in `.cdd-auto/evidence/issue-32-preflight.md` shows that, on Docker Desktop 29.4.0/macOS-arm64, Docker's built-in seccomp profile blocks the user-namespace syscall path used by both Codex's bundled bubblewrap and Debian bubblewrap; removing `no-new-privileges` alone does not help, while a disposable `seccomp=unconfined` diagnostic does. The portable verifier must still classify other host/runtime restrictions independently. Because replacing or broadly disabling the outer seccomp boundary to add a second inner layer expands host-kernel attack surface and is not portable across Docker/runtime versions, select the documented outer-container fallback rather than weakening the primary boundary.
 
 Add a fail-closed verifier around `codex sandbox`: use `:workspace` when nested namespaces work; otherwise accept only the known namespace-init failure and run `:danger-full-access` as the explicit externally-sandboxed fallback while testing the outer filesystem and network controls. Preserve Codex's bundled binary for compatible runtimes; do not install Debian bubblewrap merely to remove a warning.
 
@@ -17,10 +17,10 @@ Alternatives rejected:
 
 ## Work
 
-1. **Conformance first:** add a deterministic host-side verifier that runs real `codex sandbox` commands, classifies nested support, and proves the selected nested or fallback filesystem/network restrictions. Include mutation seams/negative checks for false-green output.
+1. **Conformance first:** add a deterministic host-side verifier that runs real `codex sandbox` commands, classifies nested support, and proves the selected nested or fallback filesystem/network restrictions. Explicit negatives cover missing Codex, an unrecognized nested error, malformed/false-green result output, and version-only evidence. A separate disposable PATH fixture runs Debian bubblewrap operationally and proves that warning disappearance without namespace success remains red.
 2. **Implementation:** wire no security relaxations and no Debian bubblewrap package; make the verifier support default, MITM, and sidecar service selection without embedding credentials.
 3. **Documentation:** explain the two observed warnings/errors, the seccomp attribution matrix, supported/unsupported runtime combinations, the explicit fallback, and the security rationale in `README.md` and `SECURITY.md`.
-4. **Acceptance:** run the verifier against the live default stack; run direct composed bwrap probes for default, MITM, and sidecar; render byte-stable demo output and screenshot.
+4. **Acceptance:** run the verifier against the live default stack; run the operational namespace command `bwrap --ro-bind / / --proc /proc --dev /dev /bin/true` through default, MITM, and sidecar service definitions (never a version-only check); diff byte-stable output against a committed expected file and render a screenshot.
 5. **Repository hygiene:** commit the final run trace, then remove `.cdd-auto/` from the delivered tree and add `.cdd-auto/` to `.gitignore`; the merged PR history remains the audit record.
 6. **Review and delivery:** cross-vendor review every wave, using a probed non-OpenAI OpenCode model when Claude CLI is unavailable; create a linked PR with `Closes #32`, merge only after all gates pass, confirm issue closure, and delete the dedicated branch.
 
@@ -28,7 +28,7 @@ Alternatives rejected:
 
 | # | Category | Boundary | Key behaviors | Est. tests | Deps | Risk |
 |---|---|---|---|---:|---|---|
-| 1 | `nested-classification` | CLI | real `codex sandbox :workspace`; success vs exact namespace-blocked fallback; unexpected errors red | 4 | none | high |
+| 1 | `nested-classification` | CLI | real `codex sandbox :workspace`; bundled-vs-Debian-PATH operational probes; success vs exact namespace-blocked fallback; missing Codex/unrecognized error/version-only evidence red | 8 | none | high |
 | 2 | `filesystem` | CLI | workspace write succeeds; protected outside write denied | 3 | 1 | high |
 | 3 | `network` | CLI | nested network denied; fallback proxy refusal and direct-IP denial | 4 | 1 | high |
 | 4 | `variant-controls` | workflow assertion | default/MITM/sidecar retain seccomp + NNP + minimal caps; forbidden relaxations absent | 5 | none | high |

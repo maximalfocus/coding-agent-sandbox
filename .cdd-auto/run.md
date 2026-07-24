@@ -15,17 +15,20 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
+| A | plan | 0 | green | 12m | `d85d6d8` | Frozen contract and safe outer-fallback plan from measured default/MITM/sidecar controls |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
 - Wall clock: 12m / 2h
 - Iterations: A:1 B:0 C:0 D:0 (per-wave; cap 5 each)
-- Review rounds: contract:0 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
+- Review rounds: contract:2 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
+| Contract + Wave A | coding-agent-sandbox | not-converged | 1 | OpenCode / DeepSeek v4 Flash | Required committed measured evidence plus explicit Debian-PATH, missing-Codex, unknown-error, operational-probe, and byte-stable gates |
+| Contract + Wave A | coding-agent-sandbox | not-converged | 2 | OpenCode / DeepSeek v4 Flash | Confirmed plan fixes; required the new preflight evidence be committed and clarified sidecar egress is not a Codex execution surface |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
