@@ -1,9 +1,0 @@
-PASS: Codex sandbox verifier conformance (16 behavioral cases; control-attribution evidence; 3 variant guards)
-variant=default
-nested_sandbox=blocked-known
-fallback_profile=:danger-full-access
-workspace_write=PASS
-outside_write=DENIED
-network_proxy_filter=PASS
-network_direct_ip=DENIED
-result=PASS
