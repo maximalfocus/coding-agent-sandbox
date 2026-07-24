@@ -18,7 +18,7 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 |---|---|---:|---|---|---|---|
 | A | PLAN/contract | 0 | green | 2m | `e928fa7` | Frozen contract and issue-specific conformance plan authored |
 | B | backend-conformance | 0 | red verified | 6m | `3b3f7ed` | Added fail-closed Maven layer/image/Trivy verifier; current Dockerfile fails same-layer cleanup |
-| C | backend-implementation | 0 | green | 6m | pending | Deleted package settings in Maven-install RUN; rebuilt image and live secret scan passed |
+| C | backend-implementation | 0 | green | 6m | `08025b4` | Deleted package settings in Maven-install RUN; rebuilt image and live secret scan passed |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
