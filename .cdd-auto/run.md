@@ -24,7 +24,7 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 24m / 2h
+- Wall clock: 27m / 2h
 - Iterations: A:1 B:1 C:1 D:1 (per-wave; cap 5 each)
 - Review rounds: contract:1 arch:0 conf:2 impl:2 acceptance:2 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
@@ -47,12 +47,18 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 |---|---|
 | None | — |
 
+## Final verification
+
+- All repository shell scripts parse with `bash -n`.
+- `docker compose config`, image rebuild, live Maven secret scan, issue-29 Debian regression, npm bundle verification, issue-31 demo, and token-isolation suite (26/26) are green.
+- Same-layer, suppression, report-provenance, empty/malformed/foreign/affected-report, and acceptance-output mutations are red.
+
 ## Flags
 | Type | Wave | Detail |
 |---|---|---|
 | cross-vendor-review-owed | Step 2 | Codex host probed `claude`; Claude CLI is absent, so mandatory reviews use the disclosed degraded host-native fallback |
 
 ## Final
-- Status: running
-- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-31-20260724-145223`)
+- Status: green — verified; issue/PR delivery in progress
+- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-31-20260724-145223` @ pending delivery SHA)
 - PR / issue: pending / https://github.com/maximalfocus/coding-agent-sandbox/issues/31
