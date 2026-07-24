@@ -23,7 +23,7 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 78m / 2h
+- Wall clock: 96m / 2h
 - Iterations: A:1 B:1 C:1 D:1 (per-wave; cap 5 each)
 - Review rounds: contract:3 arch:0 conf:2 impl:2 acceptance:2 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
@@ -39,6 +39,7 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 | Wave C | coding-agent-sandbox | CONVERGED | 2 | OpenCode / big-pickle | Re-ran 16-case suite and live default fallback; `.gitignore` fixed; no remaining Medium/High correctness or security defects |
 | Wave D | coding-agent-sandbox | not-converged | 1 | OpenCode / big-pickle | Live demo green but peer mutation found `EXPECTED_OUTPUT` override ignored, making the independent byte-diff negative gate ineffective |
 | Wave D | coding-agent-sandbox | CONVERGED | 2 | OpenCode / big-pickle | Normal live demo green; neutral temp-expected mutation red; screenshot and all five frozen scenarios rechecked with no Medium/High defects |
+| Final charter | coding-agent-sandbox | CONVERGED | 1 | OpenCode / big-pickle | Issue→contract→PLAN→conformance→implementation→acceptance closure and post-cleanup verification commands reviewed; no Medium/High defects |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
@@ -54,6 +55,7 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 | user-scope | Step 2 | User authorized probed non-OpenAI OpenCode as peer when Claude CLI is unavailable and required `.cdd-auto/` absent/ignored at delivered tip |
 
 ## Final
-- Status: running — Wave A
+- Status: green — all waves and non-OpenAI OpenCode peer reviews converged; final direct re-verification green; `.cdd-auto/` cleanup and PR delivery pending
+- Verification: 16 deterministic behavioral cases; parsed control guards for all services; live default/MITM/sidecar Codex fallback probes; proxy/direct-network mutations red; byte-diff mutation red; rendered demo
 - Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-32-20260724-153531`)
 - PR / issue: pending / https://github.com/maximalfocus/coding-agent-sandbox/issues/32
