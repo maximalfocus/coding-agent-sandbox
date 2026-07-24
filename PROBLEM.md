@@ -1,61 +1,45 @@
 # Problem Charter
 
 - **Producer:** cdd-auto
-- **Generated:** 2026-07-24
-- **Source of truth:** GitHub issue 30 and `.cdd-auto/contracts/issue-30.md`
+- **Generated:** 2026-07-25
+- **Source of truth:** https://github.com/maximalfocus/coding-agent-sandbox/issues/32 and the issue-32 contract/audit retained in this PR's commit history
 
 ## Problem
 
-The packaged GitHub CLI, Docker Buildx, and Docker Compose binaries embed fixed HIGH-vulnerability Go components. Fixed stable packages are unavailable, so the affected binaries must be rebuilt from immutable upstream source without weakening their operation or the sandbox's Docker-daemon isolation boundary.
+Codex warns that bubblewrap is absent, then its bundled binary cannot create a nested user namespace under the sandbox container's Docker controls. The repository must either provide functional nested sandboxing without weakening the primary boundary or document and verify a safe outer-container fallback.
 
 ## Scope
 
-- Build gh, Buildx, and Compose with digest-pinned Go 1.26.5 from full upstream commit pins.
-- Remove the vulnerable docker/docker module from linked Buildx and Compose metadata while preserving its frozen random-name behavior.
-- Prove all issue-listed findings absent from a successful, image-bound Trivy scan.
-- Prove all CLIs work as `node`, default daemon access is denied, and the explicit host-Docker build/start/health/remove lifecycle passes.
+- In: reproduce bundled and Debian-PATH bubblewrap behavior; identify the blocking controls for default, MITM, and sidecar agent variants; retain least privilege; provide a real-command smoke; document supported behavior and trade-offs; exclude `.cdd-auto/` from the delivered tree.
 
 ## Non-goals
 
-- Remediating unrelated Trivy findings.
-- Replacing the fixed-version packaged Docker CLI, which has no issue-listed finding.
-- Changing runtime firewall, egress allowlist, proxy model, container privileges, or normal Docker-daemon denial.
-- Shipping Go source or a Go compiler in the runtime image.
+- Out: privileged mode, `SYS_ADMIN`, host namespace sharing, `seccomp=unconfined`, a forked full Docker seccomp profile, host sysctl changes, or installing Debian bubblewrap merely to suppress a warning.
+- Out: claiming Docker is a VM or changing auth, token, proxy policy, or the sidecar's experimental status.
 
 ## Acceptance criteria
 
-- [x] `/usr/bin/gh` contains none of GHSA-hrxh-6v49-42gf or CVE-2026-39822.
-- [x] Buildx contains none of CVE-2026-53488, CVE-2026-53489, CVE-2026-53492, CVE-2026-34040, GHSA-hrxh-6v49-42gf, or CVE-2026-39822.
-- [x] Compose contains none of CVE-2026-34040, GHSA-hrxh-6v49-42gf, or CVE-2026-39822.
-- [x] A digest-pinned Go 1.26.5 builder and full source commits produce Linux amd64/arm64 binaries; docker/docker is not linked into Buildx or Compose.
-- [x] gh, docker, buildx, and compose run as `node`; default daemon access fails; explicit host-Docker build/start/health/remove succeeds.
-- [x] Missing, malformed, foreign-image, missing-target, or affected Trivy evidence is red.
+- [x] AC1 — The measured matrix separately records the no-PATH bundled warning/failure and Debian bubblewrap's warning-free but functionally identical namespace failure.
+- [x] AC2 — Default, MITM, sidecar-agent, and sidecar-egress static controls retain `cap_drop: ALL`, `no-new-privileges`, no `SYS_ADMIN`, no privileged/host namespace mode, and no unconfined seccomp.
+- [x] AC3 — `scripts/verify-codex-sandbox.sh` runs `codex sandbox -P :workspace`; only a known namespace-init failure selects the explicit `:danger-full-access` outer fallback.
+- [x] AC4 — The live smoke proves workspace write succeeds while protected filesystem write, non-allowlisted proxy egress, and direct-IP egress are denied; missing Codex, unknown errors, malformed output, and unsafe controls fail closed.
+- [x] AC5 — README, SECURITY, and `docs/codex-sandbox.md` state the supported variants, exact fallback, warning-vs-function distinction, and security trade-off without recommending boundary relaxation.
+- [x] AC6 — `.cdd-auto/` is ignored and absent from the delivered repository tip; its final audit/demo state remains available in PR history.
 
 ## Verification
 
+Requires Docker, Python 3, a running healthy default `claude-sandbox`, and its local proxy/firewall. The live command performs one blocked proxy request and one blocked direct-IP request from inside that container; it makes no successful external request and changes no host configuration.
+
 ```sh
 set -euo pipefail
-bash -n scripts/build-pinned-go-clis.sh scripts/verify-cli-security.sh .cdd-auto/demo/verify.sh
-docker compose config >/dev/null
-for f in docker-compose.host.yml docker-compose.mitm.yml docker-compose.sidecar.yml; do
-  docker compose -f docker-compose.yml -f "$f" config >/dev/null
-done
-docker build -t coding-agent-sandbox:issue30 .
-.cdd-auto/demo/verify.sh coding-agent-sandbox:issue30
-bun run ~/personal/cdd-skills/tools/impl-stub-scan.ts .
-
-bad="$(mktemp)"; trap 'rm -f "$bad"' EXIT
-cp .cdd-auto/demo/expected-output.txt "$bad"
-printf 'mutated\n' >>"$bad"
-if EXPECTED_OUTPUT="$bad" .cdd-auto/demo/verify.sh coding-agent-sandbox:issue30 >/tmp/issue30-negative.out 2>&1; then
-  echo 'acceptance output mutation unexpectedly passed' >&2
-  exit 1
-fi
+bash -n scripts/verify-codex-sandbox.sh scripts/test-codex-sandbox-verifier.sh
+scripts/test-codex-sandbox-verifier.sh
+scripts/verify-codex-sandbox.sh --variant default --container claude-sandbox
+scripts/test-codex-sandbox-verifier.sh --delivery
 ```
-
-The source build and live vulnerability scan require network/registry access on a cold cache. The final lifecycle check intentionally and temporarily mounts the host Docker socket, creates a uniquely named scratch-based image/container, and removes both.
 
 ## Residuals & assumptions
 
-- Verification was executed on arm64. The builder accepts only Linux amd64/arm64 and uses architecture-neutral Go sources, but an amd64 build remains a maintainer/CI confirmation.
-- The Claude peer CLI was absent, so every mandatory artifact review converged through the disclosed Codex host-native degraded fallback; the cross-vendor pass remains owed.
+- Nested bubblewrap may work under a separately reviewed runtime/seccomp policy that permits user namespaces; shipped Docker built-in-seccomp profiles intentionally use the outer fallback.
+- The operational matrix was measured on Docker Desktop/Engine 29.4.0 on macOS arm64. Other kernels/runtimes can block user namespaces for additional reasons; unknown failures remain fail-closed.
+- MITM and sidecar agent live probes passed on the measured runtime; the deterministic gate statically covers all services and live-default behavior but does not launch every optional stack on every review run.
