@@ -49,6 +49,7 @@ assert 'claude-sandbox-egress' not in yaml.safe_load((root / 'docker-compose.sid
 PY
 
 check 'regional endpoint helper is executable' test -x "$HELPER"
+check 'regional endpoint helper is included in image build context' contains "$ROOT/.dockerignore" '!scripts/network/aws-sso-domains.sh'
 if [ -x "$HELPER" ]; then
   expected=$'oidc.us-east-1.amazonaws.com\nportal.sso.us-east-1.amazonaws.com\nsts.us-east-1.amazonaws.com'
   if actual=$("$HELPER" us-east-1 2>/dev/null); then check 'one region emits exactly OIDC, portal, and STS hosts' test "$actual" = "$expected"; else not_ok 'one region emits exactly OIDC, portal, and STS hosts'; fi

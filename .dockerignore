@@ -14,3 +14,4 @@ scripts/
 !scripts/build-pinned-go-clis.sh
 !scripts/skills/link-skills.sh
 !scripts/skills/sandbox-todo-hint.sh
+!scripts/network/aws-sso-domains.sh
