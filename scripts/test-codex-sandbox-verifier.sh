@@ -14,8 +14,17 @@ expect_fail() {
   if FAKE_MODE="$mode" DOCKER_BIN="$TMP/docker" "$VERIFY" --variant default --container fixture >"$TMP/out" 2>"$TMP/err"; then
     fail "$mode unexpectedly passed"
   fi
+  [[ ! -s "$TMP/out" ]] || fail "$mode emitted success-shaped stdout while failing"
   grep -Fq "$needle" "$TMP/err" || fail "$mode did not report: $needle"
 }
+
+if [[ "${1:-}" == --delivery ]]; then
+  [[ -z "$(git -C "$ROOT" ls-files '.cdd-auto/*')" ]] || fail '.cdd-auto remains tracked at delivered tip'
+  grep -Fxq '.cdd-auto/' "$ROOT/.gitignore" || fail '.gitignore does not exclude .cdd-auto/'
+  echo 'PASS: delivery excludes .cdd-auto/'
+  exit 0
+fi
+[[ $# -eq 0 ]] || fail "usage: $0 [--delivery]"
 
 cat >"$TMP/docker" <<'FAKE'
 #!/usr/bin/env bash
@@ -74,6 +83,7 @@ grep -Fq 'codex sandbox -P :workspace' "$FAKE_LOG" || fail 'nested smoke did not
 
 for mode in bundled-blocked debian-blocked; do
   : >"$FAKE_LOG"
+  echo "checking $mode" >&2
   FAKE_MODE="$mode" DOCKER_BIN="$TMP/docker" "$VERIFY" --variant default --container fixture >"$TMP/fallback"
   diff -u - "$TMP/fallback" <<'EXPECTED'
 variant=default
@@ -87,6 +97,7 @@ result=PASS
 EXPECTED
   grep -Fq 'codex sandbox -P :workspace' "$FAKE_LOG" || fail "$mode skipped the nested operational probe"
   grep -Fq 'codex sandbox -P :danger-full-access' "$FAKE_LOG" || fail "$mode skipped the explicit outer fallback probe"
+  ! grep -Fq -- '--version' "$FAKE_LOG" || fail "$mode used version-only bubblewrap evidence"
 done
 
 expect_fail missing-codex 'Codex is unavailable'
@@ -94,14 +105,38 @@ expect_fail unknown-error 'unrecognized nested sandbox failure'
 expect_fail malformed-success 'malformed nested probe output'
 expect_fail fallback-network-open 'outer fallback restrictions failed'
 
-# Static fail-closed guard: all agent execution variants keep the outer boundary intact.
+# Static fail-closed guard: parse rendered Compose JSON so comments cannot satisfy controls.
 for file in docker-compose.yml docker-compose.mitm.yml docker-compose.sidecar.yml; do
   path="$ROOT/$file"
-  grep -Eq 'no-new-privileges:true' "$path" || fail "$file lacks no-new-privileges"
-  grep -Eq 'cap_drop:' "$path" || fail "$file lacks cap_drop"
-  grep -Eq '(^|[[:space:],\[])ALL([][:space:],#]|$)' "$path" || fail "$file does not drop ALL capabilities"
-  ! grep -Eq 'privileged:[[:space:]]*true|SYS_ADMIN|seccomp[=:][[:space:]]*unconfined|network_mode:[[:space:]]*host|pid:[[:space:]]*host|ipc:[[:space:]]*host' "$path" || fail "$file weakens the outer boundary"
+  docker compose -f "$path" config --format json >"$TMP/compose.json"
+  python3 - "$file" "$TMP/compose.json" <<'PY'
+import json, sys
+name, path = sys.argv[1:]
+data = json.load(open(path))
+for service, cfg in data.get("services", {}).items():
+    caps_add = {str(x).upper().removeprefix("CAP_") for x in cfg.get("cap_add", [])}
+    caps_drop = {str(x).upper() for x in cfg.get("cap_drop", [])}
+    security = {str(x).lower() for x in cfg.get("security_opt", [])}
+    assert "ALL" in caps_drop, f"{name}:{service} does not drop ALL capabilities"
+    assert "SYS_ADMIN" not in caps_add, f"{name}:{service} adds SYS_ADMIN"
+    assert "no-new-privileges:true" in security, f"{name}:{service} lacks no-new-privileges"
+    assert not cfg.get("privileged", False), f"{name}:{service} is privileged"
+    assert str(cfg.get("network_mode", "")).lower() != "host", f"{name}:{service} shares host network"
+    assert str(cfg.get("pid", "")).lower() != "host", f"{name}:{service} shares host pid namespace"
+    assert str(cfg.get("ipc", "")).lower() != "host", f"{name}:{service} shares host ipc namespace"
+    assert not any("seccomp=unconfined" in x or "seccomp:unconfined" in x for x in security), f"{name}:{service} disables seccomp"
+PY
 done
-! grep -Eq 'apt-get install[^\n]*bubblewrap|[[:space:]\\]bubblewrap([[:space:]\\]|$)' "$ROOT/Dockerfile" || fail 'Dockerfile installs bubblewrap without functional benefit'
+! grep -Fq 'bubblewrap' "$ROOT/Dockerfile" || fail 'Dockerfile installs bubblewrap without functional benefit'
 
-echo 'PASS: Codex sandbox verifier conformance (7 behavioral cases; 3 variant control guards)'
+# Pin the delivered attribution matrix and supported execution surfaces.
+DOC="$ROOT/docs/codex-sandbox.md"
+[[ -f "$DOC" ]] || fail 'missing docs/codex-sandbox.md attribution matrix'
+grep -Fq 'remove only `no-new-privileges` | namespace creation denied' "$DOC" || fail 'docs do not distinguish NNP'
+grep -Fq 'retain NNP but set `seccomp=unconfined`' "$DOC" || fail 'docs do not distinguish seccomp'
+grep -Fq 'Debian bubblewrap on PATH' "$DOC" || fail 'docs lack Debian PATH operation'
+for service in claude-sandbox claude-sandbox-mitm claude-sandbox-node; do
+  grep -Fq "$service" "$DOC" || fail "docs lack $service execution surface"
+done
+
+echo 'PASS: Codex sandbox verifier conformance (7 behavioral cases; control-attribution evidence; 3 variant guards)'
