@@ -14,7 +14,7 @@ Alternatives rejected:
 
 ## Work
 
-1. **Conformance first:** add `scripts/verify-debian-security.sh`. It must inspect every installed ImageMagick-family occurrence with Debian-aware version comparison, require the Linux header floor, consume a successful strict Trivy JSON report, and fail closed on missing/malformed scanner evidence.
+1. **Conformance first:** add `scripts/verify-debian-security.sh`. It must inspect every installed ImageMagick-family occurrence with Debian-aware version comparison, require the Linux header floor, consume a successful HIGH/CRITICAL Trivy JSON report (the scan must complete and parse; a clean strict gate is not required, since unrelated fixed findings are out of scope), and fail closed on missing/empty/malformed/failed scanner evidence.
 2. **Implementation:** update the pinned base digest; only if necessary, explicitly upgrade the named Debian package families within the existing apt install/cleanup layer.
 3. **Acceptance:** rebuild `coding-agent-sandbox:latest`; run the package/advisory verifier; run Java, Maven, Playwright, bundled-agent, proxy, and firewall smoke gates; emit a runnable demo.
 4. **Review and delivery:** cross-vendor review each artifact wave, create a linked PR with `Closes #29`, merge only after all gates pass, confirm issue closure, and delete the dedicated branch.
