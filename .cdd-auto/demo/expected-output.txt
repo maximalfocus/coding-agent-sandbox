@@ -1,5 +1,5 @@
-debian-package-floors: green
-issue-29-cves: absent
-bundled-agent-clis: green
-java-maven-playwright: green
-proxy-health-firewall: green
+maven-layer-cleanup: green
+maven-secret-findings: absent
+maven-final-settings: green
+maven-proxy-resolution: green
+scanner-suppression: absent
