@@ -1,7 +1,8 @@
 # Claude Code sandbox: the real CLI, locked inside a container.
-# Base has Node (required by Claude Code) and a `node` user (uid 1000).
-# Pinned by digest for reproducibility (update deliberately). Tag: node:20-bookworm.
-FROM node:20-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5
+# Base has Node (required by the bundled coding agents) and a `node` user (uid 1000).
+# Pinned by digest for reproducibility (update deliberately). Tag: node:22-bookworm.
+# Pi requires Node >=22.19.0.
+FROM node:22-bookworm@sha256:5647be709086c696ff32edaaf1c70cd26d1da6ab2b39c32f3c7b4c4a31957e37
 
 # Tools: tinyproxy (hostname-filtering egress proxy), iptables/iproute2 (force traffic
 # through it), dev basics, gosu for dropping root. No `sudo`: the firewall is installed by the
@@ -46,6 +47,15 @@ RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
     echo "${TTYD_SHA}  /usr/local/bin/ttyd" | sha256sum -c - ; \
     chmod +x /usr/local/bin/ttyd
 
+# ttyd 1.7.7's embedded xterm.js ignores OSC 52, so tmux can receive host paste but cannot copy
+# back to the host clipboard. This custom index is ttyd's ClipboardAddon-enabled web client built
+# from immutable upstream commit 647d55ad865f5ad85ad89ba5e1b28d9b6ac8fd55, plus the compatibility
+# patch documented in ttyd/README.md. Serve it through 1.7.7's --index option; the released server
+# binary remains architecture/checksum-pinned above.
+COPY ttyd/index.html /usr/local/share/ttyd/index.html
+RUN echo "b69cbd04d33d915f9567491ddf5d0d7d3c3ccbcb2fa156f6e3cb78e43eb54e6a  /usr/local/share/ttyd/index.html" \
+    | sha256sum -c -
+
 # The real Claude Code CLI, pinned at BUILD time (override with --build-arg). Runtime auto-update
 # is DISABLED below (DISABLE_AUTOUPDATER) so the running CLI stays exactly this version — no
 # unreviewed binary drift mid-session. To update Claude, bump the arg and rebuild.
@@ -57,6 +67,28 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 # with your ChatGPT/OpenAI subscription via ./scripts/auth/codex-login.sh; egress is gated by ALLOW_OPENAI.
 ARG CODEX_VERSION=0.140.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}"
+
+# Additional agent frontends, pinned at build time like Claude and Codex. OpenCode's npm package
+# selects the matching native binary; Pi needs no lifecycle scripts for a normal global install.
+ARG OPENCODE_VERSION=1.18.4
+ARG PI_VERSION=0.81.1
+RUN npm install -g "opencode-ai@${OPENCODE_VERSION}" \
+    && npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"
+
+# Herdr agent multiplexer — a single static, architecture-matched binary, pinned by release and
+# sha256 so GitHub cannot silently substitute build-time bytes.
+ARG HERDR_VERSION=0.7.5
+ARG HERDR_SHA256_AMD64=3dc83288073e4c2d3c679a30e7be97bcca9141c6fd17dbbb9219142e95c59253
+ARG HERDR_SHA256_ARM64=32e763a1499a6b694b1d708e4f062b743be1da9f34fcfa4d212d6db6fe09a8b9
+RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+      amd64) HERDR_ARCH=x86_64;  HERDR_SHA="$HERDR_SHA256_AMD64" ;; \
+      arm64) HERDR_ARCH=aarch64; HERDR_SHA="$HERDR_SHA256_ARM64" ;; \
+      *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/ogulcancelik/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-${HERDR_ARCH}" \
+      -o /usr/local/bin/herdr; \
+    echo "${HERDR_SHA}  /usr/local/bin/herdr" | sha256sum -c -; \
+    chmod +x /usr/local/bin/herdr
 
 # GitHub CLI (gh) — the PERMANENT fix for pushing GitHub Actions workflow files. A plain
 # `repo`/Contents PAT (GITHUB_TOKEN) cannot create/update `.github/workflows/*`: GitHub rejects it

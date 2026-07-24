@@ -18,6 +18,9 @@ BASE_DOMAINS=(
     "claude.com"             # platform.claude.com, downloads.claude.ai
     "npmjs.org"              # npm registry + tarballs
     "npmjs.com"
+    "herdr.dev"              # Herdr update manifest + documentation
+    "opencode.ai"            # OpenCode first-party API/auth/update endpoints
+    "pi.dev"                  # Pi update checks + model catalogs
 )
 
 # GitHub is a CAPABILITY GRANT, not just a destination. It's the most powerful host that would
@@ -316,16 +319,13 @@ else
     rm -f "$_todo" 2>/dev/null || true
 fi
 
-# tmux config for the web terminal (regenerated each start; ~ isn't a persisted volume):
+# tmux config (regenerated each start; ~ isn't a persisted volume):
 #  - mouse on        -> click a pane to focus, drag borders to resize, scroll to scroll
-#  - set-clipboard on + terminal-features clipboard -> a mouse selection is copied to your real
-#    system clipboard via OSC 52 (tmux -> ttyd -> browser), like local tmux. Without this, a
-#    selection only lands in tmux's own buffer and nothing reaches the OS clipboard.
-# tmux config for the web terminal (regenerated each start; ~ isn't a persisted volume).
-# For real copy/paste, prefer a LOCAL terminal via `./shell.sh --attach` (iTerm / Windows Terminal
-# understand OSC 52, so set-clipboard on -> selection copies to the OS clipboard). ttyd's xterm.js
-# does NOT consume OSC 52, so in the browser use Ctrl-b y: it zooms the pane + turns mouse off so a
-# drag selects ONLY that pane (no cross-pane bleed), then Cmd/Ctrl+C; Ctrl-b y again to exit.
+#  - set-clipboard on + terminal-features clipboard -> a tmux selection is copied to the host via
+#    OSC 52. The custom ttyd web client served below includes xterm's ClipboardAddon, so this works
+#    in both the browser terminal and a compatible local terminal.
+# Ctrl-b y remains a fallback for browser-native selection: zoom the active pane, disable tmux's
+# mouse handling, drag-select, and press Cmd/Ctrl+C; press Ctrl-b y again to restore the grid.
 cat > "$HOME/.tmux.conf" <<'TMUXCONF'
 set -g mouse on
 set -g set-clipboard on
@@ -358,5 +358,7 @@ say "First run: type 'claude', then '/login' and paste the code from your browse
 # Open the browser terminal via the shared launcher: attach to the 'claude' session, building the
 # 2x2 grid on first use. The SAME script backs shell.sh/shell.ps1 --attach, so the grid is identical
 # however you connect. Override the grid with TTYD_GRID=1 (single pane) in .env.
-exec ttyd -p 7681 -i 0.0.0.0 -W -c "${TTYD_USER}:${TTYD_PASS}" \
+exec ttyd -p 7681 -i 0.0.0.0 -W \
+    -I /usr/local/share/ttyd/index.html \
+    -c "${TTYD_USER}:${TTYD_PASS}" \
     /usr/local/bin/sandbox-tmux

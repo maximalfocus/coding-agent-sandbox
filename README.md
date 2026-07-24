@@ -147,6 +147,9 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
   `/workspace`, which **is** your `WORKSPACE_DIR` on the host. Changes appear on your real files.
 - The terminal runs inside `tmux` (session `claude`), so closing the tab doesn't kill your
   session — reopen the URL to reattach.
+- Clipboard works in both directions: paste from the host normally; drag across text in a tmux pane
+  to copy it back to the host through OSC 52. Your browser may ask once for clipboard permission.
+  `Ctrl-b y` toggles a zoomed browser-selection mode if you need to select wrapped output manually.
 - Stop: `docker compose down`. Logs: `docker compose logs -f`. Rebuild after edits: `./run.sh`.
 - Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network and this repo
   directory, and — only if this sandbox installed it — the Docker engine, leaving your host
@@ -275,7 +278,8 @@ egress on port 22 is not opened).
 `githubusercontent.com` are a general bidirectional channel (pull a payload in, push or gist data
 out), so they're governed by their own switch — `ALLOW_GITHUB` (default `true`). For
 analysis-only or untrusted-workspace runs, set `ALLOW_GITHUB=false` in `.env` to drop GitHub while
-keeping Anthropic + npm. Anthropic endpoints and the npm registry are always on. Bare TLDs (`com`) and IP literals are rejected, but **public
+keeping the always-on base hosts. Anthropic, npm, and the bundled Herdr/OpenCode/Pi first-party
+hosts (`herdr.dev`, `opencode.ai`, `pi.dev`) are always on. Bare TLDs (`com`) and IP literals are rejected, but **public
 suffixes are not PSL-checked** — adding `co.uk` or `github.io` would allow *all* their subdomains,
 so add specific registrable domains (`yourco.co.uk`), not the suffix.
 
@@ -332,6 +336,19 @@ firewall) as Claude. Two steps to enable it:
 
 Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
 allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.
+
+## Other bundled coding tools
+
+The image also installs pinned versions of:
+
+- **Herdr** (`herdr`) — agent multiplexer; `herdr.dev` is allowlisted for update metadata/docs.
+- **OpenCode** (`opencode`) — coding agent; `opencode.ai` and its subdomains are allowlisted.
+- **Pi** (`pi`) — coding-agent harness; `pi.dev` and its subdomains are allowlisted.
+
+Their first-party hosts are trust grants and are always enabled. Model-provider egress is separate:
+Anthropic is available by default, OpenAI requires `ALLOW_OPENAI=true`, and any other provider must
+be added narrowly to `EXTRA_ALLOWED_DOMAINS`. Rebuild the image to upgrade a bundled CLI; versions
+are pinned in `Dockerfile` for reproducibility.
 
 ### Pushing repos with GitHub Actions workflows (the `workflow` scope)
 

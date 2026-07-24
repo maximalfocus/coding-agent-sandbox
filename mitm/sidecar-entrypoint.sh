@@ -14,7 +14,7 @@ say() { [ -n "${SANDBOX_QUIET:-}" ] || echo "$@"; }
 [ "$(id -u)" = "0" ] || { echo "sidecar-entrypoint must start as root" >&2; exit 1; }
 
 # --- allowlist (compact parity with mitm/entrypoint.sh) ---
-BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com)
+BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev opencode.ai pi.dev)
 domains=("${BASE_DOMAINS[@]}")
 case "$(printf '%s' "${ALLOW_GITHUB:-true}" | tr '[:upper:]' '[:lower:]')" in
     true|1|yes|on) domains+=(github.com githubusercontent.com) ;;

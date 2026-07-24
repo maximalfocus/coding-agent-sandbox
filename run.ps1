@@ -130,6 +130,7 @@ Write-Host "  1. Open:  http://127.0.0.1:$port"
 Write-Host "  2. Log in with the TTYD_USER / TTYD_PASS from your .env"
 Write-Host "  3. In the terminal:  claude  ->  /login  ->  paste the code from your browser"
 Write-Host ""
+Write-Host "  Local terminal:  ./shell.ps1       Attach to browser session:  ./shell.ps1 -Attach"
 Write-Host "  Stop with:  docker compose down     Logs:  docker compose logs -f"
 
 if (-not $NoStartBrowser) {

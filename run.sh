@@ -114,5 +114,6 @@ cat <<EOF
   3. In the terminal:  claude   ->   /login   ->  paste the code from your browser
      (login persists across restarts)
 
+  Local terminal:  ./shell.sh             Attach to browser session:  ./shell.sh --attach
   Stop with:   docker compose down       Logs:  docker compose logs -f
 EOF
