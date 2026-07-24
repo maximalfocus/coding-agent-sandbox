@@ -103,6 +103,14 @@ it runs, or a prompt-injection in some file or web page) does something you didn
 - **Proxy-only egress can break a tool that ignores `HTTPS_PROXY`.** This is fail-closed by design
   (such a tool is blocked, not leaking), but if something can't reach the network, check it honors
   the proxy env. git/npm must use HTTPS remotes — SSH egress (port 22) is not opened.
+- **Opt-in host Docker access forfeits host containment.** The base sandbox includes Docker client
+  tools but no daemon connection. Adding `docker-compose.host.yml` bind-mounts the host engine
+  socket; anyone controlling that client can ask Docker to mount arbitrary host paths, launch
+  privileged containers, access daemon-managed credentials, and alter/remove host containers,
+  images, volumes, and networks. Containers launched through that daemon also sit outside this
+  sandbox's egress firewall and proxy. Treat the override as host-level control, use it only for
+  trusted workspaces, and recreate the sandbox without the override immediately afterward. This is
+  deliberately never enabled by the default Compose file.
 - **Anything inside `/workspace` is fair game.** Within the mounted folder, Claude can overwrite
   or delete files. There is no automatic backup. Use git and commit often; mount a throwaway
   copy if you're testing untrusted instructions. Note too that the bind mount can't distinguish

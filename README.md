@@ -364,7 +364,7 @@ The switch grants: `awscli.amazonaws.com`, `bun.sh`, `nodejs.org`, `pypi.org`,
 `files.pythonhosted.org`, `bootstrap.pypa.io`, `astral.sh`, `rustup.rs`,
 `static.rust-lang.org`, `crates.io`, `static.crates.io`, `index.crates.io`,
 `repo.maven.apache.org`, `repo1.maven.org`, `services.gradle.org`, `plugins.gradle.org`,
-`deb.debian.org`, `security.debian.org`, and `cdn.playwright.dev` (each entry also covers its
+`deb.debian.org`, `security.debian.org`, `download.docker.com`, and `cdn.playwright.dev` (each entry also covers its
 subdomains).
 
 This switch is off by default because package registries are executable-payload ingress channels.
@@ -446,6 +446,42 @@ Restart `claude` inside the sandbox to pick up newly linked skills (the linking 
 on each container start). (Skills that call `codex` — like peer-review — need `ALLOW_OPENAI=true` and
 a one-time `./scripts/auth/codex-login.sh`.)
 
+### Java/Maven and Docker validation (bundled)
+
+The image bundles OpenJDK 17, Maven, and pinned Docker CLI/Buildx/Compose clients. Backend checks run
+as the normal unprivileged user:
+
+```bash
+java -version
+javac -version
+mvn test                 # enable ALLOW_TOOL_UPGRADES for dependencies from Maven Central
+
+docker --version         # client works in every sandbox
+docker compose version
+```
+
+The Docker **daemon is intentionally unavailable by default**. A host Docker socket is equivalent
+to host-level control: a client can request arbitrary host bind mounts and privileged containers.
+For a trusted workspace that must build an image, start it, and inspect its Docker health check, use
+the conspicuous opt-in override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host.yml up -d --build
+```
+
+Inside the sandbox, `docker build`, `docker run`, `docker inspect`, and `docker compose` then target
+the host daemon. Images and child containers are created by that daemon, outside this sandbox's
+filesystem and egress controls; their network traffic is **not** filtered by the sandbox proxy.
+Revoke access when validation is complete:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host.yml down
+docker compose up -d                    # recreate the normal contained sandbox
+```
+
+If the engine socket is not `/var/run/docker.sock`, set `DOCKER_HOST_SOCKET` to its host path for
+the opt-in Compose command. Do not use this mode for untrusted repositories or unattended agents.
+
 ### UI acceptance tests & cdd tooling (bundled)
 
 The image bundles **Playwright + Chromium** (pinned, with system libraries) and **bun**, so cdd's
@@ -489,6 +525,7 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | `SKILL_REPOS` | — | Space-separated HTTPS skill-repo URLs that `scripts/skills/skills-setup.sh` clones into `/workspace/personal`. |
 | `PEERREVIEW_EVOLVE` | *(unset = evolve)* | Set `off` to make peerreview log-only (skip self-evolve/push) — designate **one** evolver. |
 | `MEM_LIMIT` / `PIDS_LIMIT` | `6g` / `4096` | Container resource ceilings. |
+| `DOCKER_HOST_SOCKET` | `/var/run/docker.sock` | Host engine socket used only with `docker-compose.host.yml`; enabling that override forfeits host containment. |
 | `AUDIT_LOG_MAX_BYTES` / `AUDIT_LOG_KEEP` / `AUDIT_ROTATE_INTERVAL` | `20971520` / `5` / `3600` | Egress-log rotation (size, files kept, seconds). |
 | `TRIVY_STRICT` / `TRIVY_SEVERITY` / `SKIP_TRIVY` | — / `HIGH,CRITICAL` / — | Image scan: advisory by default; `TRIVY_STRICT=1` blocks on findings, `SKIP_TRIVY=1` skips it. |
 
@@ -628,7 +665,7 @@ coding-agent-sandbox/
 │
 ├─ Container build — the shared core (runs in the container; same on every OS)
 │   Dockerfile, Dockerfile.mitm      image build (default + content-mediation variant)
-│   docker-compose.yml, *.mitm.yml,  services, named volumes, capabilities, resource limits
+│   docker-compose.yml, *.mitm.yml, docker-compose.host.yml, services, volumes, capabilities, limits
 │     *.sidecar.yml                  (sidecar.yml = experimental token-isolation variant)
 │   entrypoint.sh                    build allowlist → start proxy → install firewall → drop to
 │                                    node → launch ttyd with Herdr as the primary terminal

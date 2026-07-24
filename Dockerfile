@@ -12,7 +12,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates dnsutils \
       tinyproxy iptables iproute2 \
       gosu socat \
+      openjdk-17-jdk-headless maven \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
+    && mkdir -p /opt/java \
+    && ln -s "$(dirname "$(dirname "$(readlink -f /usr/bin/java)")")" /opt/java/openjdk \
+    && rm -rf /var/lib/apt/lists/*
+
+# Java/Maven backend toolchain. The architecture-neutral JAVA_HOME symlink above works on both
+# amd64 and arm64 (Debian's real JDK directory includes the architecture in its name).
+ENV JAVA_HOME=/opt/java/openjdk
+
+# Docker client toolchain only: daemon access is deliberately NOT present in the base Compose
+# configuration. docker-compose.host.yml is the conspicuous, opt-in host-daemon capability grant.
+# Versions are pinned to exact packages from Docker's official Debian repository.
+ARG DOCKER_CLI_VERSION=5:29.6.2-1~debian.12~bookworm
+ARG DOCKER_BUILDX_VERSION=0.35.0-1~debian.12~bookworm
+ARG DOCKER_COMPOSE_VERSION=5.3.1-1~debian.12~bookworm
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg \
+       -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+       "docker-ce-cli=${DOCKER_CLI_VERSION}" \
+       "docker-buildx-plugin=${DOCKER_BUILDX_VERSION}" \
+       "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: trust corporate / TLS-inspecting-proxy root CA(s) — Cloudflare WARP, Zscaler, etc. —
