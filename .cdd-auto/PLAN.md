@@ -1,50 +1,95 @@
-# PLAN — GitHub issue 29
+# PLAN — GitHub issue 31
 
-Source: `.cdd-auto/contracts/issue-29.md` (frozen)
+Source: `.cdd-auto/contracts/issue-31.md` (frozen)
+
+## Goal
+
+Remove Maven package example-credential noise from image-layer secret scans while retaining the intended final Maven proxy configuration and proving real proxy-backed dependency resolution.
 
 ## Approach
 
-Prefer updating the exact `node:22-bookworm` base-image digest so the Debian package snapshot naturally contains the fixed packages. If the current upstream digest is insufficient, add one explicit Debian package-upgrade step in the existing apt layer; do not add a second package cache layer. This preserves reproducibility while minimizing Dockerfile change surface.
+Delete `/etc/maven/settings.xml` at the end of the existing apt-install `RUN` instruction, before that layer is committed, then retain the existing later `COPY maven-settings.xml`. Add one fail-closed verifier covering Dockerfile ordering, final-file identity, scanner evidence, and suppression absence.
 
 Alternatives rejected:
 
-- **Unpinned base tag:** receives fixes but sacrifices reproducibility.
-- **Suppress the advisories:** does not remediate vulnerable packages.
-- **Upgrade every package indiscriminately in a later layer:** increases drift and image size while duplicating apt cleanup.
+- **Delete in a later layer:** final filesystem is clean but deleted bytes remain attributable to the package layer and continue to trigger layer-aware scanning.
+- **Trivy ignore rule:** suppresses evidence rather than removing the sample values and risks hiding future Maven credential findings.
+- **Remove Maven:** breaks the Java/Maven toolchain requirement.
 
-## Work
+## Repo family
 
-1. **Conformance first:** add `scripts/verify-debian-security.sh`. It must inspect every installed ImageMagick-family occurrence with Debian-aware version comparison, require the Linux header floor, consume a successful HIGH/CRITICAL Trivy JSON report (the scan must complete and parse; a clean strict gate is not required, since unrelated fixed findings are out of scope), and fail closed on missing/empty/malformed/failed scanner evidence.
-2. **Implementation:** update the pinned base digest; only if necessary, explicitly upgrade the named Debian package families within the existing apt install/cleanup layer.
-3. **Acceptance:** rebuild `coding-agent-sandbox:latest`; run the package/advisory verifier; run Java, Maven, Playwright, bundled-agent, proxy, and firewall smoke gates; emit a runnable demo.
-4. **Review and delivery:** cross-vendor review each artifact wave, create a linked PR with `Closes #29`, merge only after all gates pass, confirm issue closure, and delete the dedicated branch.
+| Repo | Name | Purpose |
+|---|---|---|
+| PRD | This repository's `.cdd-auto/contracts/issue-31.md` | Frozen issue acceptance contract |
+| Conformance | This repository's `scripts/verify-maven-secrets.sh` | Layer structure, image file, and Trivy secret-scan regression gate |
+| Frontend Conformance | N/A | No frontend behavior |
+| Implementation | `coding-agent-sandbox` | Dockerfile and assembled image |
+| Architecture | Existing `docs/architecture/` unchanged | No architecture decision changes |
+| CI/CD | Existing GitHub workflow unchanged | Existing image verification lifecycle |
+| Infrastructure | Existing Docker Compose files unchanged | Runtime proxy/firewall configuration |
+
+## Categories (core — language-neutral)
+
+| # | Category | Boundary | Key behaviors | Est. tests | Deps | Risk |
+|---|---|---|---|---:|---|---|
+| 1 | Maven layer hygiene | lint-assertion | Same-layer deletion occurs after Maven install and before later project settings copy | 3 | none | high |
+| 2 | Image secret scan | packaging-contract | Real container-image secret scan has no Maven password/passphrase findings and malformed evidence fails closed | 5 | 1 | high |
+| 3 | Final Maven configuration | packaging-contract | Final file is byte-identical, proxy-owned, and credential-element-free | 3 | 1 | medium |
+| 4 | Maven proxy resolution | e2e | Unprivileged Maven resolves through the running sandbox proxy | 1 | 3 | medium |
+
+Total estimated checks: 12.
+
+## Stack categories
+
+N/A — Docker/Bash packaging boundaries are core and framework-neutral.
+
+## Implementation order
+
+1. Author and mutation-test the fail-closed verifier so the current Dockerfile is red.
+2. Add the minimal same-layer deletion and re-run structural checks.
+3. Rebuild and run the real Trivy secret scan plus final-file checks.
+4. Run Maven dependency resolution in the assembled sandbox and acceptance demo.
+
+## Risks and mitigations
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Structural check passes a later-layer deletion | Secret bytes remain in scan history | Parse Dockerfile instruction boundaries and require deletion in the Maven-installing `RUN` |
+| Empty/foreign scan report reads as clean | False-green scanner result | Validate non-empty JSON, container artifact type, result structure, and secret entries |
+| Final settings drift | Maven bypasses sandbox proxy | Byte-compare image file to repository file and run dependency resolution |
+| Suppression hides future secrets | Reduced scanner signal | Reject newly introduced Trivy ignore/config suppression surfaces |
+
+## Open questions
+
+None. The issue fixes the exact layer, final file, runtime behavior, and suppression boundary.
+
+## Out of scope / Non-goals
+
+- Maven/package upgrades.
+- Changes to egress allowlists, proxy/firewall behavior, or container privileges.
+- Suppressing unrelated Trivy findings.
+- Remediating unrelated image secrets or CVEs.
+
+## Decision boundaries
+
+Implementation may choose the shell deletion form inside the existing apt `RUN`. It may not move deletion to another layer, alter the final project settings, add scanner ignores, or weaken scan evidence validation.
 
 ## Non-functional requirements
 
-| Requirement | Target | Verified by |
-|---|---|---|
-| Reproducibility | Base image remains digest-pinned | Dockerfile structural assertion |
-| Scanner integrity | Missing/empty/malformed/failed Trivy evidence is red | verifier negative mutations |
-| Runtime compatibility | Existing toolchain and network-isolation smoke checks remain green | acceptance verifier |
+| Requirement | Target | Category | Boundary | Verified by |
+|---|---|---|---|---|
+| Scanner integrity | Missing/malformed/non-container evidence is red | Image secret scan | packaging-contract | verifier negative mutations |
+| Reproducibility | No unpinned dependency or scanner suppression | Maven layer hygiene | lint-assertion | Dockerfile/config structural checks |
+| Runtime compatibility | Maven resolves via sandbox proxy as `node` | Maven proxy resolution | e2e | acceptance verifier |
 
 ## Technology choices
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Database | N/A | Container image remediation stores no application data |
-| Runtime/language | Bash + Docker/Debian 12 | Existing build and verification surface |
+| Database | N/A | Image remediation stores no application data |
+| Runtime/language version | Bash + Docker/Debian 12 | Existing build and verification surface |
 | Framework | N/A | No application framework |
 | Deployment target | Local multi-architecture Docker image | Existing product artifact |
-| Testing framework | Fail-closed shell verifier + Trivy JSON | Native deterministic boundaries |
+| Testing framework | Fail-closed shell/Python verifier + Trivy JSON | Native deterministic packaging boundaries |
 | Auth provider | N/A | No auth behavior changes |
 | Cache/queue | N/A | No cache or queue |
-
-## Decision boundaries
-
-Implementation may choose base-digest-only versus explicit package upgrades based on observed package versions. It may not loosen CVE absence, package floors, base digest pinning, or existing smoke expectations.
-
-## Out of scope
-
-- Remediating unrelated Trivy findings.
-- Changing the runtime firewall, egress allowlist, proxy model, or container privileges.
-- Upgrading unrelated bundled toolchains except where the new base requires compatibility repair.
