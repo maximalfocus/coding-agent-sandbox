@@ -14,7 +14,7 @@ Alternatives rejected: mounting host `~/.aws` exposes unrelated profiles and bea
 | PRD/plan | this repo `.cdd-auto/` during delivery | Frozen issue contract and plan |
 | Conformance | this repo `scripts/test-aws-sso-support.sh` | Static and executable security/packaging contract |
 | Implementation | `coding-agent-sandbox` | Docker image, Compose overrides, allowlist generation, docs |
-| Architecture | this repo docs/SECURITY | Existing container/sidecar trust boundaries; no new standalone ADR repo |
+| Architecture | this repo SECURITY.md + docs/architecture/ | Existing container/sidecar trust boundaries; no new standalone ADR repo |
 | CI/CD | N/A | Existing project has no dedicated workflow for this shell/Docker surface |
 | Infrastructure | Docker Compose | Optional named volume and service-local mounts |
 
@@ -23,13 +23,13 @@ Alternatives rejected: mounting host `~/.aws` exposes unrelated profiles and bea
 |---|---|---|---|---:|---|---|
 | 1 | packaging | packaging-contract | pinned version, two arch checksums, arch selection, installed binary | 5 | none | high |
 | 2 | state-isolation | structural-contract | opt-in only; dedicated volume; agent-only; sidecar exclusion | 8 | none | high |
-| 3 | regional-egress | function | exact endpoint derivation; multi-region; malformed/global rejection | 8 | none | high |
+| 3 | regional-egress | function | `AWS_SSO_REGIONS` input; exact endpoint derivation; multi-region; malformed/global rejection | 8 | none | high |
 | 4 | operations-docs | documentation-contract | setup/login/verify/logout/reset and security warnings | 8 | 1–3 | medium |
 
 ## Implementation order
 1. Author a failing contract gate for all four categories so security boundaries are executable first.
 2. Add the pinned CLI installation and region-to-host helper.
-3. Add default/MITM and sidecar-specific opt-in volume overrides.
+3. Add per-stack opt-in volume overrides attaching the dedicated volume only to each stack's agent service — default `claude-sandbox`, MITM `claude-sandbox-mitm`, sidecar `claude-sandbox-node` (never `claude-sandbox-egress`).
 4. Add operational/security documentation, then run the full gate and Docker build smoke.
 
 ## Risks and mitigations
