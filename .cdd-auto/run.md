@@ -23,7 +23,7 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
 - Wall clock: 31m / 2h
 - Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
-- Review rounds: contract:3 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
+- Review rounds: contract:3 arch:0 conf:2 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
@@ -31,6 +31,8 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 | Contract + Wave A | coding-agent-sandbox | not-converged | 1 | OpenCode / DeepSeek v4 Flash | Required committed measured evidence plus explicit Debian-PATH, missing-Codex, unknown-error, operational-probe, and byte-stable gates |
 | Contract + Wave A | coding-agent-sandbox | not-converged | 2 | OpenCode / DeepSeek v4 Flash | Confirmed plan fixes; required the new preflight evidence be committed and clarified sidecar egress is not a Codex execution surface |
 | Contract + Wave A | coding-agent-sandbox | CONVERGED | 3 | OpenCode / DeepSeek v4 Flash | HEAD independently verified complete, evidence-grounded, safe, internally consistent, and sufficient to drive conformance; no Medium/High planning defects |
+| Wave B | coding-agent-sandbox | not-converged | 1 | OpenCode / DeepSeek v4 Flash | Found negative stdout false-green, comment-sensitive Compose controls, incomplete version-only and delivery/attribution gates |
+| Wave B | coding-agent-sandbox | CONVERGED | 2 | OpenCode / DeepSeek v4 Flash | Strict negative output, parsed Compose controls, distinct bundled/Debian paths, attribution docs, and delivery-mode hygiene independently verified |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
