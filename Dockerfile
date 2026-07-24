@@ -8,10 +8,11 @@ FROM node:22-bookworm@sha256:5647be709086c696ff32edaaf1c70cd26d1da6ab2b39c32f3c7
 # through it), dev basics, gosu for dropping root. No `sudo`: the firewall is installed by the
 # root entrypoint, never re-run by the unprivileged user (smaller post-start privilege surface).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git ripgrep tmux less procps \
+      git ripgrep fd-find tmux less procps \
       curl ca-certificates dnsutils \
       tinyproxy iptables iproute2 \
       gosu socat \
+    && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: trust corporate / TLS-inspecting-proxy root CA(s) — Cloudflare WARP, Zscaler, etc. —
