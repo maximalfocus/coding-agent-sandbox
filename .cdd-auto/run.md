@@ -1,61 +1,54 @@
-# /cdd-auto run issue-28-20260724-095605
+# /cdd-auto run issue-29-20260724-134253
 
-- Started: 2026-07-24T09:56:35Z
+- Started: 2026-07-24T13:44:09Z
 - Change type: bug
-- Brownfield: no (no existing CDD goldens)
-- Branch: cdd-auto/issue-28-20260724-095605
-- Contract path + SHA: .cdd-auto/contracts/issue-28.md@b48f34f55260fd381df2e6965a0e8399d1a477d46b3f8fe726b641e4b913f1e2
+- Brownfield: yes (existing Docker image and prior CDD regression gates; no standalone conformance repo)
+- Branch: cdd-auto/issue-29-20260724-134253
+- Contract path + SHA: .cdd-auto/contracts/issue-29.md@12082ef5a4632d6c8b1189c144b4b5a3da5e288757b524aa27dfa82b25626378
 - Budget: 2h / 200k / 5-iter (N cap: none)
-- GitHub issue: https://github.com/maximalfocus/coding-agent-sandbox/issues/28
-- Delivery: dedicated issue branch → peer-reviewed PR → merge with closing link → delete local and remote branch
+- GitHub issue: https://github.com/maximalfocus/coding-agent-sandbox/issues/29 — #29 — Update Debian ImageMagick and linux-libc-dev packages flagged by Trivy
+- Delivery: dedicated issue branch → linked PR → checks-green merge → issue closure → branch cleanup
 
 ## Acceptance contract (frozen)
 
-Four scenarios require an exact Node-compatible npm upgrade, fixed npm-internal versions for the five reported findings, a green strict CRITICAL Trivy scan, and successful startup of npm plus every bundled coding-agent CLI. Full frozen text: `.cdd-auto/contracts/issue-28.md`.
+Four scenarios require patched ImageMagick-family and linux-libc-dev versions, fail-closed absence of all 15 named CVEs in successful Trivy JSON evidence, and green Java/Maven/Playwright/agent/proxy/firewall smoke gates. Full frozen text: ".cdd-auto/contracts/issue-29.md".
 
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
-|---|---|---:|---|---|---|---|
-| Contract | host | 0 | frozen | 1m | `83a0cb3` | Derived from issue 28; SHA remained unchanged |
-| A | plan | 0 | green | 1m | `db8f497` | Issue-driven remediation and PR delivery plan |
-| B | conformance | 0 | red as required | 1m | `4aa93c6` | New verifier failed against npm 10.9.8 |
-| C | implementation | 1 | green | 7m | `2def99e` | npm 12 first exposed blocked lifecycle scripts; selected compatible npm 11.18.0 and explicit trusted script allowlists |
-| D | acceptance/demo | 0 | green | 4m | `a0df5f5` | Build, CLI smoke, strict CRITICAL scan, named-CVE absence, demo and charter |
-| Review fixes | peer review | 2 | green | 20m | `38b4ccf` | Advisory-specific semver, node-user smoke, and fail-closed report checks |
+| A | plan | 0 | green | 7m | `76dd5a2` | Frozen issue contract + remediation plan; peer removed an accidental strict-scan overconstraint |
+| B | conformance | 0 | red as required | 4m | `3b0eba3` | Debian-aware package and fail-closed Trivy JSON verifier fails on ImageMagick deb12u12 |
+| C | implementation | 0 | green | 8m | `8c249f4` | Same-layer Debian security refresh upgrades all ImageMagick packages to deb12u13 and linux-libc-dev to 6.1.177-1 |
+| D | acceptance/demo | 0 | green | 9m | `da2b7ce` | Runnable byte-stable demo, live scan, toolchain smoke, proxy refusal, direct-bypass denial, screenshot, and output-diff mutation proof |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
-- Directed-loop tokens: host runtime did not expose a token counter; 1 directed implementation retry / 5-iteration cap
-- Fan-out + review tokens: ~520k reported by three same-vendor fallback verdict calls; Claude peer usage not exposed (recorded only, not capped)
-- Wall clock: 34m / 2h
-- Iterations: A:0 B:0 C:1 D:0 (per-wave; cap 5 each)
-- Review rounds: final-artifact fallback:3, final-artifact cross-vendor:1 (cap 5 each)
+- Directed-loop tokens: 0 / 200k
+- Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
+- Wall clock: 76m / 2h
+- Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
+- Review rounds: contract:1 arch:0 conf:1 impl:1 acceptance:1 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
-|---|---|---|---:|---|---|
-| Final artifact set | coding-agent-sandbox | CONVERGED via fallback | 3 | Codex CLI (same vendor) | Claude executable absent on host; rounds found and fixed four Medium gate defects |
-| Final artifact set | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor, authenticated sandbox) | Independent review covered frozen contract, Dockerfile, verifier, demo, runtime user, scanner and Compose context |
+| Contract + Wave A | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Corrected plan's accidental requirement for a globally-clean strict HIGH scan; frozen contract unchanged |
+| Wave B | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Verified dpkg enumeration/arch-suffix/status/version semantics, all 15 CVEs, fail-closed missing/malformed/failed scan handling, quoting/cleanup/Docker-Trivy invocation, and base-digest assertion; confirmed imagemagick-family presence is satisfiable (buildpack-deps base). Closed one fail-open: an empty-Results/non-container Trivy report could read as CVE absence — added container_image + non-empty-Results assertions and bounded the report seam. Frozen contract unchanged |
+| Wave C | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Confirmed base (buildpack-deps) preinstalls the magick family + linux-libc-dev at deb12u12/6.1.176-1 (matches contract reproduction), so naming them in the first apt layer upgrades-in-place with zero new bloat; `=`-versioned magick interdeps + verifier floor scan + broad CVE-absence backstop leave no path for a stale sibling. Verified the `: "${DEBIAN_SECURITY_REFRESH}"` idiom busts the apt layer cache on ARG/default change; same-layer `rm -rf` cleanup intact; later docker-ce/gh apt layers name only their own deps so cannot downgrade/undo the fix. amd64: base is a multi-arch manifest list and amd64 is Debian's reference arch (security uploads land there no later than arm64), so package names/versions and the buildpack-deps preinstall set are identical — no amd64 regression. Java/Maven/Playwright/agents/proxy/firewall untouched. Frozen contract unchanged |
+| Wave D | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Exhausted package/CVE integrity, live-scan fail-closed behavior, force-recreated node-user tool smokes, proxy 403/direct-bypass firewall proof, output-diff mutation, screenshot parity, and charter honesty; no edits required |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
-|---|---|---:|---|
-| `.cdd-auto/contracts/issue-28.md` | Add | 0 | Frozen regression/acceptance contract derived from issue 28 |
-| `scripts/verify-npm-bundle.sh` | Add | 0 | Red gate for vulnerable npm base distribution and CLI startup |
-| `scripts/verify-npm-bundle.sh` | Modify | 1 | Select compatible npm 11.18.0 after npm 12 blocked required lifecycle scripts |
-| `scripts/verify-npm-bundle.sh` | Modify | 2 | Peer review proved naive floors and root smoke could false-pass; use advisory semver and production user |
+| `scripts/verify-debian-security.sh` | Add | 0 | Frozen issue-29 regression contract; baseline fails on ImageMagick deb12u12 |
 
 ## Out-of-scope edits
 | Path | Reason |
 |---|---|
-| None | No edits outside issue 28 remediation, verification, demo, charter, and audit artifacts |
+| None | No out-of-scope edits |
 
 ## Flags
 | Type | Wave | Detail |
-|---|---|---|
-| peer-adapter | Review | Host lacked `claude`; authenticated Claude 2.1.158 in the project sandbox supplied the required cross-vendor round |
 
 ## Final
-- Status: green — cross-vendor converged; approved for PR merge
-- Verification: all shell syntax and Compose variants green; npm bundle verifier green as user `node`; strict CRITICAL Trivy green; five issue-28 CVEs absent
-- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-28-20260724-095605`)
+- Status: green — all waves and per-wave cross-vendor reviews converged; final direct re-verification green; PR merge pending
+- Verification: shell syntax + all Compose variants green; rebuilt image; package/CVE/toolchain/proxy/firewall acceptance 5/5; altered expected output red as required
+- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-29-20260724-134253`)
+- PR / issue: https://github.com/maximalfocus/coding-agent-sandbox/pull/35 closes https://github.com/maximalfocus/coding-agent-sandbox/issues/29

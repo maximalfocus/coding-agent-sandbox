@@ -7,12 +7,22 @@ FROM node:22-bookworm@sha256:5647be709086c696ff32edaaf1c70cd26d1da6ab2b39c32f3c7
 # Tools: tinyproxy (hostname-filtering egress proxy), iptables/iproute2 (force traffic
 # through it), dev basics, gosu for dropping root. No `sudo`: the firewall is installed by the
 # root entrypoint, never re-run by the unprivileged user (smaller post-start privilege surface).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Bump the refresh date deliberately when Debian security packages must invalidate this cached
+# layer even though the immutable Node base digest has not changed.
+ARG DEBIAN_SECURITY_REFRESH=2026-07-24
+RUN : "${DEBIAN_SECURITY_REFRESH}" \
+    && apt-get update && apt-get install -y --no-install-recommends \
       git ripgrep fd-find tmux less procps \
       curl ca-certificates dnsutils \
       tinyproxy iptables iproute2 \
       gosu socat \
       openjdk-17-jdk-headless maven \
+      imagemagick imagemagick-6-common imagemagick-6.q16 \
+      libmagickcore-6-arch-config libmagickcore-6-headers \
+      libmagickcore-6.q16-6 libmagickcore-6.q16-6-extra \
+      libmagickcore-6.q16-dev libmagickcore-dev \
+      libmagickwand-6-headers libmagickwand-6.q16-6 \
+      libmagickwand-6.q16-dev libmagickwand-dev linux-libc-dev \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && mkdir -p /opt/java \
     && ln -s "$(dirname "$(dirname "$(readlink -f /usr/bin/java)")")" /opt/java/openjdk \

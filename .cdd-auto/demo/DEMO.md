@@ -1,30 +1,30 @@
-# Issue 28 acceptance demo
+# Issue 29 acceptance demo
 
-The rebuilt image exposes the remediation through one fail-closed command:
+The rebuilt sandbox image upgrades the Debian ImageMagick family and Linux development headers while preserving the assembled developer-tool and network-isolation behavior.
+
+## Run
 
 ```sh
-set -euo pipefail
 docker compose build claude-sandbox
-./scripts/verify-npm-bundle.sh
-TRIVY_SEVERITY=CRITICAL TRIVY_STRICT=1 ./scan.sh
-TRIVY_SEVERITY=HIGH,CRITICAL ./scan.sh > /tmp/sandbox-trivy.txt
-if grep -E 'CVE-2026-(59873|59874|13149|33671|48815)' /tmp/sandbox-trivy.txt; then
-  echo 'issue-28 CVEs remain' >&2; exit 1
-else
-  rc=$?; [ "$rc" -eq 1 ] || exit "$rc"
-fi
+.cdd-auto/demo/verify.sh
 ```
 
-The bundle verifier prints the installed npm-internal package versions and then starts npm, Claude Code, Codex, OpenCode, Pi, Bun, and Playwright. Any vulnerable package occurrence, version mismatch, missing CLI, or failed startup exits nonzero.
+The verifier performs a fresh HIGH/CRITICAL Trivy JSON scan, checks every installed ImageMagick-family package with Debian version semantics, rejects all 15 issue CVEs, starts the npm-installed agent CLIs, recreates the sandbox from the patched image, starts Java/Maven/Playwright as the unprivileged runtime user, checks container health, proves the proxy refuses a non-allowlisted host with HTTP 403, and proves a direct proxy bypass cannot connect.
 
-Verified on 2026-07-24 against `coding-agent-sandbox:latest`:
+Expected byte-stable stdout:
 
 ```text
-tar: 7.5.19
-brace-expansion: 5.0.7
-picomatch: 4.0.4
-sigstore: 4.1.1
-npm: 11.18.0
+debian-package-floors: green
+issue-29-cves: absent
+bundled-agent-clis: green
+java-maven-playwright: green
+proxy-health-firewall: green
 ```
 
-The strict CRITICAL scan reported zero CRITICAL findings; none of the five issue-28 CVEs appeared in the HIGH/CRITICAL report.
+![Issue 29 acceptance output](issue-29-acceptance.png)
+
+## Negative proof
+
+`verify.sh` diffs actual output against `expected-output.txt`. Supplying a changed expected file must fail; missing/empty/malformed/no-results/affected-CVE Trivy evidence is independently mutation-tested against `scripts/verify-debian-security.sh`.
+
+The build and live Trivy scan use Docker state/cache and require registry/network access on a cold cache. Verification shown is arm64; the Dockerfile and named Debian packages are architecture-neutral across the base image's amd64/arm64 manifest.
