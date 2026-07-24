@@ -19,7 +19,7 @@ Four scenarios require commit-pinned upstream source builds, absence of all issu
 | Step 2 | scope/preflight | 0 | resumed | 4m | `ce12907` | User amended scope to allow pinned upstream source builds |
 | A | plan | 0 | green | 18m | `15d22be` | Commit-pinned Go 1.26.5 source-build plan; prototypes proved gh, patched Buildx, and patched Compose compile without listed vulnerable modules |
 | B | conformance | 0 | red as required | 7m | `63d0437` | Fail-closed source-pin, Trivy per-target, CLI-as-node, and default daemon-isolation verifier; baseline rejects missing Go builder |
-| C | implementation | 0 | green | 18m | pending | Digest-pinned Go 1.26.5 builder produces source-versioned gh/Buildx/Compose for TARGETARCH; live Trivy gate reports all issue findings absent |
+| C | implementation | 0 | green | 18m | `b77fcd8` | Digest-pinned Go 1.26.5 builder produces source-versioned gh/Buildx/Compose for TARGETARCH; live Trivy gate reports all issue findings absent |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
