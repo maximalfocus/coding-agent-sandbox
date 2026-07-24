@@ -18,7 +18,7 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 | A | plan | 0 | green | 12m | `d85d6d8` | Frozen contract and safe outer-fallback plan from measured default/MITM/sidecar controls |
 | B | conformance | 0 | red as required | 6m | `0a9990e` | Seven deterministic behavioral cases plus three variant control guards; baseline fails because verifier is absent |
 | C | implementation | 0 | green | 14m | `0c332d5` | Real `codex sandbox` nested/fallback verifier, 16 behavioral cases, parsed controls, measured runtime docs, and live default fallback green |
-| D | acceptance/demo | 0 | green | 12m | pending | Byte-stable live default demo; differ mutation red; live MITM and sidecar fallback probes green; rendered screenshot |
+| D | acceptance/demo | 0 | green | 12m | `15bb77c` | Byte-stable live default demo; differ mutation red; live MITM and sidecar fallback probes green; rendered screenshot |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
