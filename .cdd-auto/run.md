@@ -17,11 +17,12 @@ Four scenarios require patched ImageMagick-family and linux-libc-dev versions, f
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 | A | plan | 0 | green | 7m | `76dd5a2` | Frozen issue contract + remediation plan; peer removed an accidental strict-scan overconstraint |
 | B | conformance | 0 | red as required | 4m | `3b0eba3` | Debian-aware package and fail-closed Trivy JSON verifier fails on ImageMagick deb12u12 |
+| C | implementation | 0 | green | 8m | pending | Same-layer Debian security refresh upgrades all ImageMagick packages to deb12u13 and linux-libc-dev to 6.1.177-1 |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 24m / 2h
+- Wall clock: 36m / 2h
 - Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
 - Review rounds: contract:1 arch:0 conf:1 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
@@ -44,6 +45,6 @@ Four scenarios require patched ImageMagick-family and linux-libc-dev versions, f
 | Type | Wave | Detail |
 
 ## Final
-- Status: running
+- Status: running — Wave C implementation green; implementation peer review pending
 - Repos: https://github.com/maximalfocus/coding-agent-sandbox
 - PR / issue: issue https://github.com/maximalfocus/coding-agent-sandbox/issues/29; PR pending
