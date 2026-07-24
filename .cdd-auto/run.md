@@ -1,54 +1,56 @@
-# /cdd-auto run issue-29-20260724-134253
+# /cdd-auto run issue-30-20260724-143252
 
-- Started: 2026-07-24T13:44:09Z
+- Started: 2026-07-24T14:32:52Z
 - Change type: bug
 - Brownfield: yes (existing Docker image and prior CDD regression gates; no standalone conformance repo)
-- Branch: cdd-auto/issue-29-20260724-134253
-- Contract path + SHA: .cdd-auto/contracts/issue-29.md@12082ef5a4632d6c8b1189c144b4b5a3da5e288757b524aa27dfa82b25626378
+- Branch: cdd-auto/issue-30-20260724-143252
+- Contract path + SHA: .cdd-auto/contracts/issue-30.md@f15e075e9d7d69fc92ac05f2e9c5157498a1801bc90adc676fd9020865830c16
 - Budget: 2h / 200k / 5-iter (N cap: none)
-- GitHub issue: https://github.com/maximalfocus/coding-agent-sandbox/issues/29 — #29 — Update Debian ImageMagick and linux-libc-dev packages flagged by Trivy
-- Delivery: dedicated issue branch → linked PR → checks-green merge → issue closure → branch cleanup
+- GitHub issue: https://github.com/maximalfocus/coding-agent-sandbox/issues/30 — #30 — Bump pinned CLI packages to remove vulnerable embedded Go dependencies
+- Delivery: dedicated issue branch → linked PR only after resumed contract-green completion
 
 ## Acceptance contract (frozen)
 
-Four scenarios require patched ImageMagick-family and linux-libc-dev versions, fail-closed absence of all 15 named CVEs in successful Trivy JSON evidence, and green Java/Maven/Playwright/agent/proxy/firewall smoke gates. Full frozen text: ".cdd-auto/contracts/issue-29.md".
+Four scenarios require fixed stable upstream packages, absence of all issue-listed HIGH findings from a successful Trivy scan, working GitHub/Docker CLI commands as `node`, a green opt-in host-Docker lifecycle smoke, and continued default denial of Docker daemon access. Pre-release and custom source builds are excluded by the user's Step-2 scope answer. Full frozen text: `.cdd-auto/contracts/issue-30.md`.
 
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
-| A | plan | 0 | green | 7m | `76dd5a2` | Frozen issue contract + remediation plan; peer removed an accidental strict-scan overconstraint |
-| B | conformance | 0 | red as required | 4m | `3b0eba3` | Debian-aware package and fail-closed Trivy JSON verifier fails on ImageMagick deb12u12 |
-| C | implementation | 0 | green | 8m | `8c249f4` | Same-layer Debian security refresh upgrades all ImageMagick packages to deb12u13 and linux-libc-dev to 6.1.177-1 |
-| D | acceptance/demo | 0 | green | 9m | `da2b7ce` | Runnable byte-stable demo, live scan, toolchain smoke, proxy refusal, direct-bypass denial, screenshot, and output-diff mutation proof |
+|---|---|---:|---|---|---|---|
+| Step 2 | scope/preflight | 0 | paused | 4m | pending | Latest stable gh 2.96.0, Buildx 0.35.0, and Compose 5.3.1 remain vulnerable; user selected pause rather than pre-release/custom source builds |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 76m / 2h
-- Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
-- Review rounds: contract:1 arch:0 conf:1 impl:1 acceptance:1 (per-artifact; cap 5 each)
+- Wall clock: 4m / 2h
+- Iterations: A:0 B:0 C:0 D:0 (per-wave; cap 5 each)
+- Review rounds: contract:0 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
-| Contract + Wave A | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Corrected plan's accidental requirement for a globally-clean strict HIGH scan; frozen contract unchanged |
-| Wave B | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Verified dpkg enumeration/arch-suffix/status/version semantics, all 15 CVEs, fail-closed missing/malformed/failed scan handling, quoting/cleanup/Docker-Trivy invocation, and base-digest assertion; confirmed imagemagick-family presence is satisfiable (buildpack-deps base). Closed one fail-open: an empty-Results/non-container Trivy report could read as CVE absence — added container_image + non-empty-Results assertions and bounded the report seam. Frozen contract unchanged |
-| Wave C | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Confirmed base (buildpack-deps) preinstalls the magick family + linux-libc-dev at deb12u12/6.1.176-1 (matches contract reproduction), so naming them in the first apt layer upgrades-in-place with zero new bloat; `=`-versioned magick interdeps + verifier floor scan + broad CVE-absence backstop leave no path for a stale sibling. Verified the `: "${DEBIAN_SECURITY_REFRESH}"` idiom busts the apt layer cache on ARG/default change; same-layer `rm -rf` cleanup intact; later docker-ce/gh apt layers name only their own deps so cannot downgrade/undo the fix. amd64: base is a multi-arch manifest list and amd64 is Debian's reference arch (security uploads land there no later than arm64), so package names/versions and the buildpack-deps preinstall set are identical — no amd64 regression. Java/Maven/Playwright/agents/proxy/firewall untouched. Frozen contract unchanged |
-| Wave D | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Exhausted package/CVE integrity, live-scan fail-closed behavior, force-recreated node-user tool smokes, proxy 403/direct-bypass firewall proof, output-diff mutation, screenshot parity, and charter honesty; no edits required |
+|---|---|---|---:|---|---|
+| None | — | not run | 0 | — | Paused during Step 2 before any artifact wave; contract review remains owed on resume |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
-| `scripts/verify-debian-security.sh` | Add | 0 | Frozen issue-29 regression contract; baseline fails on ImageMagick deb12u12 |
+|---|---|---:|---|
+| None | — | — | No conformance authored before the upstream-release pause |
 
 ## Out-of-scope edits
 | Path | Reason |
 |---|---|
-| None | No out-of-scope edits |
+| None | No project implementation edits |
 
 ## Flags
 | Type | Wave | Detail |
+|---|---|---|
+| upstream-release-blocked | Step 2 | Fixed stable upstream package releases do not yet exist; user explicitly chose to wait rather than accept pre-release or custom source builds |
+
+## Resume instructions
+
+Run `/cdd-auto resume issue-30-20260724-143252` after stable package releases become available. Re-probe the stable GitHub CLI, Docker CLI, Buildx, and Compose packages and inspect their embedded Go module/toolchain versions before entering Wave A. The frozen contract must not be edited by the autonomous loop.
 
 ## Final
-- Status: green — all waves and per-wave cross-vendor reviews converged; final direct re-verification green; PR merge pending
-- Verification: shell syntax + all Compose variants green; rebuilt image; package/CVE/toolchain/proxy/firewall acceptance 5/5; altered expected output red as required
-- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-29-20260724-134253`)
-- PR / issue: https://github.com/maximalfocus/coding-agent-sandbox/pull/35 closes https://github.com/maximalfocus/coding-agent-sandbox/issues/29
+- Status: paused — upstream-release-blocked (user-selected Step-2 scope resolution)
+- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-30-20260724-143252`)
+- PR / issue: no PR until resumed green delivery; https://github.com/maximalfocus/coding-agent-sandbox/issues/30 remains open
