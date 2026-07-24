@@ -351,8 +351,26 @@ The image also installs pinned versions of:
 
 Their first-party hosts are trust grants and are always enabled. Model-provider egress is separate:
 Anthropic is available by default, OpenAI requires `ALLOW_OPENAI=true`, and any other provider must
-be added narrowly to `EXTRA_ALLOWED_DOMAINS`. Rebuild the image to upgrade a bundled CLI; versions
-are pinned in `Dockerfile` for reproducibility.
+be added narrowly to `EXTRA_ALLOWED_DOMAINS`.
+
+### Tool and package upgrades
+
+Set `ALLOW_TOOL_UPGRADES=true` to permit official download/package endpoints used by AWS CLI,
+Bun/Node, Python/uv, Rust/Cargo, Maven/Gradle, apt, and Playwright. npm-hosted CLI upgrades already
+use the base npm allowlist. Herdr, GitHub CLI, Bun/OpenCode release assets, and other GitHub-hosted
+upgrades also require `ALLOW_GITHUB=true`; the upgrade switch never overrides the GitHub gate.
+
+The switch grants: `awscli.amazonaws.com`, `bun.sh`, `nodejs.org`, `pypi.org`,
+`files.pythonhosted.org`, `bootstrap.pypa.io`, `astral.sh`, `rustup.rs`,
+`static.rust-lang.org`, `crates.io`, `static.crates.io`, `index.crates.io`,
+`repo.maven.apache.org`, `repo1.maven.org`, `services.gradle.org`, `plugins.gradle.org`,
+`deb.debian.org`, `security.debian.org`, and `cdn.playwright.dev` (each entry also covers its
+subdomains).
+
+This switch is off by default because package registries are executable-payload ingress channels.
+It enables network access, not write permission: bundled CLIs are pinned and installed root-owned in
+the image, so upgrade those by bumping the `Dockerfile` version/checksum and rebuilding. Use runtime
+package downloads only when you deliberately accept that supply-chain capability.
 
 ### Pushing repos with GitHub Actions workflows (the `workflow` scope)
 
@@ -437,7 +455,7 @@ testing and tools work with no extra install:
 - `/cdd` and `/cdd-evolve`'s `bun run` tools (metrics-baseline, golden-lint, coverage-review, …) run directly.
 
 (If a project pins a *different* Playwright version than the bundled one, it re-downloads its browser
-at runtime — add `cdn.playwright.dev` to `EXTRA_ALLOWED_DOMAINS` so that download is allowed.)
+at runtime — enable `ALLOW_TOOL_UPGRADES=true` so that download is allowed.)
 
 ### Full cdd / peerreview setup (one-time per machine)
 
@@ -463,6 +481,7 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
 | `TTYD_PORT` | `7681` | Local port for the browser terminal. |
 | `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |
+| `ALLOW_TOOL_UPGRADES` | `false` | Official package/download endpoints for deliberate tool upgrades. |
 | `ALLOW_GITHUB` | `true` | github.com / githubusercontent.com egress on/off. |
 | `ALLOW_OPENAI` | `false` | OpenAI egress (openai.com + chatgpt.com) — needed for Codex / peer-review. |
 | `GITHUB_TOKEN` | — | PAT for git clone/pull/**push** over HTTPS (see *GitHub access*). |

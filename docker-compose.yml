@@ -38,6 +38,9 @@ services:
       TTYD_PASS: "${TTYD_PASS:-changeme}"
       # Browser terminal layout: 2x2 (default, four tiled panes) or 1 (single pane).
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      # Official package/download endpoints for deliberate CLI/toolchain upgrades. Off by default
+      # because registries are payload-ingress channels; image-pinned tools still require rebuilds.
+      ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"
       # Headless Claude login: a long-lived token from `claude setup-token`, kept in .env.
       # Present -> the web terminal's claude is already authenticated (no /login needed).
       CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
