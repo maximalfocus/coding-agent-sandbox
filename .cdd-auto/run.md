@@ -60,4 +60,4 @@ Four scenarios require commit-pinned upstream source builds, absence of all issu
 - Status: green — all waves and disclosed degraded per-wave reviews converged; final direct re-verification green; PR delivery pending
 - Verification: digest-pinned source build; live image-bound Trivy scan; all CLI/node and daemon-boundary scenarios; host-Docker lifecycle; affected/missing/foreign/malformed/output mutations red
 - Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-30-20260724-143252`)
-- PR / issue: pending / https://github.com/maximalfocus/coding-agent-sandbox/issues/30
+- PR / issue: https://github.com/maximalfocus/coding-agent-sandbox/pull/37 closes https://github.com/maximalfocus/coding-agent-sandbox/issues/30
