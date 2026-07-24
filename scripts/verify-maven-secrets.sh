@@ -100,6 +100,9 @@ if values.get("host") != "127.0.0.1" or values.get("port") != "8888" or values.g
 print("maven-final-settings: green")
 PY
 
+if [ -n "$REPORT" ] && [ -z "${VERIFY_MAVEN_SECRETS_ALLOW_TEST_REPORT:-}" ]; then
+  fail "external Trivy reports are test-only; live acceptance must scan the inspected image"
+fi
 if [ -z "$REPORT" ]; then
   REPORT="$(mktemp)"; owned_report=1
   if command -v trivy >/dev/null 2>&1; then
@@ -131,6 +134,9 @@ except (OSError, UnicodeError, json.JSONDecodeError) as exc:
     raise SystemExit(f"verify-maven-secrets: malformed Trivy JSON: {exc}")
 if not isinstance(report, dict) or report.get("ArtifactType") != "container_image":
     raise SystemExit("verify-maven-secrets: report is not a container-image scan")
+trivy = report.get("Trivy")
+if not isinstance(trivy, dict) or not isinstance(trivy.get("Version"), str) or not report.get("CreatedAt"):
+    raise SystemExit("verify-maven-secrets: report lacks Trivy scan provenance")
 results = report.get("Results")
 if not isinstance(results, list) or not results:
     raise SystemExit("verify-maven-secrets: empty Trivy scan cannot pass as secret absence")

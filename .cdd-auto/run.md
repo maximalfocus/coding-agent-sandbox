@@ -24,13 +24,14 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
 - Wall clock: 10m / 2h
 - Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
-- Review rounds: contract:1 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
+- Review rounds: contract:1 arch:0 conf:2 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
 |---|---|---|---:|---|---|
 | Contract / A | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Claude CLI absent after probe; issue↔contract↔PLAN closure and deterministic gate reviewed; no Medium/High findings |
+| B | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | Hardened supplied-report seam to explicit test-only use and required Trivy provenance; re-review found no remaining Medium/High findings |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
