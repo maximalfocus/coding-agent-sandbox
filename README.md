@@ -147,9 +147,10 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
   `/workspace`, which **is** your `WORKSPACE_DIR` on the host. Changes appear on your real files.
 - The terminal runs inside `tmux` (session `claude`), so closing the tab doesn't kill your
   session — reopen the URL to reattach.
-- Clipboard works in both directions: paste from the host normally; drag across text in a tmux pane
-  to copy it back to the host through OSC 52. Your browser may ask once for clipboard permission.
-  `Ctrl-b y` toggles a zoomed browser-selection mode if you need to select wrapped output manually.
+- Clipboard works in both directions in macOS Chrome (the verified browser): paste from the host
+  normally; drag across text in a tmux pane to copy it back through OSC 52. The browser may ask once
+  for clipboard permission. Pane applications cannot write the host clipboard directly. On other
+  browsers, or for wrapped output, `Ctrl-b y` toggles a zoomed browser-selection fallback.
 - Stop: `docker compose down`. Logs: `docker compose logs -f`. Rebuild after edits: `./run.sh`.
 - Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network and this repo
   directory, and — only if this sandbox installed it — the Docker engine, leaving your host

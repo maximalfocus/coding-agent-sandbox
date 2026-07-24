@@ -321,14 +321,14 @@ fi
 
 # tmux config (regenerated each start; ~ isn't a persisted volume):
 #  - mouse on        -> click a pane to focus, drag borders to resize, scroll to scroll
-#  - set-clipboard on + terminal-features clipboard -> a tmux selection is copied to the host via
-#    OSC 52. The custom ttyd web client served below includes xterm's ClipboardAddon, so this works
-#    in both the browser terminal and a compatible local terminal.
+#  - set-clipboard external + terminal-features clipboard -> a tmux selection is copied to the host
+#    via OSC 52, while pane applications cannot write the host clipboard (clipboard-poisoning guard).
+#    The custom ttyd web client includes xterm's ClipboardAddon, so browser selections work too.
 # Ctrl-b y remains a fallback for browser-native selection: zoom the active pane, disable tmux's
 # mouse handling, drag-select, and press Cmd/Ctrl+C; press Ctrl-b y again to restore the grid.
 cat > "$HOME/.tmux.conf" <<'TMUXCONF'
 set -g mouse on
-set -g set-clipboard on
+set -g set-clipboard external
 set -as terminal-features ',*:clipboard'
 bind m set -g mouse \; display-message "tmux mouse #{?mouse,ON (click panes),OFF (drag-select)}"
 bind y if -F '#{window_zoomed_flag}' \
