@@ -298,6 +298,12 @@ it in `EXTRA_ALLOWED_DOMAINS` in `.env` — then `docker compose up -d` (recreat
 `--build` is only needed if you changed a Dockerfile). For `claude-safe`, there's no "restart":
 each run reads its domains fresh, so just use `CLAUDE_SAFE_DOMAINS=...` for that invocation.
 
+## AWS IAM Identity Center profiles (opt-in)
+
+The image includes pinned, checksum-verified AWS CLI v2 for amd64 and arm64, but **AWS state and AWS service egress remain off by default**. To create a sandbox-private SSO profile, set exact region identifiers in `AWS_SSO_REGIONS` and start with the AWS override matching your stack. The dedicated volume is mounted only in the agent container—never from host `~/.aws` and never into the egress sidecar.
+
+See **[Opt-in AWS IAM Identity Center profiles](docs/aws-sso.md)** for default/MITM/sidecar commands, `aws configure sso` and login verification, the agent-readable credential warning, logout/revocation, and safe dedicated-volume reset.
+
 ## GitHub access (clone / pull / push)
 
 SSH (port 22) is firewalled off, so GitHub works over **HTTPS with a token**. Set in `.env`:
@@ -526,6 +532,7 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
 | `TTYD_PORT` | `7681` | Local port for the browser terminal. |
 | `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |
+| `AWS_SSO_REGIONS` | — | Opt-in comma-separated IAM Identity Center regions; grants only exact regional OIDC, portal.sso, and STS hosts. Requires the matching AWS Compose volume override. |
 | `ALLOW_TOOL_UPGRADES` | `false` | Official package/download endpoints for deliberate tool upgrades. |
 | `ALLOW_GITHUB` | `true` | github.com / githubusercontent.com egress on/off. |
 | `ALLOW_OPENAI` | `false` | OpenAI egress (openai.com + chatgpt.com) — needed for Codex / peer-review. |

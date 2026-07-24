@@ -148,6 +148,7 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`); set that var empty in `.env` to re-enable it. That
   is also required for `/remote-control` (`/rc`), which is feature-flag-gated and so silently stays
   unavailable while nonessential traffic is disabled.
+- **AWS SSO is a deliberate credential grant.** `AWS_SSO_REGIONS` adds only exact regional IAM Identity Center/OIDC and STS hosts; the matching AWS Compose override mounts a dedicated agent-only volume. The coding agent can read every token and role credential in that volume, so use short-lived least-privilege roles and avoid administrator roles. Never mount host `~/.aws`, put AWS state in the egress sidecar, or print cache/credential contents. See [`docs/aws-sso.md`](docs/aws-sso.md) for logout and isolated reset.
 - The Claude CLI version is pinned and its **runtime auto-updater is disabled** (`DISABLE_AUTOUPDATER=1`),
   so the binary can't change mid-session. Bump `CLAUDE_CODE_VERSION` and rebuild to update it.
 - Mount `WORKSPACE_DIR` read-only (`:ro` in `docker-compose.yml`) if you only want analysis, not edits.

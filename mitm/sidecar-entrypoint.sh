@@ -33,6 +33,14 @@ case "$(printf '%s' "${ALLOW_TOOL_UPGRADES:-false}" | tr '[:upper:]' '[:lower:]'
     false|0|no|off) ;;
     *) echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='${ALLOW_TOOL_UPGRADES}' — treating as OFF (fail-closed)" >&2 ;;
 esac
+aws_auth_hosts=""
+if [ -n "${AWS_SSO_REGIONS:-}" ]; then
+    aws_output=$(/usr/local/bin/aws-sso-domains "$AWS_SSO_REGIONS") || {
+        echo "ERROR: invalid AWS_SSO_REGIONS; refusing to start" >&2; exit 1;
+    }
+    while IFS= read -r d; do [ -n "$d" ] && domains+=("$d"); done <<< "$aws_output"
+    aws_auth_hosts=$(printf '%s\n' "$aws_output" | paste -sd, -)
+fi
 if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
     OLDIFS=$IFS; IFS=','; set -f
     for d in $EXTRA_ALLOWED_DOMAINS; do
@@ -49,7 +57,8 @@ if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
     IFS=$OLDIFS; set +f
 fi
 IFS=','; export ALLOWLIST="${domains[*]}"; unset IFS
-export AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com"
+# AWS CLI signs STS calls in Authorization; preserve it only for these exact allowlisted hosts.
+export AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com${aws_auth_hosts:+,$aws_auth_hosts}"
 export GITHUB_READONLY="${GITHUB_READONLY:-true}"
 export ANTHROPIC_BLOCK_PATHS="${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
 export ANTHROPIC_SINGLE_CRED="${ANTHROPIC_SINGLE_CRED:-true}"
