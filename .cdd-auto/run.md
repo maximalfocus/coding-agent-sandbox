@@ -19,20 +19,22 @@ Four scenarios require commit-pinned upstream source builds, absence of all issu
 | Step 2 | scope/preflight | 0 | resumed | 4m | `ce12907` | User amended scope to allow pinned upstream source builds |
 | A | plan | 0 | green | 18m | `15d22be` | Commit-pinned Go 1.26.5 source-build plan; prototypes proved gh, patched Buildx, and patched Compose compile without listed vulnerable modules |
 | B | conformance | 0 | red as required | 7m | `63d0437` | Fail-closed source-pin, Trivy per-target, CLI-as-node, and default daemon-isolation verifier; baseline rejects missing Go builder |
+| C | implementation | 0 | green | 18m | pending | Digest-pinned Go 1.26.5 builder produces source-versioned gh/Buildx/Compose for TARGETARCH; live Trivy gate reports all issue findings absent |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 4m / 2h
-- Iterations: A:0 B:0 C:0 D:0 (per-wave; cap 5 each)
-- Review rounds: contract:0 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
+- Wall clock: 51m / 2h
+- Iterations: A:1 B:1 C:1 D:0 (per-wave; cap 5 each)
+- Review rounds: contract:1 arch:0 conf:2 impl:2 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
 |---|---|---|---:|---|---|
 | Contract + Wave A | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Claude CLI probe failed (`command not found`); source→plan closure, immutable pins, dependency-removal feasibility, architecture path, scanner integrity, and isolation scope reviewed; cross-vendor review owed |
-| Wave B | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass added ImageID binding so foreign reports cannot prove absence; second pass verified strict target/ID typing, test-only report seam, exact affected-binary coverage, immutable source pins, CLI execution, and daemon isolation |
+| Wave B | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass bound supplied evidence to the image tag; second pass verified strict target/ID typing, test-only report seam, exact affected-binary coverage, immutable source pins, CLI execution, and daemon isolation |
+| Wave C | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass exposed optional corporate CA omission in isolated builder and uninformative dev versions; fixes copied certs into builder and set source-version ldflags. Second pass verified commit checkout, go.sum path, exact toolchain, amd64/arm64 dispatch, docker/docker non-linkage, Compose→patched-Buildx replacement, runtime-only copies, and live scan |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |

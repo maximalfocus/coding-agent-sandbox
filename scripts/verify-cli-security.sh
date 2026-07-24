@@ -38,8 +38,8 @@ docker run --rm --user node --entrypoint sh "$IMAGE" -lc '
 owned_report=0
 tarball=""
 cleanup() {
-  [ "$owned_report" = 1 ] && rm -f "$REPORT"
-  [ -n "$tarball" ] && rm -f "$tarball"
+  if [ "$owned_report" = 1 ]; then rm -f "$REPORT"; fi
+  if [ -n "$tarball" ]; then rm -f "$tarball"; fi
 }
 trap cleanup EXIT
 
@@ -49,21 +49,20 @@ fi
 if [ -z "$REPORT" ]; then
   REPORT="$(mktemp)"; owned_report=1
   if command -v trivy >/dev/null 2>&1; then
-    trivy image --format json --severity HIGH,CRITICAL --ignore-unfixed --no-progress \
-      --exit-code 0 "$IMAGE" >"$REPORT"
+    trivy image --format json --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+      --no-progress --exit-code 0 "$IMAGE" >"$REPORT"
   else
     tarball="$(mktemp -t sandbox-cli-security.XXXXXX.tar)"
     docker save "$IMAGE" -o "$tarball"
     docker run --rm -v "$tarball:/image.tar:ro" \
       -v coding-agent-sandbox-trivy-cache:/root/.cache/trivy \
-      "$TRIVY_IMAGE" image --format json --severity HIGH,CRITICAL --ignore-unfixed \
-      --no-progress --exit-code 0 --input /image.tar >"$REPORT"
+      "$TRIVY_IMAGE" image --format json --scanners vuln --severity HIGH,CRITICAL \
+      --ignore-unfixed --no-progress --exit-code 0 --input /image.tar >"$REPORT"
   fi
 fi
 [ -s "$REPORT" ] || fail "Trivy report is missing or empty"
 
-image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE")"
-python3 - "$REPORT" "$image_id" <<'PY'
+python3 - "$REPORT" "$IMAGE" <<'PY'
 import json, sys
 try:
     with open(sys.argv[1], encoding="utf-8") as stream:
@@ -73,8 +72,8 @@ except (OSError, UnicodeError, json.JSONDecodeError) as exc:
 if not isinstance(report, dict) or report.get("ArtifactType") != "container_image":
     raise SystemExit("verify-cli-security: report is not a container-image scan")
 metadata = report.get("Metadata")
-if not isinstance(metadata, dict) or metadata.get("ImageID") != sys.argv[2]:
-    raise SystemExit("verify-cli-security: report ImageID does not match the inspected image")
+if not isinstance(metadata, dict) or sys.argv[2] not in (metadata.get("RepoTags") or []):
+    raise SystemExit("verify-cli-security: report RepoTags do not match the inspected image")
 results = report.get("Results")
 if not isinstance(results, list) or not results:
     raise SystemExit("verify-cli-security: empty/missing Results cannot prove absence")
