@@ -26,7 +26,7 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
 - Wall clock: 24m / 2h
 - Iterations: A:1 B:1 C:1 D:1 (per-wave; cap 5 each)
-- Review rounds: contract:1 arch:0 conf:2 impl:2 acceptance:1 (per-artifact; cap 5 each)
+- Review rounds: contract:1 arch:0 conf:2 impl:2 acceptance:2 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
@@ -35,7 +35,7 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 | Contract / A | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Claude CLI absent after probe; issue↔contract↔PLAN closure and deterministic gate reviewed; no Medium/High findings |
 | B | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | Hardened supplied-report seam to explicit test-only use and required Trivy provenance; re-review found no remaining Medium/High findings |
 | C | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | Found and fixed EXIT-trap false failure for supplied/local-Trivy reports; same-layer, suppression, malformed/empty/foreign/affected mutations all red |
-| D | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Live demo and negative differ passed; fresh Maven repository forces proxy-backed dependency download; screenshot and narration match byte-stable output |
+| D | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | Live demo/differ passed; fresh Maven repo forces proxy-backed download; final PROBLEM charter traces all criteria to issue/contract with executable gates |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
