@@ -91,10 +91,10 @@ if ! docker_up; then
     say "Docker engine is up."
 fi
 
-# --- Recommended terminal (optional): iTerm2 for the 2x2 tmux grid used in sandbox sessions -------
+# --- Optional local terminal ----------------------------------------------------------------------
 if [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1 \
    && [ ! -d "/Applications/iTerm.app" ] && [ ! -d "$HOME/Applications/iTerm.app" ]; then
-    read -r -p "Install iTerm2? (recommended over Terminal.app for the 2x2 tmux grid) [y/N]: " a
+    read -r -p "Install iTerm2 for local-terminal access? [y/N]: " a
     case "$a" in y|Y) brew install --cask iterm2 || say "iTerm2 install failed — continuing without it." ;; esac
 fi
 
@@ -189,6 +189,6 @@ if [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then
     open "http://127.0.0.1:${port}" || true
     if [ -d "/Applications/iTerm.app" ] || [ -d "$HOME/Applications/iTerm.app" ]; then
         say ""
-        say "Tip: drive sandbox sessions from iTerm2 (Terminal.app is not recommended) — a 2x2 tmux grid works well."
+        say "Tip: use iTerm2 with ./shell.sh for local-terminal access, or use Herdr in the browser."
     fi
 fi

@@ -1,12 +1,13 @@
-# Open a local terminal INSIDE the running sandbox (Windows PowerShell).
-#   ./shell.ps1            # fresh shell in /workspace
-#   ./shell.ps1 -Attach    # attach to the same tmux session the browser shows (the 2x2 grid)
+# Open Herdr in a local terminal with the same sandbox isolation as the browser.
+#   ./shell.ps1            # attach another Herdr client to its persistent session
+#   ./shell.ps1 -Shell     # escape hatch: a fresh Bash shell in /workspace
+#   ./shell.ps1 -Attach    # backward-compatible alias for the default
 #
 # Works whether Docker is Docker Desktop (the `docker` CLI is on the Windows PATH) OR runs inside
 # a WSL2 distro (the ./setup-wsl.sh path, where dockerd lives in Ubuntu and never reaches the
 # Windows PATH). When `docker` isn't on the PATH we transparently proxy through
 # `wsl -d <distro> -- docker`. Set $env:SANDBOX_WSL_DISTRO if the daemon isn't in your default distro.
-param([switch]$Attach)
+param([switch]$Attach, [switch]$Shell)
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
@@ -53,10 +54,8 @@ if ([string]::IsNullOrWhiteSpace($running)) {
     exit 1
 }
 
-if ($Attach) {
-    # Shared launcher: attaches to the 'claude' session, building the 2x2 grid on first use
-    # (same script the browser uses), so you get the same grid here.
-    Invoke-Docker exec -it -u node claude-sandbox sandbox-tmux
-} else {
+if ($Shell) {
     Invoke-Docker exec -it -u node -w /workspace claude-sandbox bash -l
+} else {
+    Invoke-Docker exec -it -u node -w /workspace claude-sandbox herdr
 }

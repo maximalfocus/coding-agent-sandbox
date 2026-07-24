@@ -1,10 +1,10 @@
 # Sandbox first-run setup hint — sourced by every interactive shell so the reminder is seen wherever
-# you land: the browser tmux panes, ./shell.sh --attach, and Windows shells. The entrypoint writes
+# you land: browser Herdr panes, ./shell.sh --attach, and Windows shells. The entrypoint writes
 # ~/.sandbox-todo on each boot ONLY while some setup step is still unmet (e.g. no GitHub credential),
 # and removes it once everything is resolved — so this prints until you're done, then goes quiet.
 #
 # Baked into the image as /etc/profile.d/zz-sandbox-todo.sh (login shells) and also sourced from
-# /etc/bash.bashrc (interactive non-login shells, e.g. tmux panes). POSIX sh; safe under bash + dash.
+# /etc/bash.bashrc (interactive non-login shells, e.g. Herdr panes). POSIX sh; safe under bash + dash.
 
 # Interactive shells only — never perturb scripts or `ssh host cmd`.
 case $- in
