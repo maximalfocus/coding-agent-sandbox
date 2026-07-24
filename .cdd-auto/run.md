@@ -25,7 +25,7 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
 - Wall clock: 78m / 2h
 - Iterations: A:1 B:1 C:1 D:1 (per-wave; cap 5 each)
-- Review rounds: contract:3 arch:0 conf:2 impl:2 acceptance:0 (per-artifact; cap 5 each)
+- Review rounds: contract:3 arch:0 conf:2 impl:2 acceptance:2 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
@@ -37,6 +37,8 @@ Five scenarios require exact reproduction of bundled/PATH bubblewrap behavior, c
 | Wave B | coding-agent-sandbox | CONVERGED | 2 | OpenCode / DeepSeek v4 Flash | Strict negative output, parsed Compose controls, distinct bundled/Debian paths, attribution docs, and delivery-mode hygiene independently verified |
 | Wave C | coding-agent-sandbox | not-converged | 1 | OpenCode / big-pickle | All implementation gates green; required `.cdd-auto/` ignore entry before convergence (DeepSeek peer attempts ended without a verdict and were not counted) |
 | Wave C | coding-agent-sandbox | CONVERGED | 2 | OpenCode / big-pickle | Re-ran 16-case suite and live default fallback; `.gitignore` fixed; no remaining Medium/High correctness or security defects |
+| Wave D | coding-agent-sandbox | not-converged | 1 | OpenCode / big-pickle | Live demo green but peer mutation found `EXPECTED_OUTPUT` override ignored, making the independent byte-diff negative gate ineffective |
+| Wave D | coding-agent-sandbox | CONVERGED | 2 | OpenCode / big-pickle | Normal live demo green; neutral temp-expected mutation red; screenshot and all five frozen scenarios rechecked with no Medium/High defects |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
