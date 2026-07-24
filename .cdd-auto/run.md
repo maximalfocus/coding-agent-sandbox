@@ -16,7 +16,7 @@ Four scenarios require fixed stable upstream packages, absence of all issue-list
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 |---|---|---:|---|---|---|---|
-| Step 2 | scope/preflight | 0 | paused | 4m | pending | Latest stable gh 2.96.0, Buildx 0.35.0, and Compose 5.3.1 remain vulnerable; user selected pause rather than pre-release/custom source builds |
+| Step 2 | scope/preflight | 0 | paused | 4m | `ce12907` | Latest stable gh 2.96.0, Buildx 0.35.0, and Compose 5.3.1 remain vulnerable; user selected pause rather than pre-release/custom source builds |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
@@ -45,6 +45,7 @@ Four scenarios require fixed stable upstream packages, absence of all issue-list
 | Type | Wave | Detail |
 |---|---|---|
 | upstream-release-blocked | Step 2 | Fixed stable upstream package releases do not yet exist; user explicitly chose to wait rather than accept pre-release or custom source builds |
+| methodology-evolved | Final | `/cdd-evolve` added this hard-pause class to cdd-auto and published `maximalfocus/cdd-skills@d7c4b0a` |
 
 ## Resume instructions
 
