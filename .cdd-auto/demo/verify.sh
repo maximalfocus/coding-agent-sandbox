@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-EXPECTED="$ROOT/.cdd-auto/demo/expected-output.txt"
+EXPECTED="${EXPECTED_OUTPUT:-$ROOT/.cdd-auto/demo/expected-output.txt}"
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
 
