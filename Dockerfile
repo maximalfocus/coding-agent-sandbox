@@ -40,6 +40,7 @@ RUN : "${DEBIAN_SECURITY_REFRESH}" \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && mkdir -p /opt/java \
     && ln -s "$(dirname "$(dirname "$(readlink -f /usr/bin/java)")")" /opt/java/openjdk \
+    && rm -f /etc/maven/settings.xml \
     && rm -rf /var/lib/apt/lists/*
 
 # Java/Maven backend toolchain. The architecture-neutral JAVA_HOME symlink above works on both
