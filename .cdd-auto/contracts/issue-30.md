@@ -1,6 +1,7 @@
 # Issue 30 acceptance contract — fixed embedded Go dependencies in CLI binaries
 
 Source of truth: https://github.com/maximalfocus/coding-agent-sandbox/issues/30
+User scope amendment: 2026-07-24 — pinned upstream source builds are allowed; stable releases are not required.
 
 ## Reproduction
 
@@ -8,24 +9,26 @@ Build `coding-agent-sandbox:latest` from the current pins. Trivy reports the iss
 
 ## Scenario 1 — GitHub CLI findings are absent
 
-**Given** a freshly rebuilt image using a fixed stable upstream GitHub CLI package
+**Given** a freshly rebuilt image using a commit-pinned upstream GitHub CLI source build
 **When** a successful Trivy HIGH/CRITICAL scan inspects `/usr/bin/gh`
 **Then** `GHSA-hrxh-6v49-42gf` and `CVE-2026-39822` are absent
 **And** the embedded gRPC and Go versions are at least 1.82.1 and 1.26.5 respectively.
 
 ## Scenario 2 — Docker Buildx findings are absent
 
-**Given** the rebuilt image using a fixed stable upstream Buildx package
+**Given** the rebuilt image using a commit-pinned upstream Buildx source build
 **When** the successful scan inspects the Buildx plugin
 **Then** CVE-2026-53488, CVE-2026-53489, CVE-2026-53492, CVE-2026-34040, GHSA-hrxh-6v49-42gf, and CVE-2026-39822 are absent
-**And** the embedded containerd/v2, docker/docker, gRPC, and Go versions meet Trivy's fixed floors.
+**And** vulnerable `github.com/docker/docker` code is not linked
+**And** embedded containerd/v2, gRPC, and Go versions meet Trivy's fixed floors.
 
 ## Scenario 3 — Docker Compose findings are absent
 
-**Given** the rebuilt image using a fixed stable upstream Compose package
+**Given** the rebuilt image using a commit-pinned upstream Compose source build and the same patched Buildx source tree
 **When** the successful scan inspects the Compose plugin
 **Then** CVE-2026-34040, GHSA-hrxh-6v49-42gf, and CVE-2026-39822 are absent
-**And** the embedded docker/docker, gRPC, and Go versions meet Trivy's fixed floors.
+**And** vulnerable `github.com/docker/docker` code is not linked
+**And** embedded containerd/v2, gRPC, and Go versions meet Trivy's fixed floors.
 
 ## Scenario 4 — CLI operation and isolation are preserved
 
@@ -35,10 +38,6 @@ Build `coding-agent-sandbox:latest` from the current pins. Trivy reports the iss
 **And** the opt-in host-Docker build/start/health/remove smoke workflow passes
 **And** the default Compose configuration still exposes no Docker daemon socket or equivalent daemon capability.
 
-## Scope resolution
-
-Only fixed **stable upstream package releases** are acceptable. Pre-release binaries and custom source builds are out of scope. On 2026-07-24, the latest stable packages remain GitHub CLI 2.96.0, Buildx 0.35.0, and Compose 5.3.1; their binaries still embed one or more vulnerable versions listed above. The run therefore pauses until fixed stable upstream releases are available.
-
 ## Scope
 
-When fixed stable releases become available, update all affected version pins and any associated integrity/checksum pins together, preserve amd64 and arm64 coverage, add fail-closed regression verification, and refresh the acceptance demo and charter. Unrelated vulnerability remediation and changes to the Docker-daemon capability boundary are non-goals.
+Build affected CLIs from immutable upstream commit pins with Go 1.26.5 or newer, preserve amd64 and arm64 coverage, retain Go module checksum verification, add fail-closed regression verification, and refresh the acceptance demo and charter. The packaged Docker CLI may remain at its current exact pin because the issue lists no finding in that binary; it must remain operational. Pre-release tags and commit-pinned upstream source are allowed. Unrelated vulnerability remediation and changes to the Docker-daemon capability boundary are non-goals.

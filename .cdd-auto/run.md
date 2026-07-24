@@ -4,19 +4,20 @@
 - Change type: bug
 - Brownfield: yes (existing Docker image and prior CDD regression gates; no standalone conformance repo)
 - Branch: cdd-auto/issue-30-20260724-143252
-- Contract path + SHA: .cdd-auto/contracts/issue-30.md@f15e075e9d7d69fc92ac05f2e9c5157498a1801bc90adc676fd9020865830c16
+- Contract path + SHA: .cdd-auto/contracts/issue-30.md@170fff0a62feea4d51b041f3dbc26a9eedd33f6437cbbf6c9aa15bf11d873d2f (user-amended on resume)
 - Budget: 2h / 200k / 5-iter (N cap: none)
 - GitHub issue: https://github.com/maximalfocus/coding-agent-sandbox/issues/30 — #30 — Bump pinned CLI packages to remove vulnerable embedded Go dependencies
 - Delivery: dedicated issue branch → linked PR only after resumed contract-green completion
 
 ## Acceptance contract (frozen)
 
-Four scenarios require fixed stable upstream packages, absence of all issue-listed HIGH findings from a successful Trivy scan, working GitHub/Docker CLI commands as `node`, a green opt-in host-Docker lifecycle smoke, and continued default denial of Docker daemon access. Pre-release and custom source builds are excluded by the user's Step-2 scope answer. Full frozen text: `.cdd-auto/contracts/issue-30.md`.
+Four scenarios require commit-pinned upstream source builds, absence of all issue-listed HIGH findings from a successful Trivy scan, working GitHub/Docker CLI commands as `node`, a green opt-in host-Docker lifecycle smoke, and continued default denial of Docker daemon access. The user amended the paused contract to allow pinned source builds. Full frozen text: `.cdd-auto/contracts/issue-30.md`.
 
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 |---|---|---:|---|---|---|---|
-| Step 2 | scope/preflight | 0 | paused | 4m | `ce12907` | Latest stable gh 2.96.0, Buildx 0.35.0, and Compose 5.3.1 remain vulnerable; user selected pause rather than pre-release/custom source builds |
+| Step 2 | scope/preflight | 0 | resumed | 4m | `ce12907` | User amended scope to allow pinned upstream source builds |
+| A | plan | 0 | green | 18m | pending | Commit-pinned Go 1.26.5 source-build plan; prototypes proved gh, patched Buildx, and patched Compose compile without listed vulnerable modules |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
@@ -29,7 +30,7 @@ Four scenarios require fixed stable upstream packages, absence of all issue-list
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
 |---|---|---|---:|---|---|
-| None | — | not run | 0 | — | Paused during Step 2 before any artifact wave; contract review remains owed on resume |
+| Contract + Wave A | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Claude CLI probe failed (`command not found`); source→plan closure, immutable pins, dependency-removal feasibility, architecture path, scanner integrity, and isolation scope reviewed; cross-vendor review owed |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
@@ -44,14 +45,11 @@ Four scenarios require fixed stable upstream packages, absence of all issue-list
 ## Flags
 | Type | Wave | Detail |
 |---|---|---|
-| upstream-release-blocked | Step 2 | Fixed stable upstream package releases do not yet exist; user explicitly chose to wait rather than accept pre-release or custom source builds |
-| methodology-evolved | Final | `/cdd-evolve` added this hard-pause class to cdd-auto and published `maximalfocus/cdd-skills@d7c4b0a` |
-
-## Resume instructions
-
-Run `/cdd-auto resume issue-30-20260724-143252` after stable package releases become available. Re-probe the stable GitHub CLI, Docker CLI, Buildx, and Compose packages and inspect their embedded Go module/toolchain versions before entering Wave A. The frozen contract must not be edited by the autonomous loop.
+| upstream-release-blocked | Step 2 | Resolved by user amendment allowing pinned upstream source builds |
+| cross-vendor-review-owed | A | Claude peer unavailable (`command -v claude` failed); disclosed Codex-native fallback converged |
+| methodology-evolved | Prior pause | `/cdd-evolve` added this hard-pause class and published `maximalfocus/cdd-skills@d7c4b0a` |
 
 ## Final
-- Status: paused — upstream-release-blocked (user-selected Step-2 scope resolution)
+- Status: running — resumed after user-amended scope
 - Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-30-20260724-143252`)
-- PR / issue: no PR until resumed green delivery; https://github.com/maximalfocus/coding-agent-sandbox/issues/30 remains open
+- PR / issue: no PR until green delivery; https://github.com/maximalfocus/coding-agent-sandbox/issues/30 remains open
