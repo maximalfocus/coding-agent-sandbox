@@ -69,7 +69,15 @@ build_allowlist() {
 if [ "$(id -u)" = "0" ]; then
     # Auth is only ever forwarded to first-party + GitHub; everything else gets it stripped.
     ALLOWLIST="$(build_allowlist)"; export ALLOWLIST
-    AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com"; export AUTH_HOSTS
+    AWS_AUTH_HOSTS=""
+    if [ -n "${AWS_SSO_REGIONS:-}" ]; then
+        AWS_AUTH_HOSTS=$(/usr/local/bin/aws-sso-domains "$AWS_SSO_REGIONS" | paste -sd, -) || {
+            echo "ERROR: invalid AWS_SSO_REGIONS; refusing to start" >&2; exit 1;
+        }
+    fi
+    # AWS CLI signs STS requests in Authorization. Permit credentials only to the same exact
+    # region-derived hosts already admitted to ALLOWLIST; all other extra domains remain stripped.
+    AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com${AWS_AUTH_HOSTS:+,$AWS_AUTH_HOSTS}"; export AUTH_HOSTS
     export GITHUB_READONLY="${GITHUB_READONLY:-true}"
     # Anthropic API hardening knobs (see mitm/filter_addon.py).
     export ANTHROPIC_BLOCK_PATHS="${ANTHROPIC_BLOCK_PATHS:-/v1/files}"

@@ -4,6 +4,11 @@ set -euo pipefail
 
 regions=${1-}
 [ -n "$regions" ] || { echo 'AWS_SSO_REGIONS must not be empty' >&2; exit 2; }
+# Validate the complete scalar before `read`: Bash drops trailing empty fields and reads only the
+# first line, so relying on split elements would accept `us-east-1,` or ignore newline suffixes.
+[[ "$regions" =~ ^[a-z0-9-]+(,[a-z0-9-]+)*$ ]] || {
+    echo 'AWS_SSO_REGIONS must be a comma-separated list of region identifiers' >&2; exit 2;
+}
 
 IFS=',' read -r -a values <<< "$regions"
 [ "${#values[@]}" -gt 0 ] || exit 2

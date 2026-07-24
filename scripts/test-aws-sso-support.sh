@@ -50,13 +50,11 @@ PY
 
 check 'regional endpoint helper is executable' test -x "$HELPER"
 if [ -x "$HELPER" ]; then
-  actual=$("$HELPER" us-east-1 2>/dev/null || true)
   expected=$'oidc.us-east-1.amazonaws.com\nportal.sso.us-east-1.amazonaws.com\nsts.us-east-1.amazonaws.com'
-  check 'one region emits exactly OIDC, portal, and STS hosts' test "$actual" = "$expected"
-  actual=$("$HELPER" 'us-east-1,eu-west-2' 2>/dev/null || true)
+  if actual=$("$HELPER" us-east-1 2>/dev/null); then check 'one region emits exactly OIDC, portal, and STS hosts' test "$actual" = "$expected"; else not_ok 'one region emits exactly OIDC, portal, and STS hosts'; fi
   expected=$'oidc.us-east-1.amazonaws.com\nportal.sso.us-east-1.amazonaws.com\nsts.us-east-1.amazonaws.com\noidc.eu-west-2.amazonaws.com\nportal.sso.eu-west-2.amazonaws.com\nsts.eu-west-2.amazonaws.com'
-  check 'multiple regions preserve exact deterministic host set' test "$actual" = "$expected"
-  for bad in '' 'amazonaws.com' '*.amazonaws.com' 'us-east-1.example.com' 'US-EAST-1' 'us_east_1' 'us-east-1,,eu-west-2'; do
+  if actual=$("$HELPER" 'us-east-1,eu-west-2' 2>/dev/null); then check 'multiple regions preserve exact deterministic host set' test "$actual" = "$expected"; else not_ok 'multiple regions preserve exact deterministic host set'; fi
+  for bad in '' 'amazonaws.com' '*.amazonaws.com' 'us-east-1.example.com' 'US-EAST-1' 'us_east_1' 'us-east-1,,eu-west-2' 'us-east-1,' ',us-east-1' $'us-east-1\nevil.example.com'; do
     if "$HELPER" "$bad" >/dev/null 2>&1; then not_ok "reject invalid AWS_SSO_REGIONS value: ${bad:-empty}"; else ok "reject invalid AWS_SSO_REGIONS value: ${bad:-empty}"; fi
   done
 else
@@ -64,6 +62,7 @@ else
 fi
 check 'default proxy consumes AWS_SSO_REGIONS through helper' contains_all "$ROOT/entrypoint.sh" 'AWS_SSO_REGIONS' 'aws-sso-domains'
 check 'sidecar proxy consumes AWS_SSO_REGIONS through helper' contains_all "$ROOT/mitm/sidecar-entrypoint.sh" 'AWS_SSO_REGIONS' 'aws-sso-domains'
+check 'MITM paths preserve SigV4 Authorization only for derived AWS hosts' bash -c "grep -q 'AWS_AUTH_HOSTS' '$ROOT/mitm/entrypoint.sh' && grep -q 'AUTH_HOSTS=.*AWS_AUTH_HOSTS' '$ROOT/mitm/entrypoint.sh' && grep -q 'AUTH_HOSTS=.*aws_auth_hosts' '$ROOT/mitm/sidecar-entrypoint.sh'"
 
 check 'operator guide exists' test -s "$DOC"
 for required in \
