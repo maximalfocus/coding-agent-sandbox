@@ -16,19 +16,20 @@ Four scenarios require patched ImageMagick-family and linux-libc-dev versions, f
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 | A | plan | 0 | green | 7m | `76dd5a2` | Frozen issue contract + remediation plan; peer removed an accidental strict-scan overconstraint |
-| B | conformance | 0 | red as required | 4m | `0650774` | Debian-aware package and fail-closed Trivy JSON verifier fails on ImageMagick deb12u12 |
+| B | conformance | 0 | red as required | 4m | `3b0eba3` | Debian-aware package and fail-closed Trivy JSON verifier fails on ImageMagick deb12u12 |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 16m / 2h
-- Iterations: A:1 B:0 C:0 D:0 (per-wave; cap 5 each)
-- Review rounds: contract:1 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
+- Wall clock: 24m / 2h
+- Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
+- Review rounds: contract:1 arch:0 conf:1 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
 | Contract + Wave A | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Corrected plan's accidental requirement for a globally-clean strict HIGH scan; frozen contract unchanged |
+| Wave B | coding-agent-sandbox | CONVERGED | 1 | Claude Code 2.1.158 (cross-vendor) | Verified dpkg enumeration/arch-suffix/status/version semantics, all 15 CVEs, fail-closed missing/malformed/failed scan handling, quoting/cleanup/Docker-Trivy invocation, and base-digest assertion; confirmed imagemagick-family presence is satisfiable (buildpack-deps base). Closed one fail-open: an empty-Results/non-container Trivy report could read as CVE absence — added container_image + non-empty-Results assertions and bounded the report seam. Frozen contract unchanged |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |

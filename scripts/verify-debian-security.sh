@@ -3,6 +3,10 @@
 set -euo pipefail
 
 IMAGE="${1:-coding-agent-sandbox:latest}"
+# Optional CI reuse seam: a pre-generated Trivy JSON report for THIS same image. When unset
+# (the normal path) a live scan is performed below. Whatever is supplied is still validated as a
+# real, non-empty container-image scan (see the Python block) so an empty/foreign report cannot
+# pass CVE absence — the contract requires that an empty or failed scan never reads as "absent".
 REPORT="${VERIFY_DEBIAN_SECURITY_REPORT:-}"
 TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:latest}"
 
@@ -92,6 +96,17 @@ except (OSError, UnicodeError, json.JSONDecodeError) as exc:
 
 if not isinstance(report, dict) or not isinstance(report.get("Results"), list):
     raise SystemExit("verify-debian-security: Trivy JSON lacks a Results array")
+
+# Fail closed on an empty or non-container scan: a real scan of this Debian image always yields at
+# least one target Result. An empty Results array (or a report that is not a container-image scan)
+# means nothing was actually inspected, which must not read as CVE absence.
+if report.get("ArtifactType") != "container_image":
+    raise SystemExit(
+        "verify-debian-security: report is not a container-image scan "
+        f"(ArtifactType={report.get('ArtifactType')!r})"
+    )
+if not report["Results"]:
+    raise SystemExit("verify-debian-security: empty Trivy scan (no results) cannot pass as CVE absence")
 
 found = set()
 for result in report["Results"]:
