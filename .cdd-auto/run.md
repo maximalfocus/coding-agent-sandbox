@@ -17,12 +17,13 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 |---|---|---:|---|---|---|---|
 | A | PLAN/contract | 0 | green | 2m | `e928fa7` | Frozen contract and issue-specific conformance plan authored |
+| B | backend-conformance | 0 | red verified | 6m | pending | Added fail-closed Maven layer/image/Trivy verifier; current Dockerfile fails same-layer cleanup |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 3m / 2h
-- Iterations: A:1 B:0 C:0 D:0 (per-wave; cap 5 each)
+- Wall clock: 10m / 2h
+- Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
 - Review rounds: contract:1 arch:0 conf:0 impl:0 acceptance:0 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
 
@@ -34,6 +35,7 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
 |---|---|---:|---|
+| scripts/verify-maven-secrets.sh | Add | 0 | Issue-31 failing regression for same-layer cleanup, final settings identity, scan provenance, and Maven secret absence |
 
 ## Out-of-scope edits
 | Path | Reason |
