@@ -11,5 +11,6 @@ shell.ps1
 scripts/
 # …except the two scripts baked INTO the image (see Dockerfile): the shared skills linker and the
 # first-run reminder hint. Re-included from the otherwise host-only scripts/ tree.
+!scripts/build-pinned-go-clis.sh
 !scripts/skills/link-skills.sh
 !scripts/skills/sandbox-todo-hint.sh

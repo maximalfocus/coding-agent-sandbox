@@ -1,5 +1,4 @@
-maven-layer-cleanup: green
-maven-secret-findings: absent
-maven-final-settings: green
-maven-proxy-resolution: green
-scanner-suppression: absent
+issue-30-findings: absent
+source-built-clis: green
+default-daemon-access: disabled
+host-docker-lifecycle: green

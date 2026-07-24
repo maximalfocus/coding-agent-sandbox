@@ -1,30 +1,29 @@
-# Issue 31 acceptance demo
+# Issue 30 acceptance demo
 
-The rebuilt sandbox image removes Debian Maven's example settings before the apt-install layer is committed, while the final image retains the project-owned proxy configuration and Maven still resolves dependencies through the running sandbox proxy.
+The sandbox builds GitHub CLI, Docker Buildx, and Docker Compose from immutable upstream commits with Go 1.26.5, removing the fixed HIGH findings embedded in the previously packaged binaries while preserving Docker CLI operation and the daemon-access boundary.
 
 ## Run
 
 ```sh
-docker compose build claude-sandbox
-.cdd-auto/demo/verify.sh
+docker build -t coding-agent-sandbox:issue30 .
+.cdd-auto/demo/verify.sh coding-agent-sandbox:issue30
 ```
 
-The verifier checks Dockerfile instruction ordering, rejects scanner suppression, byte-compares the final image settings with `maven-settings.xml`, runs a fresh Trivy secret scan tied to the inspected image layers, recreates the sandbox, and resolves Commons Lang 3.17.0 as the unprivileged `node` user into a fresh temporary Maven repository.
+The verifier performs a fresh HIGH/CRITICAL Trivy vulnerability scan, binds the report to the exact image tag, requires all three affected binary targets, runs every CLI as `node`, proves the default image cannot access a Docker daemon, then explicitly grants the host socket and exercises build → start → health → remove with a uniquely named disposable image/container.
 
 Expected byte-stable stdout:
 
 ```text
-maven-layer-cleanup: green
-maven-secret-findings: absent
-maven-final-settings: green
-maven-proxy-resolution: green
-scanner-suppression: absent
+issue-30-findings: absent
+source-built-clis: green
+default-daemon-access: disabled
+host-docker-lifecycle: green
 ```
 
-![Issue 31 acceptance output](issue-31-acceptance.png)
+![Issue 30 acceptance output](issue-30-acceptance.png)
 
 ## Negative proof
 
-`verify.sh` diffs actual output against `expected-output.txt`; changing the expected output must fail. The conformance verifier is mutation-tested so a later-layer deletion, `.trivyignore`, missing/malformed/no-results/foreign-layer Trivy evidence, or either Maven password/passphrase rule is red.
+`verify.sh` diffs stdout byte-for-byte against `expected-output.txt`. The underlying security verifier mutation-tests affected-CVE, missing-target, foreign-image, malformed, and missing scan evidence. Supplying a modified expected-output file must fail.
 
-The build, live Trivy scan, container recreation, and first Maven dependency resolution use Docker state/cache and require registry/network access on a cold cache. Verification shown is arm64; the Dockerfile operations and Maven package path are architecture-neutral across the base image's amd64/arm64 manifest.
+The source build and live scan require network/registry access on a cold cache. The host-Docker scenario is intentionally high impact but opt-in and disposable; the default-daemon-denial check runs first and remains the normal product boundary. Verification shown is arm64; the build script accepts only Linux `amd64` and `arm64`, and all compiled inputs are architecture-neutral Go sources.

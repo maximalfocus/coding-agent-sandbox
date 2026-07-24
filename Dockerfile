@@ -1,3 +1,17 @@
+# Build affected Go CLIs from immutable upstream commits. The builder is discarded; only the
+# architecture-native static binaries enter the runtime image. Go and source pins move together.
+FROM golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651 AS go-cli-builder
+ARG TARGETOS=linux
+ARG TARGETARCH
+ARG GH_SOURCE_COMMIT=01b79dd983af0859e4e3d7454961ad3f08cf88b4
+ARG BUILDX_SOURCE_COMMIT=05a1121b29302f90e5b8457de21a1c0ce6ccecba
+ARG COMPOSE_SOURCE_COMMIT=37dea37d6751d0a98640c2b4c27066ace2688399
+COPY certs/ /usr/local/share/ca-certificates/extra/
+RUN update-ca-certificates
+COPY scripts/build-pinned-go-clis.sh /usr/local/bin/build-pinned-go-clis
+RUN chmod +x /usr/local/bin/build-pinned-go-clis \
+    && /usr/local/bin/build-pinned-go-clis /out
+
 # Claude Code sandbox: the real CLI, locked inside a container.
 # Base has Node (required by the bundled coding agents) and a `node` user (uid 1000).
 # Pinned by digest for reproducibility (update deliberately). Tag: node:22-bookworm.
@@ -152,6 +166,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
+
+# Replace only affected Go binaries after package installation. Keep docker-ce-cli at its exact
+# package pin; issue #30 reports no finding in /usr/bin/docker itself.
+COPY --from=go-cli-builder /out/gh /usr/bin/gh
+COPY --from=go-cli-builder /out/docker-buildx /usr/libexec/docker/cli-plugins/docker-buildx
+COPY --from=go-cli-builder /out/docker-compose /usr/libexec/docker/cli-plugins/docker-compose
 
 # bun — runtime for the cdd-skills TypeScript tools (metrics-baseline, golden-lint, coverage-review,
 # scaffold-runner, conformance-validate) that /cdd and /cdd-evolve invoke via `bun run`. Those tools

@@ -1,30 +1,31 @@
-# /cdd-auto run issue-31-20260724-145223
+# /cdd-auto run issue-30-20260724-143252
 
-- Started: 2026-07-24T14:52:23Z
+- Started: 2026-07-24T14:32:52Z
 - Change type: bug
-- Brownfield: yes (existing Docker image and in-repo CDD regression gates; no standalone conformance repo)
-- Branch: cdd-auto/issue-31-20260724-145223
-- Contract path + SHA: .cdd-auto/contracts/issue-31.md@8a19a49b9613d4fd7c57d36b8d18b903b99f2d394d4b76520928f88fea40312d
+- Brownfield: yes (existing Docker image and prior CDD regression gates; no standalone conformance repo)
+- Branch: cdd-auto/issue-30-20260724-143252
+- Contract path + SHA: .cdd-auto/contracts/issue-30.md@170fff0a62feea4d51b041f3dbc26a9eedd33f6437cbbf6c9aa15bf11d873d2f (user-amended on resume)
 - Budget: 2h / 200k / 5-iter (N cap: none)
-- GitHub issue: https://github.com/maximalfocus/coding-agent-sandbox/issues/31 — #31 — Remove Maven sample-credential false positives from image layers
-- Delivery: dedicated issue branch → linked PR → checks-green merge → issue closure
+- GitHub issue: https://github.com/maximalfocus/coding-agent-sandbox/issues/30 — #30 — Bump pinned CLI packages to remove vulnerable embedded Go dependencies
+- Delivery: dedicated issue branch → linked PR only after resumed contract-green completion
 
 ## Acceptance contract (frozen)
 
-Five scenarios require same-layer deletion of Debian Maven's example settings, fail-closed absence of Maven password/passphrase findings from a real Trivy container-image secret scan, byte-identical project-owned final settings, successful proxy-backed Maven resolution as `node`, and no scanner suppression. Full frozen text: `.cdd-auto/contracts/issue-31.md`.
+Four scenarios require commit-pinned upstream source builds, absence of all issue-listed HIGH findings from a successful Trivy scan, working GitHub/Docker CLI commands as `node`, a green opt-in host-Docker lifecycle smoke, and continued default denial of Docker daemon access. The user amended the paused contract to allow pinned source builds. Full frozen text: `.cdd-auto/contracts/issue-30.md`.
 
 ## Wave log
 | Wave | Subagent | Iter | Result | Duration | Checkpoint SHA | Notes |
 |---|---|---:|---|---|---|---|
-| A | PLAN/contract | 0 | green | 2m | `e928fa7` | Frozen contract and issue-specific conformance plan authored |
-| B | backend-conformance | 0 | red verified | 6m | `3b3f7ed` | Added fail-closed Maven layer/image/Trivy verifier; current Dockerfile fails same-layer cleanup |
-| C | backend-implementation | 0 | green | 6m | `08025b4` | Deleted package settings in Maven-install RUN; rebuilt image and live secret scan passed |
-| D | acceptance/demo | 0 | green | 5m | `aec4f53` | Runnable demo passed live Trivy scan, final-file proof, sandbox recreation, and fresh proxy-backed Maven resolution |
+| Step 2 | scope/preflight | 0 | resumed | 4m | `ce12907` | User amended scope to allow pinned upstream source builds |
+| A | plan | 0 | green | 18m | `15d22be` | Commit-pinned Go 1.26.5 source-build plan; prototypes proved gh, patched Buildx, and patched Compose compile without listed vulnerable modules |
+| B | conformance | 0 | red as required | 7m | `63d0437` | Fail-closed source-pin, Trivy per-target, CLI-as-node, and default daemon-isolation verifier; baseline rejects missing Go builder |
+| C | implementation | 0 | green | 18m | `b77fcd8` | Digest-pinned Go 1.26.5 builder produces source-versioned gh/Buildx/Compose for TARGETARCH; live Trivy gate reports all issue findings absent |
+| D | acceptance/demo | 0 | green | 8m | `1f62eca` | Byte-stable demo proves live scan, CLIs as node, default daemon denial, and opt-in build/start/health/remove lifecycle; screenshot rendered |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 27m / 2h
+- Wall clock: 60m / 2h
 - Iterations: A:1 B:1 C:1 D:1 (per-wave; cap 5 each)
 - Review rounds: contract:1 arch:0 conf:2 impl:2 acceptance:2 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
@@ -32,33 +33,31 @@ Five scenarios require same-layer deletion of Debian Maven's example settings, f
 ## Peer review
 | After wave | Target repo | Verdict | Rounds | Vendor | Notes |
 |---|---|---|---:|---|---|
-| Contract / A | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Claude CLI absent after probe; issue↔contract↔PLAN closure and deterministic gate reviewed; no Medium/High findings |
-| B | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | Hardened supplied-report seam to explicit test-only use and required Trivy provenance; re-review found no remaining Medium/High findings |
-| C | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | Found and fixed EXIT-trap false failure for supplied/local-Trivy reports; same-layer, suppression, malformed/empty/foreign/affected mutations all red |
-| D | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | Live demo/differ passed; fresh Maven repo forces proxy-backed download; final PROBLEM charter traces all criteria to issue/contract with executable gates |
+| Contract + Wave A | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Claude CLI probe failed (`command not found`); source→plan closure, immutable pins, dependency-removal feasibility, architecture path, scanner integrity, and isolation scope reviewed; cross-vendor review owed |
+| Wave B | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass bound supplied evidence to the image tag; second pass verified strict target/ID typing, test-only report seam, exact affected-binary coverage, immutable source pins, CLI execution, and daemon isolation |
+| Wave C | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass exposed optional corporate CA omission in isolated builder and uninformative dev versions; fixes copied certs into builder and set source-version ldflags. Second pass verified commit checkout, go.sum path, exact toolchain, amd64/arm64 dispatch, docker/docker non-linkage, Compose→patched-Buildx replacement, runtime-only copies, and live scan |
+| Wave D | coding-agent-sandbox | converged-via-fallback (degraded) | 2 | Codex host-native | First pass replaced a registry-dependent busybox smoke and shell-form scratch healthcheck with a local static ttyd build plus exec healthcheck, and isolated entrypoint stdout from byte-stable output. Second pass verified scan/CLI/denial/lifecycle ordering, cleanup, output diff, rendered artifact, and explicit high-impact host-socket disclosure |
+| Final charter | coding-agent-sandbox | converged-via-fallback (degraded) | 1 | Codex host-native | Reconciled issue→contract→PLAN→verifier→source build→demo closure and deterministic verification commands; no remaining Medium/High findings |
 
 ## Conformance edits
 | Path | Add/Modify | Iter | Justification |
 |---|---|---:|---|
-| scripts/verify-maven-secrets.sh | Add | 0 | Issue-31 failing regression for same-layer cleanup, final settings identity, scan provenance, and Maven secret absence |
+| `scripts/verify-cli-security.sh` | Add | 0 | Frozen issue-30 regression contract; baseline fails before source-builder implementation |
 
 ## Out-of-scope edits
 | Path | Reason |
 |---|---|
-| None | — |
-
-## Final verification
-
-- All repository shell scripts parse with `bash -n`.
-- `docker compose config`, image rebuild, live Maven secret scan, issue-29 Debian regression, npm bundle verification, issue-31 demo, and token-isolation suite (26/26) are green.
-- Same-layer, suppression, report-provenance, empty/malformed/foreign/affected-report, and acceptance-output mutations are red.
+| None | No project implementation edits |
 
 ## Flags
 | Type | Wave | Detail |
 |---|---|---|
-| cross-vendor-review-owed | Step 2 | Codex host probed `claude`; Claude CLI is absent, so mandatory reviews use the disclosed degraded host-native fallback |
+| upstream-release-blocked | Step 2 | Resolved by user amendment allowing pinned upstream source builds |
+| cross-vendor-review-owed | A/B | Claude peer unavailable (`command -v claude` failed); disclosed Codex-native fallback converged |
+| methodology-evolved | Prior pause | `/cdd-evolve` added this hard-pause class and published `maximalfocus/cdd-skills@d7c4b0a` |
 
 ## Final
-- Status: green — verified; issue/PR delivery in progress
-- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-31-20260724-145223`)
-- PR / issue: https://github.com/maximalfocus/coding-agent-sandbox/pull/36 (Closes) / https://github.com/maximalfocus/coding-agent-sandbox/issues/31
+- Status: green — all waves and disclosed degraded per-wave reviews converged; final direct re-verification green; PR delivery pending
+- Verification: digest-pinned source build; live image-bound Trivy scan; all CLI/node and daemon-boundary scenarios; host-Docker lifecycle; affected/missing/foreign/malformed/output mutations red
+- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-30-20260724-143252`)
+- PR / issue: https://github.com/maximalfocus/coding-agent-sandbox/pull/37 closes https://github.com/maximalfocus/coding-agent-sandbox/issues/30
