@@ -85,12 +85,19 @@ COPY ttyd/index.html /usr/local/share/ttyd/index.html
 RUN echo "85baf6f288791e6012feec6257a8dd3665a449891692e7142debffbe24f99003  /usr/local/share/ttyd/index.html" \
     | sha256sum -c -
 
+# Upgrade npm as one pinned distribution before installing the global CLIs. This keeps npm's
+# internal dependency tree coherent while picking up security fixes absent from the base image.
+ARG NPM_VERSION=11.18.0
+RUN npm install -g "npm@${NPM_VERSION}" \
+    && test "$(npm --version)" = "${NPM_VERSION}"
+
 # The real Claude Code CLI, pinned at BUILD time (override with --build-arg). Runtime auto-update
 # is DISABLED below (DISABLE_AUTOUPDATER) so the running CLI stays exactly this version — no
 # unreviewed binary drift mid-session. To update Claude, bump the arg and rebuild.
-# (The base image and ttyd are also pinned; apt packages come from moving Debian repos.)
+# (The base image, npm, and ttyd are also pinned; apt packages come from moving Debian repos.)
 ARG CLAUDE_CODE_VERSION=2.1.158
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
+    "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
 # Codex CLI (OpenAI) for cross-vendor peer review, pinned at BUILD time. Authenticated separately
 # with your ChatGPT/OpenAI subscription via ./scripts/auth/codex-login.sh; egress is gated by ALLOW_OPENAI.
@@ -101,7 +108,7 @@ RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 # selects the matching native binary; Pi needs no lifecycle scripts for a normal global install.
 ARG OPENCODE_VERSION=1.18.4
 ARG PI_VERSION=0.81.1
-RUN npm install -g "opencode-ai@${OPENCODE_VERSION}" \
+RUN npm install -g --allow-scripts=opencode-ai "opencode-ai@${OPENCODE_VERSION}" \
     && npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"
 
 # Herdr agent multiplexer — a single static, architecture-matched binary, pinned by release and
@@ -140,7 +147,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # use only Node/Bun stdlib (no package.json), so the runtime alone is enough — no dependency install.
 # Pinned to match the host; bump deliberately.
 ARG BUN_VERSION=1.3.11
-RUN npm install -g "bun@${BUN_VERSION}"
+RUN npm install -g --allow-scripts=bun "bun@${BUN_VERSION}"
 
 # Playwright + Chromium for cdd's UI acceptance testing (`npx playwright test --project=chromium`).
 # Browsers go to a SHARED path (not root's ~/.cache) so the unprivileged `node` user finds them;

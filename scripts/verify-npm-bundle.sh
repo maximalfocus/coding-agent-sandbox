@@ -3,7 +3,7 @@
 set -euo pipefail
 
 IMAGE="${1:-coding-agent-sandbox:latest}"
-EXPECTED_NPM="${EXPECTED_NPM_VERSION:-12.0.1}"
+EXPECTED_NPM="${EXPECTED_NPM_VERSION:-11.18.0}"
 
 docker image inspect "$IMAGE" >/dev/null
 
