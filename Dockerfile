@@ -22,6 +22,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # amd64 and arm64 (Debian's real JDK directory includes the architecture in its name).
 ENV JAVA_HOME=/opt/java/openjdk
 
+# Optional: trust corporate / TLS-inspecting-proxy root CA(s) — Cloudflare WARP, Zscaler, etc. —
+# so BUILD-time npm/curl (the ttyd download + every `npm install` below use DIRECT, un-proxied
+# egress) AND runtime claude/codex/git work behind TLS interception. Drop PEM files as
+# `certs/*.crt`; this is a NO-OP when certs/ holds only .gitkeep. Must precede the ttyd download.
+COPY certs/ /usr/local/share/ca-certificates/extra/
+RUN update-ca-certificates
+# Node's bundled-CA `fetch`/undici ignores NODE_EXTRA_CA_CERTS, so point Node at the system
+# OpenSSL store (where update-ca-certificates lands the CA). Harmless without a custom CA — the
+# system bundle already holds every public root. Same approach the mitm variant uses.
+ENV NODE_OPTIONS=--use-openssl-ca
+
+COPY maven-settings.xml /etc/maven/settings.xml
+
 # Docker client toolchain only: daemon access is deliberately NOT present in the base Compose
 # configuration. docker-compose.host.yml is the conspicuous, opt-in host-daemon capability grant.
 # Versions are pinned to exact packages from Docker's official Debian repository.
@@ -40,17 +53,6 @@ RUN install -m 0755 -d /etc/apt/keyrings \
        "docker-buildx-plugin=${DOCKER_BUILDX_VERSION}" \
        "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
-
-# Optional: trust corporate / TLS-inspecting-proxy root CA(s) — Cloudflare WARP, Zscaler, etc. —
-# so BUILD-time npm/curl (the ttyd download + every `npm install` below use DIRECT, un-proxied
-# egress) AND runtime claude/codex/git work behind TLS interception. Drop PEM files as
-# `certs/*.crt`; this is a NO-OP when certs/ holds only .gitkeep. Must precede the ttyd download.
-COPY certs/ /usr/local/share/ca-certificates/extra/
-RUN update-ca-certificates
-# Node's bundled-CA `fetch`/undici ignores NODE_EXTRA_CA_CERTS, so point Node at the system
-# OpenSSL store (where update-ca-certificates lands the CA). Harmless without a custom CA — the
-# system bundle already holds every public root. Same approach the mitm variant uses.
-ENV NODE_OPTIONS=--use-openssl-ca
 
 # Hostname allowlist proxy config + writable runtime dirs (the `tinyproxy` user is created
 # by the package). The egress filter file itself is generated at startup from your domains.
