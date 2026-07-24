@@ -23,7 +23,7 @@ Four scenarios require patched ImageMagick-family and linux-libc-dev versions, f
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
 - Fan-out + review tokens: not exposed by host runtime (recorded only; not capped)
-- Wall clock: 68m / 2h
+- Wall clock: 76m / 2h
 - Iterations: A:1 B:1 C:0 D:0 (per-wave; cap 5 each)
 - Review rounds: contract:1 arch:0 conf:1 impl:1 acceptance:1 (per-artifact; cap 5 each)
 - Consecutive-no-progress: 0 / 3
@@ -48,6 +48,7 @@ Four scenarios require patched ImageMagick-family and linux-libc-dev versions, f
 | Type | Wave | Detail |
 
 ## Final
-- Status: green — all waves and per-wave cross-vendor reviews converged; final direct re-verification and PR delivery pending
-- Repos: https://github.com/maximalfocus/coding-agent-sandbox
-- PR / issue: issue https://github.com/maximalfocus/coding-agent-sandbox/issues/29; PR pending
+- Status: green — all waves and per-wave cross-vendor reviews converged; final direct re-verification green; PR merge pending
+- Verification: shell syntax + all Compose variants green; rebuilt image; package/CVE/toolchain/proxy/firewall acceptance 5/5; altered expected output red as required
+- Repos: https://github.com/maximalfocus/coding-agent-sandbox (`cdd-auto/issue-29-20260724-134253`)
+- PR / issue: https://github.com/maximalfocus/coding-agent-sandbox/pull/35 closes https://github.com/maximalfocus/coding-agent-sandbox/issues/29
