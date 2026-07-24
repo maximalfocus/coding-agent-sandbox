@@ -346,7 +346,8 @@ The image also installs pinned versions of:
 
 - **Herdr** (`herdr`) — agent multiplexer; `herdr.dev` is allowlisted for update metadata/docs.
 - **OpenCode** (`opencode`) — coding agent; `opencode.ai` and its subdomains are allowlisted.
-- **Pi** (`pi`) — coding-agent harness; `pi.dev` and its subdomains are allowlisted.
+- **Pi** (`pi`) — coding-agent harness; `pi.dev` and its subdomains are allowlisted. Debian's
+  `fd-find` is installed as `fd` so Pi does not need a blocked runtime download.
 
 Their first-party hosts are trust grants and are always enabled. Model-provider egress is separate:
 Anthropic is available by default, OpenAI requires `ALLOW_OPENAI=true`, and any other provider must
