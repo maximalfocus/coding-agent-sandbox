@@ -3,6 +3,8 @@
 How the pieces fit together on a Windows + WSL2 install, and **how your `personal` / `work`
 project trees map into the sandbox**. For the egress/trust-boundary view, see
 [`security-architecture`](./README.md).
+This diagram describes the default, contained configuration; the host Docker override is outside
+that boundary and is documented in [`SECURITY.md`](../../SECURITY.md).
 
 ```mermaid
 flowchart TB

@@ -4,7 +4,7 @@
 container — one-command setup on macOS, Linux, and Windows.*
 
 Run the **real Claude Code CLI** — on your **Claude subscription**, with the same terminal
-experience you have now — but locked inside a Docker container that can only:
+experience you have now — but, by default, locked inside a Docker container that can only:
 
 - **see/edit one folder** you choose (everything else on your machine is invisible), and
 - **reach the network only where it's allowed**, filtered by **hostname** (Anthropic + npm,
@@ -448,31 +448,32 @@ a one-time `./scripts/auth/codex-login.sh`.)
 
 ### Java/Maven and Docker validation (bundled)
 
-The image bundles OpenJDK 17, Maven, and pinned Docker CLI/Buildx/Compose clients. Backend checks run
-as the normal unprivileged user:
+The image bundles OpenJDK 17, Maven, and pinned Docker CLI/Buildx/Compose clients. `JAVA_HOME` is the
+architecture-neutral `/opt/java/openjdk` on both amd64 and arm64. Backend checks run as the normal
+unprivileged user. Enable `ALLOW_TOOL_UPGRADES` when Maven must fetch dependencies from Central:
 
 ```bash
 java -version
 javac -version
-mvn test                 # enable ALLOW_TOOL_UPGRADES for dependencies from Maven Central
+mvn test
+mvn package
 
 docker --version         # client works in every sandbox
 docker compose version
 ```
 
-The Docker **daemon is intentionally unavailable by default**. A host Docker socket is equivalent
-to host-level control: a client can request arbitrary host bind mounts and privileged containers.
-For a trusted workspace that must build an image, start it, and inspect its Docker health check, use
-the conspicuous opt-in override:
+The Docker **daemon is intentionally unavailable by default**. The opt-in below grants host-level
+control, and containers it launches bypass the sandbox's filesystem and egress controls; read
+[Opt-in host Docker access forfeits host containment](SECURITY.md#what-this-does-not-protect-against--read-this)
+before using it. For a trusted workspace that must build an image, start it, and inspect its Docker
+health check:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.host.yml up -d --build
 ```
 
 Inside the sandbox, `docker build`, `docker run`, `docker inspect`, and `docker compose` then target
-the host daemon. Images and child containers are created by that daemon, outside this sandbox's
-filesystem and egress controls; their network traffic is **not** filtered by the sandbox proxy.
-Revoke access when validation is complete:
+the host daemon. Revoke access when validation is complete:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.host.yml down
@@ -670,6 +671,7 @@ coding-agent-sandbox/
 │   entrypoint.sh                    build allowlist → start proxy → install firewall → drop to
 │                                    node → launch ttyd with Herdr as the primary terminal
 │   init-firewall.sh                 fail-closed iptables egress rules
+│   maven-settings.xml               route Maven dependency traffic through the sandbox proxy
 │   tinyproxy.conf                   hostname-filtering proxy config
 │   mitm/                            TLS-intercepting proxy addon (opt-in mitm variant)
 │   certs/                           extra root CAs (corporate TLS-inspecting proxies)

@@ -4,6 +4,8 @@ One-page executive view of how we run the real Claude Code agent while **contain
 touch**. It mirrors the *environment layer* of Anthropic's
 ["How we contain Claude"](https://www.anthropic.com/engineering/how-we-contain-claude)
 defense-in-depth model, and was independently peer-reviewed (cross-vendor) to convergence.
+This page describes the default, contained configuration; the host Docker override deliberately
+exits this boundary and is documented in [`SECURITY.md`](../../SECURITY.md).
 
 ![Claude Code Sandbox security architecture](./security-architecture.png)
 

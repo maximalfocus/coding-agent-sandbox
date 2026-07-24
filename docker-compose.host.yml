@@ -1,14 +1,17 @@
 # OPT-IN, HIGH-IMPACT CAPABILITY GRANT.
 #
-# This override gives the sandbox client control of the HOST Docker daemon. That is effectively
-# host-level control: an agent can ask Docker to mount arbitrary host paths or start privileged
-# containers. Use only with trusted workspaces, and remove this override when validation is done.
+# This override gives the sandbox client control of the HOST Docker daemon.
+# That is effectively host-level control: an agent can ask Docker to mount
+# arbitrary host paths or start privileged containers. Use only with trusted
+# workspaces, and remove this override when validation is done.
 #
 # Start with:
-#   docker compose -f docker-compose.yml -f docker-compose.host.yml up -d --build
+#   docker compose -f docker-compose.yml \
+#     -f docker-compose.host.yml up -d --build
 # Stop and revoke with:
 #   docker compose -f docker-compose.yml -f docker-compose.host.yml down
-#   docker compose up -d                         # recreate without this override
+#   docker compose up -d  # recreate without this override
+---
 services:
   claude-sandbox:
     environment:
