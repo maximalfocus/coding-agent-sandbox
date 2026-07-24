@@ -20,7 +20,7 @@ Four scenarios require commit-pinned upstream source builds, absence of all issu
 | A | plan | 0 | green | 18m | `15d22be` | Commit-pinned Go 1.26.5 source-build plan; prototypes proved gh, patched Buildx, and patched Compose compile without listed vulnerable modules |
 | B | conformance | 0 | red as required | 7m | `63d0437` | Fail-closed source-pin, Trivy per-target, CLI-as-node, and default daemon-isolation verifier; baseline rejects missing Go builder |
 | C | implementation | 0 | green | 18m | `b77fcd8` | Digest-pinned Go 1.26.5 builder produces source-versioned gh/Buildx/Compose for TARGETARCH; live Trivy gate reports all issue findings absent |
-| D | acceptance/demo | 0 | green | 8m | pending | Byte-stable demo proves live scan, CLIs as node, default daemon denial, and opt-in build/start/health/remove lifecycle; screenshot rendered |
+| D | acceptance/demo | 0 | green | 8m | `1f62eca` | Byte-stable demo proves live scan, CLIs as node, default daemon denial, and opt-in build/start/health/remove lifecycle; screenshot rendered |
 
 ## Budget consumed (running tally — re-seeded on resume, Step 6/8)
 - Directed-loop tokens: 0 / 200k
