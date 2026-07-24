@@ -30,6 +30,7 @@ The pinned Node base image bundles npm 10.9.8 with one CRITICAL and four HIGH fi
 ## Verification
 
 ```sh
+set -euo pipefail
 bash -n scripts/verify-npm-bundle.sh
 docker compose config >/dev/null
 docker compose build claude-sandbox

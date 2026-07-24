@@ -3,10 +3,11 @@
 The rebuilt image exposes the remediation through one fail-closed command:
 
 ```sh
+set -euo pipefail
 docker compose build claude-sandbox
 ./scripts/verify-npm-bundle.sh
 TRIVY_SEVERITY=CRITICAL TRIVY_STRICT=1 ./scan.sh
-TRIVY_SEVERITY=HIGH,CRITICAL ./scan.sh | tee /tmp/sandbox-trivy.txt
+TRIVY_SEVERITY=HIGH,CRITICAL ./scan.sh > /tmp/sandbox-trivy.txt
 ! grep -E 'CVE-2026-(59873|59874|13149|33671|48815)' /tmp/sandbox-trivy.txt
 ```
 

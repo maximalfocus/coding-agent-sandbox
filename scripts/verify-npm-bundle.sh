@@ -18,33 +18,26 @@ if (npmVersion !== expectedNpm) {
   throw new Error(`npm version ${npmVersion}; expected exact pin ${expectedNpm}`);
 }
 
-const floors = new Map([
-  ['tar', '7.5.19'],
-  ['brace-expansion', '2.1.2'],
-  ['picomatch', '4.0.4'],
-  ['sigstore', '4.1.1'],
+const semver = require(path.join(npmRoot, 'node_modules/semver'));
+const safeRanges = new Map([
+  ['tar', '>=7.5.19'],
+  // CVE-2026-13149 was fixed independently on the 1.x, 2.x, and 5.x lines;
+  // the vulnerable 3.x/4.x lines must not pass a simple >=2.1.2 comparison.
+  ['brace-expansion', '>=1.1.16 <2.0.0 || >=2.1.2 <3.0.0 || >=5.0.7'],
+  ['picomatch', '>=4.0.4'],
+  ['sigstore', '>=4.1.1'],
 ]);
-const found = new Map([...floors.keys()].map((name) => [name, []]));
-
-function compareVersions(actual, minimum) {
-  const parse = (value) => value.split('-')[0].split('.').map(Number);
-  const a = parse(actual);
-  const b = parse(minimum);
-  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
-    const delta = (a[i] || 0) - (b[i] || 0);
-    if (delta !== 0) return Math.sign(delta);
-  }
-  return 0;
-}
+const found = new Map([...safeRanges.keys()].map((name) => [name, []]));
 
 function inspectPackage(packageDir) {
   const manifest = path.join(packageDir, 'package.json');
   if (!fs.existsSync(manifest)) return;
   const pkg = JSON.parse(fs.readFileSync(manifest));
-  if (floors.has(pkg.name)) {
+  if (safeRanges.has(pkg.name)) {
     found.get(pkg.name).push(pkg.version);
-    if (compareVersions(pkg.version, floors.get(pkg.name)) < 0) {
-      throw new Error(`${pkg.name}@${pkg.version} is below fixed ${floors.get(pkg.name)}`);
+    const safeRange = safeRanges.get(pkg.name);
+    if (!semver.satisfies(pkg.version, safeRange)) {
+      throw new Error(`${pkg.name}@${pkg.version} is outside safe range ${safeRange}`);
     }
   }
   inspectModules(path.join(packageDir, 'node_modules'));
@@ -73,7 +66,7 @@ for (const [name, versions] of found) {
 console.log(`npm: ${npmVersion}`);
 NODE
 
-docker run --rm --entrypoint sh "$IMAGE" -lc '
+docker run --rm --user node --env HOME=/home/node --entrypoint sh "$IMAGE" -lc '
   set -eu
   npm --version
   claude --version
