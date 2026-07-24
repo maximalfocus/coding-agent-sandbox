@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#0d1117"/>
+  <rect x="42" y="42" width="1196" height="636" rx="16" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+  <circle cx="76" cy="76" r="8" fill="#ff5f56"/><circle cx="102" cy="76" r="8" fill="#ffbd2e"/><circle cx="128" cy="76" r="8" fill="#27c93f"/>
+  <text x="160" y="83" fill="#8b949e" font-family="Menlo,monospace" font-size="20">issue #32 · Codex sandbox acceptance</text>
+  <g fill="#c9d1d9" font-family="Menlo,monospace" font-size="22">
+    <text x="78" y="138">$ .cdd-auto/demo/verify.sh</text>
+    <text x="78" y="186" fill="#3fb950">PASS</text><text x="148" y="186">16 behavioral cases · 3 variant guards</text>
+    <text x="78" y="234">variant=default</text>
+    <text x="78" y="276">nested_sandbox=<tspan fill="#d29922">blocked-known</tspan></text>
+    <text x="78" y="318">fallback_profile=:danger-full-access</text>
+    <text x="78" y="370">workspace_write=<tspan fill="#3fb950">PASS</tspan></text>
+    <text x="78" y="412">outside_write=<tspan fill="#3fb950">DENIED</tspan></text>
+    <text x="78" y="454">network_proxy_filter=<tspan fill="#3fb950">PASS</tspan></text>
+    <text x="78" y="496">network_direct_ip=<tspan fill="#3fb950">DENIED</tspan></text>
+    <text x="78" y="548">result=<tspan fill="#3fb950">PASS</tspan></text>
+  </g>
+  <line x1="78" y1="582" x2="1202" y2="582" stroke="#30363d"/>
+  <text x="78" y="626" fill="#8b949e" font-family="Menlo,monospace" font-size="18">Outer Docker seccomp retained · no SYS_ADMIN · no privileged mode · no host namespace sharing</text>
+</svg>
