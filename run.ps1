@@ -49,6 +49,15 @@ function Read-DotEnv([string]$Key) {
     return ($v.Trim() -replace '^"(.*)"$', '$1' -replace "^'(.*)'`$", '$1')
 }
 
+# A configured SSO region is the explicit opt-in for sandbox-private AWS state as well as egress.
+# Keep the base stack unchanged otherwise; naming both files is required once -f is used.
+$composeFiles = @()
+$awsSsoRegions = Read-DotEnv 'AWS_SSO_REGIONS'
+if (-not [string]::IsNullOrWhiteSpace($awsSsoRegions)) {
+    $composeFiles = @('-f', 'docker-compose.yml', '-f', 'docker-compose.aws.yml')
+    Write-Host "  AWS SSO enabled -> isolated coding-agent-sandbox-aws volume"
+}
+
 function Resolve-Mount([string]$Raw, [string]$Label) {
     try { $abs = (Resolve-Path -LiteralPath $Raw -ErrorAction Stop).Path }
     catch { Write-Host "$Label '$Raw' does not exist."; exit 1 }
@@ -98,7 +107,7 @@ if (-not [string]::IsNullOrWhiteSpace($wkRaw)) {
 # Build, then gate on a supply-chain scan BEFORE starting, so a known-vulnerable image never
 # runs. Set $env:SKIP_TRIVY=1 to bypass (e.g. offline with no scanner DB cached).
 Write-Host "Building image..."
-docker compose build
+docker compose @composeFiles build
 if ($LASTEXITCODE -ne 0) { Write-Host "Build failed."; exit 1 }
 
 if ($env:SKIP_TRIVY) {
@@ -117,7 +126,7 @@ else {
     }
 }
 
-docker compose up -d
+docker compose @composeFiles up -d
 if ($LASTEXITCODE -ne 0) { Write-Host "Start failed."; exit 1 }
 
 $port = (Select-String -Path .env -Pattern '^TTYD_PORT=').Line -replace '^TTYD_PORT=', ''

@@ -29,6 +29,15 @@ read_env() {
     printf '%s' "$v" | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
 }
 
+# A configured SSO region is the explicit opt-in for sandbox-private AWS state as well as egress.
+# Keep the base stack unchanged otherwise; naming both files is required once -f is used.
+compose_cmd=(docker compose)
+aws_sso_regions="$(read_env AWS_SSO_REGIONS)"
+if [ -n "$aws_sso_regions" ]; then
+    compose_cmd+=( -f docker-compose.yml -f docker-compose.aws.yml )
+    echo "  AWS SSO enabled -> isolated coding-agent-sandbox-aws volume"
+fi
+
 # validate_mount RAW LABEL -> echo canonical abs path, or print reason to stderr and exit 1.
 validate_mount() {
     local raw="$1" label="$2" abs bad
@@ -84,7 +93,7 @@ ncerts=$(find certs -maxdepth 1 -type f \( -name '*.crt' -o -name '*.pem' \) 2>/
 # Build, then run a supply-chain scan. The scan is ADVISORY by default (prints findings, doesn't
 # block — see scan.sh); set TRIVY_STRICT=1 to make it gate the start, or SKIP_TRIVY=1 to skip it.
 echo "Building image..."
-docker compose build
+"${compose_cmd[@]}" build
 if [ -n "${SKIP_TRIVY:-}" ]; then
     echo "  (SKIP_TRIVY set — skipping image vulnerability scan)"
 elif ! TRIVY_SUMMARY=1 ./scan.sh; then
@@ -101,7 +110,7 @@ elif ! TRIVY_SUMMARY=1 ./scan.sh; then
         echo "  (advisory scan could not complete — continuing anyway; set SKIP_TRIVY=1 to skip it)"
     fi
 fi
-docker compose up -d
+"${compose_cmd[@]}" up -d
 
 # `|| true`: a missing TTYD_PORT must not trip `set -o pipefail`/`set -e` after a successful `up -d`.
 port="$(grep -E '^TTYD_PORT=' .env | cut -d= -f2 || true)"; port="${port:-7681}"

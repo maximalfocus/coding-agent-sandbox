@@ -16,10 +16,17 @@ Each region adds only `oidc.<region>.amazonaws.com`, `portal.sso.<region>.amazon
 
 ## 2. Start with the agent-only AWS volume
 
-Choose the override matching the stack:
+For the default stack, the standard launchers automatically select the agent-only AWS volume whenever `AWS_SSO_REGIONS` is non-empty:
 
 ```bash
-# Default
+./run.sh                 # macOS/Linux
+.\run.ps1                # Windows PowerShell
+```
+
+For a direct Compose launch or a non-default stack, choose the matching override:
+
+```bash
+# Default (equivalent to the launcher selection)
 docker compose -f docker-compose.yml -f docker-compose.aws.yml up -d --build
 
 # Content-mediation (build the base image first)

@@ -300,7 +300,7 @@ each run reads its domains fresh, so just use `CLAUDE_SAFE_DOMAINS=...` for that
 
 ## AWS IAM Identity Center profiles (opt-in)
 
-The image includes pinned, checksum-verified AWS CLI v2 for amd64 and arm64, but **AWS state and AWS service egress remain off by default**. To create a sandbox-private SSO profile, set exact region identifiers in `AWS_SSO_REGIONS` and start with the AWS override matching your stack. The dedicated volume is mounted only in the agent container—never from host `~/.aws` and never into the egress sidecar.
+The image includes pinned, checksum-verified AWS CLI v2 for amd64 and arm64, but **AWS state and AWS service egress remain off by default**. To create a sandbox-private SSO profile, set exact region identifiers in `AWS_SSO_REGIONS`. The standard `run.sh` / `run.ps1` launchers then select the default-stack AWS override automatically; direct Compose and non-default stacks must use the matching override explicitly. The dedicated volume is mounted only in the agent container—never from host `~/.aws` and never into the egress sidecar.
 
 See **[Opt-in AWS IAM Identity Center profiles](docs/aws-sso.md)** for default/MITM/sidecar commands, `aws configure sso` and login verification, the agent-readable credential warning, logout/revocation, and safe dedicated-volume reset.
 
