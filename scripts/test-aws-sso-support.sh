@@ -29,6 +29,11 @@ check 'default stack has no AWS mount' absent "$ROOT/docker-compose.yml" '/home/
 check 'MITM stack has no AWS mount' absent "$ROOT/docker-compose.mitm.yml" '/home/node/.aws'
 check 'sidecar base stack has no AWS mount' absent "$ROOT/docker-compose.sidecar.yml" '/home/node/.aws'
 
+check 'POSIX launcher detects AWS_SSO_REGIONS' contains_all "$ROOT/run.sh" 'read_env AWS_SSO_REGIONS' 'docker-compose.aws.yml'
+check 'POSIX launcher applies selected Compose files to build and up' contains_all "$ROOT/run.sh" '"${compose_cmd[@]}" build' '"${compose_cmd[@]}" up -d'
+check 'PowerShell launcher detects AWS_SSO_REGIONS' contains_all "$ROOT/run.ps1" "Read-DotEnv 'AWS_SSO_REGIONS'" 'docker-compose.aws.yml'
+check 'PowerShell launcher applies selected Compose files to build and up' contains_all "$ROOT/run.ps1" 'docker compose @composeFiles build' 'docker compose @composeFiles up -d'
+
 check 'opt-in Compose overlays isolate AWS state to agent services' python3 - "$ROOT" <<'PY'
 import pathlib, sys, yaml
 root = pathlib.Path(sys.argv[1])
