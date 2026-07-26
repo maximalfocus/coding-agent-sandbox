@@ -33,6 +33,7 @@ check 'POSIX launcher detects AWS_SSO_REGIONS' contains_all "$ROOT/run.sh" 'read
 check 'POSIX launcher applies selected Compose files to build and up' contains_all "$ROOT/run.sh" '"${compose_cmd[@]}" build' '"${compose_cmd[@]}" up -d'
 check 'PowerShell launcher detects AWS_SSO_REGIONS' contains_all "$ROOT/run.ps1" "Read-DotEnv 'AWS_SSO_REGIONS'" 'docker-compose.aws.yml'
 check 'PowerShell launcher applies selected Compose files to build and up' contains_all "$ROOT/run.ps1" 'docker compose @composeFiles build' 'docker compose @composeFiles up -d'
+check 'entrypoint initializes opt-in AWS volume for node' contains_all "$ROOT/entrypoint.sh" 'AWS_SSO_REGIONS' 'mkdir -p /home/node/.aws' 'chown -R node:node /home/node/.aws'
 
 check 'opt-in Compose overlays isolate AWS state to agent services' python3 - "$ROOT" <<'PY'
 import pathlib, sys, yaml

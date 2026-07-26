@@ -219,6 +219,12 @@ if [ "$(id -u)" = "0" ]; then
     # ./scripts/auth/gh-login.sh) fails to write hosts.yml with "permission denied".
     mkdir -p /home/node/.config/gh
     chown -R node:node /home/node/.config 2>/dev/null || true
+    # The opt-in AWS named volume also mounts root-owned when first created. Initialize it only
+    # when regional AWS SSO egress is enabled, before the terminal drops to the node user.
+    if [ -n "${AWS_SSO_REGIONS:-}" ]; then
+        mkdir -p /home/node/.aws
+        chown -R node:node /home/node/.aws
+    fi
     # Skill repos (scripts/skills/skills-setup.sh) are cloned into /workspace/personal — a bind mount of your real
     # host folder, owned by the host user and writable via the file-sharing layer; nothing to chown.
 
