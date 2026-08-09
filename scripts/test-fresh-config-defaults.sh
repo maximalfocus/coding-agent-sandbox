@@ -53,15 +53,23 @@ if grep -Eq 'Set-DotEnvValue[^#]*(ALLOW_OPENAI|ALLOW_TOOL_UPGRADES)' "$ROOT/setu
     fail 'setup-windows.ps1 rewrites an opt-in egress gate'
 fi
 
-# Runtime parsers continue accepting explicit opt-in and rejecting unknown values.
-for parser in "$ROOT/entrypoint.sh" "$ROOT/mitm/entrypoint.sh" "$ROOT/mitm/sidecar-entrypoint.sh"; do
-    assert_contains "$parser" 'true|1|yes|on)'
-    assert_contains "$parser" 'treating as OFF (fail-closed)'
-done
+# Runtime parsers continue accepting each explicit opt-in, wiring its destinations, and rejecting
+# unknown values. Keep these assertions gate-specific so one correct parser cannot mask another.
 assert_contains "$ROOT/entrypoint.sh" '${ALLOW_OPENAI:-false}'
+assert_contains "$ROOT/entrypoint.sh" 'true|1|yes|on) oai=1;'
+assert_contains "$ROOT/entrypoint.sh" '*) oai=0;'
+assert_contains "$ROOT/entrypoint.sh" '[ "$oai" = "1" ] && domains+=("${OPENAI_DOMAINS[@]}")'
 assert_contains "$ROOT/entrypoint.sh" '${ALLOW_TOOL_UPGRADES:-false}'
+assert_contains "$ROOT/entrypoint.sh" 'true|1|yes|on) upgrades=1;'
+assert_contains "$ROOT/entrypoint.sh" '*) upgrades=0;'
+assert_contains "$ROOT/entrypoint.sh" '[ "$upgrades" = "1" ] && domains+=("${TOOL_UPGRADE_DOMAINS[@]}")'
 assert_contains "$ROOT/mitm/entrypoint.sh" '${ALLOW_TOOL_UPGRADES:-false}'
+assert_contains "$ROOT/mitm/entrypoint.sh" 'true|1|yes|on) upgrades=1;'
+assert_contains "$ROOT/mitm/entrypoint.sh" '*) upgrades=0;'
+assert_contains "$ROOT/mitm/entrypoint.sh" '[ "$upgrades" = "1" ] && domains+=("${TOOL_UPGRADE_DOMAINS[@]}")'
 assert_contains "$ROOT/mitm/sidecar-entrypoint.sh" '${ALLOW_TOOL_UPGRADES:-false}'
+assert_contains "$ROOT/mitm/sidecar-entrypoint.sh" 'true|1|yes|on) domains+=("${TOOL_UPGRADE_DOMAINS[@]}") ;;'
+assert_contains "$ROOT/mitm/sidecar-entrypoint.sh" '*) echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='
 
 # Documentation and every relevant Compose stack must agree on fail-closed defaults.
 grep -Eq '^\| `ALLOW_TOOL_UPGRADES` \| `false` \|' "$ROOT/README.md" \
@@ -80,6 +88,24 @@ assert_compose_value "$TMP_DIR/default.json" claude-sandbox ALLOW_TOOL_UPGRADES 
 assert_compose_value "$TMP_DIR/default.json" claude-sandbox ALLOW_OPENAI false
 assert_compose_value "$TMP_DIR/mitm.json" claude-sandbox-mitm ALLOW_TOOL_UPGRADES false
 assert_compose_value "$TMP_DIR/sidecar.json" claude-sandbox-egress ALLOW_TOOL_UPGRADES false
+
+# Compose must fail closed even when no env file supplies the gates: the `:-false` fallbacks
+# are the deep default a fresh `.env`-less render relies on (AC5). Render with an empty env
+# file (and unset any runner-injected values) so only the Compose fallbacks can answer.
+env -u ALLOW_TOOL_UPGRADES -u ALLOW_OPENAI \
+    docker compose --env-file /dev/null -f "$ROOT/docker-compose.yml" \
+    config --format json > "$TMP_DIR/fallback-default.json"
+env -u ALLOW_TOOL_UPGRADES -u ALLOW_OPENAI \
+    docker compose --env-file /dev/null -f "$ROOT/docker-compose.mitm.yml" \
+    config --format json > "$TMP_DIR/fallback-mitm.json"
+env -u ALLOW_TOOL_UPGRADES -u ALLOW_OPENAI \
+    docker compose --env-file /dev/null -f "$ROOT/docker-compose.sidecar.yml" \
+    config --format json > "$TMP_DIR/fallback-sidecar.json"
+
+assert_compose_value "$TMP_DIR/fallback-default.json" claude-sandbox ALLOW_TOOL_UPGRADES false
+assert_compose_value "$TMP_DIR/fallback-default.json" claude-sandbox ALLOW_OPENAI false
+assert_compose_value "$TMP_DIR/fallback-mitm.json" claude-sandbox-mitm ALLOW_TOOL_UPGRADES false
+assert_compose_value "$TMP_DIR/fallback-sidecar.json" claude-sandbox-egress ALLOW_TOOL_UPGRADES false
 
 ALLOW_TOOL_UPGRADES=true ALLOW_OPENAI=true \
     docker compose --env-file "$ROOT/.env.example" -f "$ROOT/docker-compose.yml" \
