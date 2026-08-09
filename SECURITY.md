@@ -38,6 +38,12 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   installs firewall rules runs as root.
 - **Localhost-only terminal.** The ttyd web terminal is published to `127.0.0.1` only and is
   password-protected, so it isn't reachable from your LAN.
+- **POSIX local-terminal clipboard boundary.** `shell.sh` filters every OSC 52 sequence before
+  Herdr or a plain sandbox shell can write to the host terminal. Herdr's trusted selections and
+  pane-generated clipboard writes are indistinguishable at that boundary, so automatic OSC 52 copy
+  is disabled; use the host terminal's native selection/copy gesture. Running the documented raw
+  `docker compose exec` command bypasses this filter and inherits the terminal's own clipboard
+  policy.
 
 ## What this does NOT protect against — read this
 
