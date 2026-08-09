@@ -4,7 +4,7 @@ vault/claim at temp files, and stub the OAuth refresh and the user/chown calls. 
 most likely to hide bugs: vault expiry/refresh/rotation/persist, the placeholder->real injection,
 and claim-token's move/idempotency. The container build + the firewall/CA wiring are out of scope
 here — verify those by actually running the mitm stack (see README / SECURITY.md)."""
-import asyncio, importlib.util, json, os, sys, time, types, tempfile, pwd as _pwd
+import asyncio, importlib.util, json, os, sys, time, types, tempfile, pwd as _pwd, urllib.error
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADDON = os.path.join(REPO, "mitm", "filter_addon.py")
@@ -143,6 +143,7 @@ os.environ["NODE_CRED_PATH"] = NODE
 os.environ["TOKEN_SECRET_PATH"] = SECRET2 = os.path.join(TMP, "vault2.json")
 import importlib.machinery
 ct = importlib.machinery.SourceFileLoader("claim_token", CLAIM).load_module()
+real_validate_refresh = ct._validate_refresh
 # claim-token now validates the login with the real OAuth server before vaulting (issue #44 C1b);
 # tests stub that grant so the suite stays offline. The success stub echoes the login back (no
 # rotation), matching the legacy "moved as-is" behavior; dedicated tests below exercise the
@@ -174,6 +175,39 @@ ct.main()
 check("re-run is idempotent (vault unchanged)", open(SECRET2).read() == before)
 
 print("== claim-token provenance gate (issue #44 C1b) ==")
+# Exercise the real grant code, not only main() with a stubbed validator.
+claim_captured = {}
+class ClaimFakeResp(FakeResp): pass
+def claim_urlopen(req, timeout=None):
+    claim_captured["url"] = req.full_url
+    claim_captured["body"] = json.loads(req.data.decode())
+    claim_captured["ct"] = req.headers.get("Content-type")
+    claim_captured["timeout"] = timeout
+    return ClaimFakeResp({"access_token": "GRANT-A", "refresh_token": "GRANT-R",
+                          "expires_in": 3600, "scope": "user:inference"})
+real_urlopen = ct.urllib.request.urlopen
+ct.urllib.request.urlopen = claim_urlopen
+grant = real_validate_refresh({"refreshToken": "OLD-R", "clientId": "cid",
+                               "scopes": ["user:inference", "user:profile"]})
+check("claim grant hits OAuth token URL with JSON", claim_captured["url"] == ct.OAUTH_TOKEN_URL
+      and claim_captured["ct"] == "application/json")
+check("claim grant request shape", claim_captured["body"] == {
+      "grant_type": "refresh_token", "refresh_token": "OLD-R", "client_id": "cid",
+      "scope": "user:inference user:profile"})
+check("claim grant honors token rotation", grant["accessToken"] == "GRANT-A"
+      and grant["refreshToken"] == "GRANT-R")
+check("claim grant honors server-returned scope", grant["scopes"] == ["user:inference"])
+
+def unreachable(req, timeout=None): raise urllib.error.URLError("offline")
+ct.urllib.request.urlopen = unreachable
+try:
+    real_validate_refresh({"refreshToken": "OLD-R", "scopes": []})
+    check("unreachable OAuth server raises before validation", False)
+except OSError:
+    check("unreachable OAuth server raises before validation", True)
+finally:
+    ct.urllib.request.urlopen = real_urlopen
+
 # fake login -> the refresh grant is refused -> nothing is vaulted, node login untouched
 def _refuse(oauth):
     raise ValueError("invalid_grant")
@@ -194,6 +228,36 @@ if os.path.exists(SECRET2): os.remove(SECRET2)
 check("valid login claimed (rc 0)", ct.main() == 0)
 vault3 = json.load(open(SECRET2))["claudeAiOauth"]
 check("vault holds the VALIDATED tokens", vault3["accessToken"] == "ROTATED-A" and vault3["refreshToken"] == "ROTATED-R")
+
+# A malicious node .tmp must stop the transaction before the validated token becomes live in the
+# vault; the previous secret-first ordering left both the usable node login and a new vault behind.
+json.dump(fake, open(NODE, "w"))
+if os.path.exists(SECRET2): os.remove(SECRET2)
+node_tmp_victim = os.path.join(TMP, "node-tmp-victim")
+with open(node_tmp_victim, "w") as fh: fh.write("ORIGINAL")
+os.symlink(node_tmp_victim, NODE + ".tmp")
+check("node .tmp substitution refuses claim (rc 1)", ct.main() == 1)
+check("node .tmp substitution leaves vault untouched", not os.path.exists(SECRET2))
+check("node .tmp substitution leaves login usable and unchanged",
+      json.load(open(NODE))["claudeAiOauth"]["accessToken"] == "FAKE-A")
+os.unlink(NODE + ".tmp")
+
+# If the vault write fails after the placeholder lands, main must restore the original node document
+# instead of stranding an unusable placeholder without a vault credential.
+json.dump(fake, open(NODE, "w"))
+if os.path.exists(SECRET2): os.remove(SECRET2)
+real_claim_write = ct._write
+def _fail_vault_write(path, obj, user, mode=0o600):
+    if path == SECRET2:
+        raise OSError("injected vault failure")
+    return real_claim_write(path, obj, user, mode)
+ct._write = _fail_vault_write
+try:
+    check("vault write failure returns rc 1", ct.main() == 1)
+finally:
+    ct._write = real_claim_write
+check("vault write failure restores node login",
+      json.load(open(NODE))["claudeAiOauth"] == fake["claudeAiOauth"])
 
 print("== claim-token _write symlink hardening (issue #44 C1a) ==")
 _wd = tempfile.mkdtemp()
@@ -220,6 +284,54 @@ try:
 except OSError:
     check("symlinked parent dir refused", True)
 check("nothing written through symlinked dir", os.listdir(real_dir) == [])
+# A final-path symlink is replaced as a directory entry, never followed to its victim.
+final_target = os.path.join(_wd, "final.json")
+os.symlink(victim, final_target)
+ct._write(final_target, {"final": True}, "node")
+check("final-path symlink victim untouched", open(victim).read() == "ORIGINAL")
+check("final-path symlink replaced by regular file",
+      not os.path.islink(final_target) and json.load(open(final_target)) == {"final": True})
+
+# Rebinding the parent during rename must not redirect the operation, and must not be reported as
+# success merely because the directory-fd-relative rename completed in the now-renamed directory.
+race_parent = os.path.join(_wd, "race-parent")
+os.mkdir(race_parent)
+race_target = os.path.join(race_parent, "creds.json")
+real_replace = ct.os.replace
+def _rebind_parent(src, dst, **kwargs):
+    moved = race_parent + ".moved"
+    attacker_dir = race_parent + ".attacker"
+    os.rename(race_parent, moved)
+    os.mkdir(attacker_dir)
+    os.symlink(attacker_dir, race_parent)
+    return real_replace(src, dst, **kwargs)
+ct.os.replace = _rebind_parent
+try:
+    ct._write(race_target, {"root": "payload"}, "node")
+    check("parent rebind detected", False)
+except OSError:
+    check("parent rebind detected", True)
+finally:
+    ct.os.replace = real_replace
+check("parent rebind writes nothing through attacker path", os.listdir(race_parent + ".attacker") == [])
+
+# On an exception, cleanup must not unlink a replacement an attacker raced into the predictable
+# temp name. The safe failure mode is to leave the residue for explicit operator cleanup.
+cleanup_target = os.path.join(_wd, "cleanup.json")
+real_write = ct.os.write
+def _replace_temp_then_fail(fd, data):
+    os.rename(cleanup_target + ".tmp", cleanup_target + ".tmp.ours")
+    with open(cleanup_target + ".tmp", "w") as fh: fh.write("ATTACKER")
+    raise OSError("injected write failure")
+ct.os.write = _replace_temp_then_fail
+try:
+    ct._write(cleanup_target, {"partial": True}, "node")
+    check("exception cleanup preserves substituted temp", False)
+except OSError:
+    check("exception cleanup preserves substituted temp",
+          open(cleanup_target + ".tmp").read() == "ATTACKER")
+finally:
+    ct.os.write = real_write
 # normal write still works and lands mode 0600
 ok_path = os.path.join(_wd, "ok.json")
 ct._write(ok_path, {"k": "v"}, "node")

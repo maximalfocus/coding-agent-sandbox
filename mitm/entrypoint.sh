@@ -139,13 +139,23 @@ if [ "$(id -u)" = "0" ]; then
     if [ ! -f "$CA_PEM" ]; then echo "ERROR: mitmproxy CA not generated; see /var/log/mitm.log" >&2; cat /var/log/mitm.log >&2; exit 1; fi
     cp "$CA_PEM" /usr/local/share/ca-certificates/mitmproxy.crt
     update-ca-certificates >/dev/null 2>&1 || true
-    # Wait for the proxy port to accept connections.
-    for _ in $(seq 1 50); do { exec 3<>/dev/tcp/127.0.0.1/8888; } 2>/dev/null && { exec 3>&-; break; }; sleep 0.2; done
+    # Wait for the proxy port to accept connections, and prove it did before claim-token can run.
+    proxy_ready=0
+    for _ in $(seq 1 50); do
+        if { exec 3<>/dev/tcp/127.0.0.1/8888; } 2>/dev/null; then
+            exec 3>&-
+            proxy_ready=1
+            break
+        fi
+        sleep 0.2
+    done
+    [ "$proxy_ready" = "1" ] || { echo "ERROR: mitmproxy port 8888 did not become ready" >&2; exit 1; }
 
     # Reconcile a login into the vault now that the proxy is up: claim-token validates the login
     # against the OAuth server through the proxy (root cannot egress directly) before vaulting
     # (issue #44). No-op once claimed; fail-closed on an unreachable/invalid login — boot continues
-    # and the addon passes requests through until a later successful claim.
+    # and any prior vault remains unchanged. With no prior vault, the addon passes requests through
+    # until a later successful claim.
     if [ "${claim_after_proxy:-0}" = "1" ]; then
         /usr/local/bin/claim-token || echo "  WARN: claim-token reconciliation failed (continuing)" >&2
     fi
