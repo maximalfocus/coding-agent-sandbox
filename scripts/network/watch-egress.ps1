@@ -7,15 +7,17 @@
 #   ./scripts/network/watch-egress.ps1 -Auto -Llm   # same, but route gray-zone hosts to headless `claude -p /assess`
 #
 # -Auto tiers (mirrors the /assess skill):
-#   ALLOW  : known-safe first-party read-only / cloud APIs -> allow-domain.ps1 + persist + notify
-#   REJECT : trackers / ads / metadata / IP literals       -> leave blocked + notify
-#   GRAY   : everything else (incl. storage/drive)          -> notify "needs review"
+#   ALLOW  : known-safe first-party read-only endpoints -> allow-domain.ps1 + persist + notify
+#   REJECT : trackers / ads / metadata / IP literals    -> leave blocked + notify
+#   REVIEW : broad multi-tenant namespaces               -> always require human review
+#   GRAY   : everything else                             -> notify "needs review"
 #            (with -Llm: hand to `claude -p "/assess <host>"`, defaults to reject-on-uncertainty)
 #
-# Allowing is IMMEDIATE; -Auto also persists to EXTRA_ALLOWED_DOMAINS in .env. Ctrl-C to stop.
+# ALLOW-tier changes are immediate and persist to EXTRA_ALLOWED_DOMAINS in .env. Ctrl-C to stop.
 param([switch]$NotifyOnly, [switch]$Auto, [switch]$Llm)
 $ErrorActionPreference = "Stop"
 Set-Location -Path (Join-Path $PSScriptRoot '../..')
+. (Join-Path $PSScriptRoot 'watch-egress-policy.ps1')
 
 $SVC = "claude-sandbox"
 $LOG = "/var/log/tinyproxy/tinyproxy.log"
@@ -37,26 +39,6 @@ function Show-Alert([string]$title, [string]$message) {
         $ni.ShowBalloonTip(8000, $title, $message, [System.Windows.Forms.ToolTipIcon]::Warning)
         Start-Sleep -Milliseconds 250
     } catch {}
-}
-
-# Risk verdict: returns 'allow' | 'reject' | 'gray'. Conservative — unknown => gray.
-function Get-Verdict([string]$h) {
-    if ($h -match '^[0-9]+(\.[0-9]+){3}$') { return 'reject' }   # IP literal incl. metadata 169.254.x
-    $reject = @(
-        '(^|\.)doubleclick\.net$', '\.googlesyndication\.com$', '\.googleadservices\.com$', '^googleads\.',
-        '\.google-analytics\.com$', '\.analytics\.google\.com$', '\.googletagmanager\.com$', '\.umami\.is$',
-        '^mtalk\.google\.com$', '^metadata\.google\.internal$', '\.metadata\.goog$')
-    foreach ($p in $reject) { if ($h -match $p) { return 'reject' } }
-    $gray = @('(^|\.)storage\.googleapis\.com$', '(^|\.)drive\.google\.com$')
-    foreach ($p in $gray) { if ($h -match $p) { return 'gray' } }
-    $allow = @(
-        '\.googleapis\.com$', '\.pkg\.dev$', '(^|\.)gstatic\.com$', '(^|\.)ggpht\.com$',
-        '(^|\.)googlevideo\.com$', '(^|\.)ytimg\.com$', '^dl\.google\.com$', '^accounts\.google\.com$',
-        '\.developers\.google\.com$', '^ai\.google\.dev$', '^pypi\.org$', '(^|\.)pythonhosted\.org$',
-        '(^|\.)pypa\.io$', '(^|\.)crates\.io$', '^static\.rust-lang\.org$', '^rustup\.rs$',
-        '^cdn\.playwright\.dev$', '^astral\.sh$')
-    foreach ($p in $allow) { if ($h -match $p) { return 'allow' } }
-    return 'gray'
 }
 
 function Add-Persist([string]$h) {
@@ -97,11 +79,15 @@ docker compose exec -T $SVC tail -F -n0 $LOG 2>$null | ForEach-Object {
             if ($ans -eq 'y' -or $ans -eq 'Y') { Invoke-Allow $h } else { Write-Host "       left blocked." }
         }
         'auto' {
-            switch (Get-Verdict $h) {
+            switch (Get-EgressVerdict $h) {
                 'allow'  { Invoke-Allow $h }
                 'reject' {
                     Write-Host "       AUTO-REJECTED $h (tracker/metadata - left blocked)" -ForegroundColor DarkYellow
                     Show-Alert "Sandbox auto-rejected" "$h - tracker/metadata, left blocked."
+                }
+                'review' {
+                    Write-Host "       NEEDS HUMAN REVIEW $h - broad multi-tenant namespace; run: /assess $h"
+                    Show-Alert "Sandbox: human review required" "$h - broad namespace; left blocked."
                 }
                 'gray' {
                     if ($Llm) {
