@@ -83,7 +83,11 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   nothing usable, and the mitm proxy injects the real bearer into each `api.anthropic.com` request
   and **owns the OAuth refresh itself** (the agent never sees the refresh token). Run
   `./scripts/auth/claim-token.sh` / `.\scripts\auth\claim-token.ps1` once after `/login`, or just restart — the entrypoint
-  reconciles automatically. **What it buys:** the agent can no longer exfiltrate a *usable* token to
+  reconciles automatically. `claim-token` **validates the login with the OAuth server (refresh-token
+  grant) before vaulting** and writes atomically without ever following a symlink: a
+  fake/attacker-authored credential is refused, an unreachable server fails closed (nothing is
+  vaulted until a later successful claim), and a raced `.tmp` symlink can neither redirect a root
+  write nor get a target chowned (issue #44). **What it buys:** the agent can no longer exfiltrate a *usable* token to
   reuse elsewhere or after the session; the residual risk shrinks to in-session API use you already
   authorized (it still spends your subscription while running, by design). **Boundary:** this is a
   same-container, two-user (`0600`/`0700`) separation, not a VM — a kernel-level container escape

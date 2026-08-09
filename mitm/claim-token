@@ -6,6 +6,18 @@ Run as root (it must chown files to two different users). Invoked two ways:
   - automatically by mitm/entrypoint.sh on every start (reconciles a fresh /login), and
   - on demand via ./scripts/auth/claim-token.sh (host wrapper) right after you log in.
 
+Security hardening (issue #44):
+  C1a — `_write()` is fail-closed against symlink substitution (CWE-377): the parent directory is
+        opened with O_NOFOLLOW, the temp file is created exclusively (O_CREAT|O_EXCL|O_NOFOLLOW)
+        relative to that directory fd, written/fsynced/type-checked/chowned through the fd, and the
+        final path is re-verified with lstat before a no-follow chown — so root never writes to or
+        chowns an attacker-chosen target, and a raced symlink is never followed.
+  C1b — the login is validated against the real OAuth server (refresh-token grant) BEFORE it is
+        vaulted. A fake/attacker-authored credential fails the grant and is refused; an unreachable
+        server fails closed (nothing is vaulted, the node login stays unclaimed, and the addon
+        passes requests through until a later successful claim). The vault therefore only ever
+        holds credentials Anthropic's OAuth server accepted.
+
 Idempotent: a no-op if there's no login yet, or if the placeholder is already installed. The real
 access/refresh tokens only ever live in the vault (mode 0600, owned by tinyproxy); the agent's copy
 keeps the non-secret fields (scopes, subscriptionType, clientId) so the CLI still presents as a
@@ -14,13 +26,17 @@ out so the CLI never tries to refresh locally."""
 import json
 import os
 import pwd
+import stat
 import sys
 import time
+import urllib.request
 
 NODE_CRED = os.environ.get("NODE_CRED_PATH", "/home/node/.claude/.credentials.json")
 SECRET = os.environ.get("TOKEN_SECRET_PATH", "/var/lib/sandbox/secret/credentials.json")
 PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-use")
 FAR_FUTURE_MS = int((time.time() + 10 * 365 * 24 * 3600) * 1000)  # ~10 years out, in milliseconds
+OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token")
+OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "22422756-60c9-4084-8eb7-27705fd5cf9a")
 
 
 def _chown(path, user):
@@ -29,13 +45,83 @@ def _chown(path, user):
 
 
 def _write(path, obj, user, mode=0o600):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as fh:
-        json.dump(obj, fh)
-    os.chmod(tmp, mode)
-    _chown(tmp, user)
-    os.replace(tmp, path)            # atomic
-    _chown(path, user)
+    """Atomically persist ``obj`` to ``path`` owned by ``user``, fail-closed against symlink
+    substitution (issue #44 C1a).
+
+    - the parent directory is opened ``O_RDONLY|O_DIRECTORY|O_NOFOLLOW`` (a replaced directory
+      symlink fails closed instead of being followed),
+    - the temp file is created ``O_CREAT|O_EXCL|O_NOFOLLOW`` relative to that directory fd (an
+      attacker pre-placed ``.tmp`` symlink fails closed with EEXIST/ELOOP),
+    - the file is written, fsynced, type-checked (regular file), and chowned through the fd — no
+      path-based TOCTOU window,
+    - the atomic rename never follows a final-component symlink, and the final path is re-checked
+      with ``lstat`` before a ``follow_symlinks=False`` chown, so a raced symlink is never followed
+      and never chowns an attacker target.
+    """
+    directory = os.path.dirname(path) or "."
+    name = os.path.basename(path) + ".tmp"
+    tmp_path = os.path.join(directory, name)
+    pw = pwd.getpwnam(user)
+    dfd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=dfd)
+        try:
+            with os.fdopen(fd, "w") as fh:
+                json.dump(obj, fh)
+                fh.flush()
+                os.fsync(fh.fileno())
+                st = os.fstat(fd)
+                if not stat.S_ISREG(st.st_mode):
+                    raise OSError(f"{path}: temp file is not a regular file")
+                os.chown(fd, pw.pw_uid, pw.pw_gid)
+        except BaseException:
+            # never leave a partial .tmp behind; remove only the file this attempt created
+            try:
+                os.unlink(name, dir_fd=dfd)
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(dfd)
+    os.replace(tmp_path, path)           # atomic; rename does not follow a final-component symlink
+    lst = os.lstat(path)                 # post-replace re-check before any further path operation
+    if not stat.S_ISREG(lst.st_mode):
+        raise OSError(f"{path}: final path is not a regular file")
+    os.chown(path, pw.pw_uid, pw.pw_gid, follow_symlinks=False)
+
+
+def _validate_refresh(oauth):
+    """Prove the login is genuine before vaulting (issue #44 C1b): exchange the candidate refresh
+    token for fresh tokens with the real OAuth server. Returns the validated token dict (fresh
+    access token, honoring rotation) or raises on refusal/unreachability — the caller fails closed
+    and never vaults an unproven credential.
+
+    Goes through the environment proxy (the claim runs as root, which cannot egress directly; the
+    mitm proxy owns egress)."""
+    rt = (oauth or {}).get("refreshToken")
+    if not rt:
+        raise ValueError("login has no refresh token — cannot validate")
+    body = json.dumps({
+        "grant_type": "refresh_token",
+        "refresh_token": rt,
+        "client_id": oauth.get("clientId") or OAUTH_CLIENT_ID,
+        "scope": " ".join(oauth.get("scopes") or []),
+    }).encode()
+    req = urllib.request.Request(
+        OAUTH_TOKEN_URL, data=body,
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        r = json.loads(resp.read().decode())
+    if not r.get("access_token"):
+        raise ValueError("OAuth grant returned no access token")
+    return {
+        "accessToken": r["access_token"],
+        "refreshToken": r.get("refresh_token") or rt,          # honor rotation
+        "expiresAt": int((time.time() + r.get("expires_in", 3600)) * 1000),
+        "scopes": oauth.get("scopes") or [],
+        "subscriptionType": oauth.get("subscriptionType"),
+        "clientId": oauth.get("clientId"),
+    }
 
 
 def main():
@@ -54,7 +140,19 @@ def main():
         print("claim-token: already claimed (placeholder in place) — nothing to do")
         return 0
 
-    # 1. Real credentials → tinyproxy-only vault (0600, owned by tinyproxy; node cannot read it).
+    # 1. Provenance gate (issue #44 C1b): only a credential the real OAuth server accepts is
+    #    vaulted. A fake/attacker-authored login fails the refresh grant and is refused; an
+    #    unreachable server fails closed (nothing is vaulted, the login stays unclaimed, and the
+    #    addon passes requests through until a later successful claim). Fail-closed beats leaving
+    #    an unproven credential in the vault.
+    try:
+        validated = _validate_refresh(oauth)
+    except (OSError, ValueError) as exc:
+        print(f"claim-token: REFUSED to claim — OAuth validation failed ({exc}); "
+              "node credentials left untouched", file=sys.stderr)
+        return 1
+
+    # 2. Validated credentials → tinyproxy-only vault (0600, owned by tinyproxy; node cannot read it).
     secret_dir = os.path.dirname(SECRET)
     os.makedirs(secret_dir, exist_ok=True)
     # chmod BEFORE chown (while root still owns a freshly-made dir): the container drops CAP_FOWNER,
@@ -64,16 +162,16 @@ def main():
     except PermissionError:
         pass
     _chown(secret_dir, "tinyproxy")
-    _write(SECRET, {"claudeAiOauth": oauth}, "tinyproxy")
+    _write(SECRET, {"claudeAiOauth": validated}, "tinyproxy")
 
-    # 2. Node copy → harmless placeholder so the CLI stays "logged in" but holds nothing usable.
-    placeholder = dict(oauth)
+    # 3. Node copy → harmless placeholder so the CLI stays "logged in" but holds nothing usable.
+    placeholder = dict(validated)
     placeholder["accessToken"] = PLACEHOLDER
     placeholder["refreshToken"] = PLACEHOLDER
     placeholder["expiresAt"] = FAR_FUTURE_MS
     _write(NODE_CRED, {"claudeAiOauth": placeholder}, "node")
 
-    print("claim-token: subscription token moved to the vault; placeholder installed for the agent")
+    print("claim-token: validated subscription token moved to the vault; placeholder installed for the agent")
     return 0
 
 

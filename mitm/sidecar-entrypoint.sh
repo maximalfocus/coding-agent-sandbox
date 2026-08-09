@@ -77,9 +77,10 @@ secret_dir="$(dirname "$TOKEN_SECRET_PATH")"
 # path — but the owner always can. (Same idiom as the audit-log handling in entrypoint.sh.)
 mkdir -p "$secret_dir"; chown tinyproxy:tinyproxy "$secret_dir"; gosu tinyproxy chmod 0700 "$secret_dir"
 [ -f "$TOKEN_SECRET_PATH" ] && { chown tinyproxy:tinyproxy "$TOKEN_SECRET_PATH"; gosu tinyproxy chmod 0600 "$TOKEN_SECRET_PATH"; }
-# Reconcile a login already sitting in the shared config volume (claimed once the agent has /login'd).
+# node's .claude is created here so claim-token can read a /login. The claim itself runs AFTER
+# the proxy port is confirmed listening below: claim-token validates the login against the OAuth
+# server through the proxy (root cannot egress directly) before vaulting (issue #44).
 mkdir -p /home/node/.claude && chown node:node /home/node/.claude 2>/dev/null || true
-/usr/local/bin/claim-token || echo "  WARN: claim-token reconciliation failed (continuing)" >&2
 
 mkdir -p "$CONFDIR"; chown tinyproxy:tinyproxy "$CONFDIR"
 say "Allowlist: $ALLOWLIST"
@@ -96,6 +97,11 @@ for _ in $(seq 1 50); do [ -f "$CA_PEM" ] && break; sleep 0.2; done
 [ -f "$CA_PEM" ] || { echo "ERROR: mitmproxy CA not generated; see /var/log/mitm.log" >&2; cat /var/log/mitm.log >&2; exit 1; }
 gosu tinyproxy chmod 0644 "$CA_PEM" 2>/dev/null || true   # agent reads it (ro mount) to trust the CA
 for _ in $(seq 1 50); do { exec 3<>/dev/tcp/127.0.0.1/8888; } 2>/dev/null && { exec 3>&-; break; }; sleep 0.2; done
+
+# Reconcile a login into the vault now that the proxy is up (issue #44): claim-token validates the
+# login against the OAuth server through the proxy before vaulting. No-op once claimed; fail-closed
+# on an unreachable/invalid login — the boot continues and the addon passes requests through.
+/usr/local/bin/claim-token || echo "  WARN: claim-token reconciliation failed (continuing)" >&2
 
 # --- firewall: fail-closed egress, plus accept :8888 only on the internal interface ---
 EGRESS_IF="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
@@ -117,6 +123,9 @@ iptables -A INPUT  -i lo -j ACCEPT
 [ -n "${INTERNAL_IF:-}" ] && iptables -A INPUT -i "$INTERNAL_IF" -p tcp --dport 8888 -j ACCEPT
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -o lo -d 127.0.0.11 -m owner --uid-owner "$PROXY_UID" -j ACCEPT
+# claim-token (root) reconciles a /login through the proxy on demand; allow NEW loopback connects
+# to :8888 only (the proxy enforces the allowlist; no other local services exist here).
+iptables -A OUTPUT -o lo -p tcp -d 127.0.0.1 --dport 8888 -j ACCEPT
 iptables -A OUTPUT -o lo -j REJECT
 for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
            172.16.0.0/12 192.168.0.0/16 198.18.0.0/15 224.0.0.0/4 240.0.0.0/4; do

@@ -143,6 +143,11 @@ os.environ["NODE_CRED_PATH"] = NODE
 os.environ["TOKEN_SECRET_PATH"] = SECRET2 = os.path.join(TMP, "vault2.json")
 import importlib.machinery
 ct = importlib.machinery.SourceFileLoader("claim_token", CLAIM).load_module()
+# claim-token now validates the login with the real OAuth server before vaulting (issue #44 C1b);
+# tests stub that grant so the suite stays offline. The success stub echoes the login back (no
+# rotation), matching the legacy "moved as-is" behavior; dedicated tests below exercise the
+# refusal and rotation paths.
+ct._validate_refresh = lambda oauth: dict(oauth)
 
 # no node creds -> no-op
 if os.path.exists(NODE): os.remove(NODE)
@@ -167,6 +172,59 @@ check("vault file 0600", oct(os.stat(SECRET2).st_mode)[-3:] == "600")
 before = open(SECRET2).read()
 ct.main()
 check("re-run is idempotent (vault unchanged)", open(SECRET2).read() == before)
+
+print("== claim-token provenance gate (issue #44 C1b) ==")
+# fake login -> the refresh grant is refused -> nothing is vaulted, node login untouched
+def _refuse(oauth):
+    raise ValueError("invalid_grant")
+ct._validate_refresh = _refuse
+fake = {"claudeAiOauth": {"accessToken": "FAKE-A", "refreshToken": "FAKE-R",
+        "expiresAt": now_ms() + 1000, "scopes": [], "clientId": "cid"}}
+json.dump(fake, open(NODE, "w"))
+if os.path.exists(SECRET2): os.remove(SECRET2)
+check("fake login refused (rc 1)", ct.main() == 1)
+check("no vault written for fake login", not os.path.exists(SECRET2))
+check("node fake login untouched", json.load(open(NODE))["claudeAiOauth"]["accessToken"] == "FAKE-A")
+
+# validated (rotated) tokens are what gets vaulted, not the raw node bytes
+ct._validate_refresh = lambda oauth: dict(oauth, accessToken="ROTATED-A",
+                                          refreshToken="ROTATED-R", expiresAt=now_ms() + 3600_000)
+json.dump(fake, open(NODE, "w"))
+if os.path.exists(SECRET2): os.remove(SECRET2)
+check("valid login claimed (rc 0)", ct.main() == 0)
+vault3 = json.load(open(SECRET2))["claudeAiOauth"]
+check("vault holds the VALIDATED tokens", vault3["accessToken"] == "ROTATED-A" and vault3["refreshToken"] == "ROTATED-R")
+
+print("== claim-token _write symlink hardening (issue #44 C1a) ==")
+_wd = tempfile.mkdtemp()
+victim = os.path.join(_wd, "victim")
+with open(victim, "w") as fh: fh.write("ORIGINAL")
+target = os.path.join(_wd, "creds.json")
+# pre-placed .tmp symlink -> exclusive no-follow create must refuse (EEXIST)
+os.symlink(victim, target + ".tmp")
+try:
+    ct._write(target, {"a": 1}, "node")
+    check("pre-placed .tmp symlink refused", False)
+except OSError:
+    check("pre-placed .tmp symlink refused", True)
+check("symlink victim untouched", open(victim).read() == "ORIGINAL")
+check("target not created", not os.path.exists(target))
+# symlinked parent directory -> O_NOFOLLOW dir open must refuse (ELOOP)
+real_dir = os.path.join(_wd, "real")
+os.makedirs(real_dir)
+link_dir = os.path.join(_wd, "real-link")
+os.symlink(real_dir, link_dir)
+try:
+    ct._write(os.path.join(link_dir, "creds.json"), {"a": 1}, "node")
+    check("symlinked parent dir refused", False)
+except OSError:
+    check("symlinked parent dir refused", True)
+check("nothing written through symlinked dir", os.listdir(real_dir) == [])
+# normal write still works and lands mode 0600
+ok_path = os.path.join(_wd, "ok.json")
+ct._write(ok_path, {"k": "v"}, "node")
+check("normal write persists", json.load(open(ok_path)) == {"k": "v"})
+check("normal write mode 0600", oct(os.stat(ok_path).st_mode)[-3:] == "600")
 
 print(f"\n{sum(passed)}/{len(passed)} checks passed")
 sys.exit(0 if all(passed) else 1)
