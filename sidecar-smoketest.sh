@@ -38,7 +38,13 @@ echo "Waiting for the stack to be ready..."
 for _ in $(seq 1 60); do
     up_a=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$AGENT" || true)
     up_e=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$EGRESS" || true)
-    [ "$up_a" = "1" ] && [ "$up_e" = "1" ] && aexec 'test -s /etc/mitmproxy-ca/mitmproxy-ca-cert.pem' && break
+    # The CA file appears as soon as the SIDECAR publishes it, which can precede the agent's
+    # mandatory firewall by a second or two. Only start the structural checks once the agent has
+    # actually installed its default-DROP OUTPUT policy and the pinned proxy rule (issue #45).
+    [ "$up_a" = "1" ] && [ "$up_e" = "1" ] \
+        && aexec 'test -s /etc/mitmproxy-ca/mitmproxy-ca-cert.pem' \
+        && rexec 'iptables -S OUTPUT | grep -q -- "-P OUTPUT DROP"' \
+        && rexec 'iptables -S OUTPUT | grep -q -- "--dport 8888 -j ACCEPT"' && break
     sleep 1
 done
 "${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$AGENT"  || { echo "agent container not running — see: ${COMPOSE[*]} logs $AGENT"; exit 1; }
