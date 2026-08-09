@@ -11,15 +11,18 @@
 #                                                            # install-egress-watcher.sh)
 #
 # --auto tiers (mirrors the /assess skill):
-#   ALLOW  : known-safe first-party read-only / cloud APIs -> allow-domain + persist + notify
-#   REJECT : trackers / ads / metadata / IP literals       -> leave blocked + notify
-#   GRAY   : everything else (incl. storage/drive)          -> notify "needs review"
+#   ALLOW  : known-safe first-party read-only endpoints -> allow-domain + persist + notify
+#   REJECT : trackers / ads / metadata / IP literals    -> leave blocked + notify
+#   REVIEW : broad multi-tenant namespaces               -> always require human review
+#   GRAY   : everything else                             -> notify "needs review"
 #            (with --llm: hand to `claude -p "/assess --headless <host>"`, which fails closed:
 #             reject-on-uncertainty, allow only unambiguous no-risk hosts, live-only, never persist)
 #
-# Allowing is IMMEDIATE; --auto also persists to EXTRA_ALLOWED_DOMAINS in .env. Ctrl-C to stop.
+# ALLOW-tier changes are immediate and persist to EXTRA_ALLOWED_DOMAINS in .env. Ctrl-C to stop.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
+# shellcheck source=scripts/network/watch-egress-policy.sh
+. ./scripts/network/watch-egress-policy.sh
 
 SVC=claude-sandbox
 LOG=/var/log/tinyproxy/tinyproxy.log
@@ -59,31 +62,6 @@ fi
 notify() {  # macOS desktop notification; no-op elsewhere
     command -v osascript >/dev/null 2>&1 || return 0
     osascript -e "display notification \"$2\" with title \"$1\" sound name \"Funk\"" >/dev/null 2>&1 || true
-}
-
-# Risk verdict for a host: echoes allow | reject | gray. Conservative — unknown => gray.
-classify() {
-    local h="$1"
-    # IP literal (covers the 169.254.x metadata endpoint and any direct-IP attempt)
-    if [[ "$h" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then echo reject; return; fi
-    case "$h" in
-        # --- REJECT: trackers / ads / metadata / background phone-home ---
-        *doubleclick.net|*.googlesyndication.com|*.googleadservices.com|googleads.*|\
-        *.google-analytics.com|*.analytics.google.com|*.googletagmanager.com|*.umami.is|\
-        mtalk.google.com|metadata.google.internal|*.metadata.goog)
-            echo reject; return ;;
-        # --- GRAY: known-but-risky (bidirectional / broad) -> never silently auto-allow ---
-        storage.googleapis.com|*.storage.googleapis.com|drive.google.com|*.drive.google.com)
-            echo gray; return ;;
-        # --- ALLOW: first-party read-only CDNs / docs / package indexes / scoped cloud APIs ---
-        *.googleapis.com|*.pkg.dev|gstatic.com|*.gstatic.com|ggpht.com|*.ggpht.com|\
-        googlevideo.com|*.googlevideo.com|ytimg.com|*.ytimg.com|dl.google.com|\
-        accounts.google.com|*.developers.google.com|ai.google.dev|\
-        pypi.org|files.pythonhosted.org|*.pythonhosted.org|pypa.io|*.pypa.io|\
-        crates.io|*.crates.io|static.rust-lang.org|rustup.rs|cdn.playwright.dev|astral.sh)
-            echo allow; return ;;
-    esac
-    echo gray
 }
 
 # Persist a host to EXTRA_ALLOWED_DOMAINS in .env (append, comma-separated).
@@ -134,11 +112,13 @@ run_pipeline() {
                 case "$ans" in y|Y) do_allow "$host" ;; *) printf '       ↳ left blocked.\n' ;; esac
             fi ;;
           auto)
-            verdict=$(classify "$host")
+            verdict=$(classify_egress_host "$host")
             case "$verdict" in
               allow)  do_allow "$host" ;;
               reject) printf '       ⛔ AUTO-REJECTED %s (tracker/metadata — left blocked)\n' "$host"
                       notify "⛔ Sandbox auto-rejected" "$host — tracker/metadata, left blocked." ;;
+              review) printf '       ⚠ NEEDS HUMAN REVIEW %s — broad multi-tenant namespace; run: /assess %s\n' "$host" "$host"
+                      notify "⚠️ Sandbox: human review required" "$host — broad namespace; left blocked." ;;
               gray)
                 if [ "$LLM" = "1" ]; then
                     printf '       🤖 gray zone → headless /assess %s …\n' "$host"
