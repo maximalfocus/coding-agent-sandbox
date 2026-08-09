@@ -6,21 +6,39 @@ Run as root (it must chown files to two different users). Invoked two ways:
   - automatically by mitm/entrypoint.sh on every start (reconciles a fresh /login), and
   - on demand via ./scripts/auth/claim-token.sh (host wrapper) right after you log in.
 
-Idempotent: a no-op if there's no login yet, or if the placeholder is already installed. The real
-access/refresh tokens only ever live in the vault (mode 0600, owned by tinyproxy); the agent's copy
-keeps the non-secret fields (scopes, subscriptionType, clientId) so the CLI still presents as a
-logged-in subscription, but its accessToken/refreshToken are inert and its expiresAt is ~10 years
-out so the CLI never tries to refresh locally."""
+Security hardening (issue #44):
+  C1a — `_write()` is fail-closed against symlink substitution (CWE-377): the parent directory is
+        opened with O_NOFOLLOW, the temp file is created exclusively (O_CREAT|O_EXCL|O_NOFOLLOW)
+        relative to that directory fd, written/type-checked/chmodded/chowned/fsynced through the fd,
+        and renamed and verified relative to that same directory fd. Ownership is set only through
+        the temp-file fd, so root never writes to or chowns an attacker-chosen target.
+  C1b — the login is validated against the real OAuth server (refresh-token grant) BEFORE it is
+        vaulted. A fake/attacker-authored credential fails the grant and is refused; an unreachable
+        server fails closed (the candidate is not vaulted, the node login stays unclaimed, and any
+        prior vault remains unchanged). If no prior vault exists, the addon passes requests through
+        until a later successful claim. This claim path installs only credentials Anthropic's OAuth
+        server accepted.
+
+Idempotent: a no-op if there's no login yet, or if the placeholder is already installed. After a
+successful claim, the real access/refresh tokens live only in the vault (mode 0600, owned by
+tinyproxy); the agent's copy keeps the non-secret fields (scopes, subscriptionType, clientId) so the
+CLI still presents as a logged-in subscription, but its accessToken/refreshToken are inert and its
+expiresAt is ~10 years out so the CLI never tries to refresh locally."""
 import json
+import math
 import os
 import pwd
+import stat
 import sys
 import time
+import urllib.request
 
 NODE_CRED = os.environ.get("NODE_CRED_PATH", "/home/node/.claude/.credentials.json")
 SECRET = os.environ.get("TOKEN_SECRET_PATH", "/var/lib/sandbox/secret/credentials.json")
 PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-use")
 FAR_FUTURE_MS = int((time.time() + 10 * 365 * 24 * 3600) * 1000)  # ~10 years out, in milliseconds
+OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token")
+OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "22422756-60c9-4084-8eb7-27705fd5cf9a")
 
 
 def _chown(path, user):
@@ -29,13 +47,133 @@ def _chown(path, user):
 
 
 def _write(path, obj, user, mode=0o600):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as fh:
-        json.dump(obj, fh)
-    os.chmod(tmp, mode)
-    _chown(tmp, user)
-    os.replace(tmp, path)            # atomic
-    _chown(path, user)
+    """Atomically persist ``obj`` to ``path`` owned by ``user``, fail-closed against symlink
+    substitution (issue #44 C1a).
+
+    - the parent directory is opened ``O_RDONLY|O_DIRECTORY|O_NOFOLLOW`` (a replaced directory
+      symlink fails closed instead of being followed),
+    - the temp file is created ``O_CREAT|O_EXCL|O_NOFOLLOW`` relative to that directory fd (an
+      attacker pre-placed ``.tmp`` symlink fails closed with EEXIST/ELOOP),
+    - the file is written, type-checked (regular file), chmodded, chowned, and fsynced through the fd
+      — no path-based write/chown TOCTOU window,
+    - the atomic rename and final verification stay relative to the still-open directory fd; the
+      final entry must identify the file we created, and the directory path must still identify the
+      directory we opened.
+
+    On failure, a temp entry created by this attempt is deliberately left in place. Unlinking its
+    predictable name would introduce another race in an attacker-writable directory: the attacker
+    could substitute a different entry immediately before cleanup. The residue fails later attempts
+    closed until an operator removes it.
+    """
+    directory = os.path.dirname(path) or "."
+    name = os.path.basename(path) + ".tmp"
+    final_name = os.path.basename(path)
+    pw = pwd.getpwnam(user)
+    dfd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    fd = None
+    try:
+        directory_st = os.fstat(dfd)
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=dfd)
+        payload = json.dumps(obj).encode()
+        view = memoryview(payload)
+        while view:
+            written = os.write(fd, view)
+            if written == 0:
+                raise OSError(f"{path}: short write")
+            view = view[written:]
+        created_st = os.fstat(fd)
+        if not stat.S_ISREG(created_st.st_mode):
+            raise OSError(f"{path}: temp file is not a regular file")
+        os.fchmod(fd, mode)
+        os.chown(fd, pw.pw_uid, pw.pw_gid)
+        os.fsync(fd)  # persist content plus final mode/owner before publishing the directory entry
+
+        # Keep both names bound to the directory we actually opened. Re-resolving absolute paths
+        # here lets an attacker rename the parent and substitute a symlink before os.replace().
+        os.replace(name, final_name, src_dir_fd=dfd, dst_dir_fd=dfd)
+
+        # The source name can be replaced by a directory owner while we hold fd. Prove that the
+        # entry installed at the destination is still the exact file we wrote/chowned.
+        verify_fd = os.open(final_name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd)
+        try:
+            final_st = os.fstat(verify_fd)
+            if not stat.S_ISREG(final_st.st_mode) or not os.path.samestat(created_st, final_st):
+                raise OSError(f"{path}: final path was substituted during write")
+        finally:
+            os.close(verify_fd)
+
+        # A directory-fd-relative rename can safely finish in a directory that an attacker has
+        # meanwhile renamed away. Do not report success unless the caller's directory path still
+        # resolves to the directory on which we operated.
+        live_directory_st = os.stat(directory, follow_symlinks=False)
+        if not stat.S_ISDIR(live_directory_st.st_mode) or not os.path.samestat(directory_st, live_directory_st):
+            raise OSError(f"{path}: parent directory was substituted during write")
+        os.fsync(dfd)
+    finally:
+        try:
+            if fd is not None:
+                os.close(fd)
+        finally:
+            os.close(dfd)
+
+
+def _validate_refresh(oauth):
+    """Prove the login is genuine before vaulting (issue #44 C1b): exchange the candidate refresh
+    token for fresh tokens with the real OAuth server. Returns the validated token dict (fresh
+    access token, honoring rotation) or raises on refusal/unreachability — the caller fails closed
+    and never vaults an unproven credential.
+
+    Goes through the environment proxy (the claim runs as root, which cannot egress directly; the
+    mitm proxy owns egress)."""
+    if not isinstance(oauth, dict):
+        raise ValueError("login has no OAuth credential object")
+    rt = oauth.get("refreshToken")
+    if not isinstance(rt, str) or not rt:
+        raise ValueError("login has no refresh token — cannot validate")
+    client_id = oauth.get("clientId") or OAUTH_CLIENT_ID
+    if not isinstance(client_id, str):
+        raise ValueError("login has an invalid client ID")
+    requested_scopes = oauth.get("scopes") or []
+    if not isinstance(requested_scopes, list) or not all(isinstance(s, str) for s in requested_scopes):
+        raise ValueError("login has invalid scopes")
+    body = json.dumps({
+        "grant_type": "refresh_token",
+        "refresh_token": rt,
+        "client_id": client_id,
+        "scope": " ".join(requested_scopes),
+    }).encode()
+    req = urllib.request.Request(
+        OAUTH_TOKEN_URL, data=body,
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        r = json.loads(resp.read().decode())
+    if not isinstance(r, dict):
+        raise ValueError("OAuth grant returned a non-object response")
+    access_token = r.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise ValueError("OAuth grant returned no valid access token")
+    refresh_token = r.get("refresh_token", rt)
+    if not isinstance(refresh_token, str) or not refresh_token:
+        raise ValueError("OAuth grant returned no valid refresh token")
+    expires_in = r.get("expires_in", 3600)
+    if (isinstance(expires_in, bool) or not isinstance(expires_in, (int, float))
+            or not math.isfinite(expires_in) or expires_in <= 0):
+        raise ValueError("OAuth grant returned an invalid expires_in")
+    response_scope = r.get("scope")
+    if response_scope is None:
+        scopes = requested_scopes
+    elif isinstance(response_scope, str):
+        scopes = response_scope.split()
+    else:
+        raise ValueError("OAuth grant returned an invalid scope")
+    return {
+        "accessToken": access_token,
+        "refreshToken": refresh_token,                         # honor rotation
+        "expiresAt": int((time.time() + expires_in) * 1000),
+        "scopes": scopes,                                      # honor server narrowing/rotation
+        "subscriptionType": oauth.get("subscriptionType"),
+        "clientId": client_id,
+    }
 
 
 def main():
@@ -54,7 +192,19 @@ def main():
         print("claim-token: already claimed (placeholder in place) — nothing to do")
         return 0
 
-    # 1. Real credentials → tinyproxy-only vault (0600, owned by tinyproxy; node cannot read it).
+    # 1. Provenance gate (issue #44 C1b): only a credential the real OAuth server accepts is
+    #    vaulted. A fake/attacker-authored login fails the refresh grant and is refused; an
+    #    unreachable server fails closed (the candidate is not vaulted, the login stays unclaimed,
+    #    and any prior vault remains unchanged). With no prior vault, the addon passes requests
+    #    through until a later successful claim. Fail-closed beats installing an unproven credential.
+    try:
+        validated = _validate_refresh(oauth)
+    except Exception as exc:
+        print(f"claim-token: REFUSED to claim — OAuth validation failed ({exc}); "
+              "node credentials left untouched", file=sys.stderr)
+        return 1
+
+    # 2. Prepare the tinyproxy-only vault directory (0700; node cannot read it).
     secret_dir = os.path.dirname(SECRET)
     os.makedirs(secret_dir, exist_ok=True)
     # chmod BEFORE chown (while root still owns a freshly-made dir): the container drops CAP_FOWNER,
@@ -64,16 +214,37 @@ def main():
     except PermissionError:
         pass
     _chown(secret_dir, "tinyproxy")
-    _write(SECRET, {"claudeAiOauth": oauth}, "tinyproxy")
-
-    # 2. Node copy → harmless placeholder so the CLI stays "logged in" but holds nothing usable.
-    placeholder = dict(oauth)
+    # 3. Node copy → harmless placeholder so the CLI stays "logged in" but holds nothing usable.
+    # Install this first: if an attacker has substituted its temp/parent path, fail before making a
+    # validated credential live in the vault alongside the still-usable node login.
+    placeholder = dict(validated)
     placeholder["accessToken"] = PLACEHOLDER
     placeholder["refreshToken"] = PLACEHOLDER
     placeholder["expiresAt"] = FAR_FUTURE_MS
-    _write(NODE_CRED, {"claudeAiOauth": placeholder}, "node")
+    try:
+        _write(NODE_CRED, {"claudeAiOauth": placeholder}, "node")
+    except Exception as exc:
+        print(f"claim-token: REFUSED to claim — placeholder write failed ({exc}); "
+              "vault left untouched", file=sys.stderr)
+        return 1
 
-    print("claim-token: subscription token moved to the vault; placeholder installed for the agent")
+    # 4. Only after the usable node credential is gone may the validated credential become live in
+    # the vault. If that write fails, attempt to restore the exact node document we read so the state
+    # remains unclaimed rather than stranding a placeholder with no usable vault credential.
+    try:
+        _write(SECRET, {"claudeAiOauth": validated}, "tinyproxy")
+    except Exception as exc:
+        try:
+            _write(NODE_CRED, raw, "node")
+        except Exception as rollback_exc:
+            print(f"claim-token: CRITICAL — vault write failed ({exc}) and node rollback failed "
+                  f"({rollback_exc})", file=sys.stderr)
+            return 1
+        print(f"claim-token: REFUSED to claim — vault write failed ({exc}); "
+              "node credentials restored", file=sys.stderr)
+        return 1
+
+    print("claim-token: validated subscription token moved to the vault; placeholder installed for the agent")
     return 0
 
 

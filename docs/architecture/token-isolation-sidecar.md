@@ -38,9 +38,13 @@ Nothing in the addon or the claim logic changes — both are already env-driven:
 
 - **`mitm/filter_addon.py`** runs unchanged in the sidecar. `ANTHROPIC_TOKEN_ISOLATION=true` is forced
   on (the sidecar's whole reason to exist), so it injects the vault token and owns the refresh.
-- **`mitm/claim-token`** runs unchanged in the sidecar. The agent's `/login` writes the real token to
-  the **shared `claude-config` volume**; the sidecar's claim-token reads it there, moves it into the
-  sidecar-only `claude-secret` vault, and writes the placeholder back to `claude-config`. The agent
+- **`mitm/claim-token`** runs in the sidecar. It first **validates the login with the OAuth server
+  (refresh-token grant)** — a fake or unreachable login fails closed (the candidate is not vaulted;
+  any prior vault stays unchanged) — then
+  atomically installs the placeholder in `claude-config` before making the validated token live in
+  the sidecar-only `claude-secret` vault. If the vault write fails, it attempts to restore the node
+  login and reports a critical error if rollback is also blocked. Each replacement is atomic and
+  never follows a symlink (issue #44). The agent
   never mounts `claude-secret`, so post-claim the only thing in any volume the agent can read is the
   inert placeholder.
 - **`mitm/sidecar-entrypoint.sh`** (new) is the mitm entrypoint minus the node hand-off: set up the
