@@ -29,6 +29,14 @@ check reject tracker.doubleclick.net
 check reject 169.254.169.254
 check gray uploads.example.com
 
+# DNS-equivalent variants must classify the same (tinyproxy matching is case-insensitive; "host." == "host").
+check review STORAGE.GOOGLEAPIS.COM
+check review storage.googleapis.com.
+check reject METADATA.GOOGLE.INTERNAL
+check allow PYPI.ORG
+# Suffix-boundary guard: a host merely containing "googleapis.com" as an interior label is NOT review.
+check gray evil.googleapis.com.evil.com
+
 grep -Fq '. ./scripts/network/watch-egress-policy.sh' "$ROOT/scripts/network/watch-egress.sh"
 grep -Fq 'verdict=$(classify_egress_host "$host")' "$ROOT/scripts/network/watch-egress.sh"
 grep -Eq '^[[:space:]]+review\)' "$ROOT/scripts/network/watch-egress.sh"

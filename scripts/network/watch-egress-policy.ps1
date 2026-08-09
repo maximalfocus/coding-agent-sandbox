@@ -3,6 +3,10 @@
 # Risk verdict: returns 'allow' | 'reject' | 'review' | 'gray'.
 # Broad multi-tenant namespaces are review-only and must never enter unattended assessment.
 function Get-EgressVerdict([string]$h) {
+    # A trailing root dot is DNS-equivalent to the bare name ("host." == "host") and must not
+    # dodge the verdict; -match below is already case-insensitive, mirroring the Bash twin's
+    # lowercasing (and tinyproxy's case-insensitive filter matching).
+    $h = $h -replace '\.$',''
     if ($h -match '^[0-9]+(\.[0-9]+){3}$') { return 'reject' }   # IP literal incl. metadata 169.254.x
     $reject = @(
         '(^|\.)doubleclick\.net$', '\.googlesyndication\.com$', '\.googleadservices\.com$', '^googleads\.',

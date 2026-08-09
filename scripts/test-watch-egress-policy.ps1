@@ -23,6 +23,14 @@ Assert-Verdict reject tracker.doubleclick.net
 Assert-Verdict reject 169.254.169.254
 Assert-Verdict gray uploads.example.com
 
+# DNS-equivalent variants must classify the same (tinyproxy matching is case-insensitive; "host." == "host").
+Assert-Verdict review STORAGE.GOOGLEAPIS.COM
+Assert-Verdict review storage.googleapis.com.
+Assert-Verdict reject METADATA.GOOGLE.INTERNAL
+Assert-Verdict allow PYPI.ORG
+# Suffix-boundary guard: a host merely containing "googleapis.com" as an interior label is NOT review.
+Assert-Verdict gray evil.googleapis.com.evil.com
+
 $Watcher = Get-Content (Join-Path $Root 'scripts/network/watch-egress.ps1') -Raw
 if ($Watcher -notmatch [regex]::Escape(". (Join-Path `$PSScriptRoot 'watch-egress-policy.ps1')")) {
     throw 'PowerShell watcher does not load its policy helper'

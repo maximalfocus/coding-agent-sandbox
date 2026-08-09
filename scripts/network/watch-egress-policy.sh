@@ -5,6 +5,11 @@
 # Broad multi-tenant namespaces are review-only and must never enter unattended assessment.
 classify_egress_host() {
     local h="$1"
+    # Normalize DNS-equivalent variants before classifying: hostnames are case-insensitive
+    # (tinyproxy's filter matching is case-insensitive too, and the PS twin's -match is
+    # case-insensitive), and a trailing root dot ("host." == "host") must not dodge the verdict.
+    h="$(printf '%s' "$h" | tr '[:upper:]' '[:lower:]')"
+    h="${h%.}"
     # IP literal (covers the 169.254.x metadata endpoint and any direct-IP attempt)
     if [[ "$h" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then echo reject; return; fi
     case "$h" in
