@@ -15,8 +15,9 @@ a usable token. But the vault and the agent live in the **same container**: the 
 kernel-level container escape from the agent could still reach the vault.
 
 The sidecar variant makes the separation a **namespace boundary**: the vault is mounted only in a
-second container that the agent has no share with. The agent can speak to exactly one thing — the
-proxy — and the proxy is the only process that ever holds the credential.
+second container that the agent has no share with. The agent's only non-loopback peer is the pinned
+sidecar proxy; Docker DNS and every other destination are rejected. The proxy is the only process
+that ever holds the credential.
 
 ```
         ┌────────────────────────────┐         ┌────────────────────────────────────┐
@@ -27,8 +28,8 @@ proxy — and the proxy is the only process that ever holds the credential.
         │  - NO internet route        │ ──────► │  - claude-config (rw, for claim)    │
         │  - NO claude-secret mount   │ :8888   │  - firewall: only it egresses       │
         └─────────────┬──────────────┘         └──────────────────┬─────────────────┘
-                      │  internal network (internal: true,                 │ egress network
-                      │  no gateway → no internet)                         ▼  (internet)
+                      │  internal network (internal: true;                │ egress network
+                      │  mandatory firewall blocks DNS/direct egress)     ▼  (internet)
                       └────────────────────────────────────────►  api.anthropic.com
 ```
 
@@ -50,19 +51,21 @@ Nothing in the addon or the claim logic changes — both are already env-driven:
 - **`mitm/sidecar-entrypoint.sh`** (new) is the mitm entrypoint minus the node hand-off: set up the
   vault, reconcile claim-token, export the intercept CA to a shared volume, install a sidecar firewall,
   and run `mitmdump` in the foreground (the agent container, not this one, runs `claude`/ttyd).
-- **`mitm/agent-entrypoint.sh`** (new) trusts the shared CA, optionally installs a belt-and-braces
-  agent firewall, then hands off to the **stock** `entrypoint.sh` as `node` — reusing all the existing
+- **`mitm/agent-entrypoint.sh`** (new) trusts the shared CA, resolves and pins the sidecar in
+  `/etc/hosts`, installs a mandatory fail-closed agent firewall, then hands off to the **stock**
+  `entrypoint.sh` as `node` — reusing all the existing
   node-side setup (git/gh, tmux, ttyd). Because it's exec'd as `node`, the root half of
   `entrypoint.sh` (which would start tinyproxy) is skipped: the agent runs no proxy of its own.
 
 ## The two networks (the actual containment)
 
-- `internal` is declared `internal: true`, so Docker attaches **no gateway** — a container on it alone
-  has no route off-host. The agent is on `internal` **only**, so it physically cannot reach the
-  internet except by talking to the sidecar over this network.
+- `internal` is declared `internal: true`, so Docker does not provide normal internet routing. Docker's
+  embedded DNS can still forward external queries through the host, however, so the network flag is
+  not an egress boundary by itself. The mandatory agent firewall below closes that channel.
 - `egress` is a normal bridge with internet access. **Only the sidecar** joins it.
 - `HTTPS_PROXY`/`HTTP_PROXY` in the agent point at `http://claude-sandbox-egress:8888` (overriding the
-  image's `127.0.0.1:8888`). The agent resolves that name via Docker's embedded DNS (`127.0.0.11`).
+  image's `127.0.0.1:8888`). At startup the agent resolves that one name, verifies the result is
+  directly attached, and pins it in `/etc/hosts`; general DNS is blocked before agent code starts.
 
 ## Firewalls (defense-in-depth on top of the network split)
 
@@ -70,9 +73,11 @@ Nothing in the addon or the claim logic changes — both are already env-driven:
   `127.0.0.11`; private ranges, public DNS, and IPv6 are rejected. The one addition vs. the
   single-container firewall is an `INPUT` rule accepting `:8888` **only on the internal interface**
   (the one with no default route), so the proxy port is never reachable from the egress side.
-- **Agent** (optional, best-effort): default-DROP `OUTPUT` except loopback, established, DNS to
-  `127.0.0.11`, and `:8888` to the sidecar. Mostly redundant given `internal: true`, but it makes
-  "the agent can only talk to the proxy" explicit and survives a misconfigured network.
+- **Agent** (mandatory, fail-closed): default-DROP `OUTPUT` permits loopback and established traffic,
+  plus new TCP connections only to the pinned sidecar IPv4 on `:8888` over the directly attached
+  internal interface. Docker DNS (`127.0.0.11`), public DNS, IPv6, other private/gateway targets,
+  other sidecar ports, and every other destination are rejected. Failure to resolve/pin the sidecar or
+  install the firewall prevents the agent container from starting.
 
 ## What this buys vs. the single-container version
 
@@ -89,7 +94,8 @@ secret lives behind a boundary the agent's container never shares.
 ## Verification (REQUIRED before this is trusted / merged)
 
 **One-command path:** `./sidecar-smoketest.sh --up` brings the stack up and runs the structural
-checks (3a–d below) automatically, plus the placeholder check once you've claimed. It does NOT do the
+checks (3a–d below), the DNS canary, pinned-proxy policy, and Docker host-gateway rejection
+automatically, plus the placeholder check once you've claimed. It does NOT do the
 interactive `/login` or a billed model call. The manual walk-through below covers the same ground:
 
 Run on a host with a real Docker engine (e.g. Colima):
@@ -114,8 +120,11 @@ docker compose -f docker-compose.sidecar.yml exec -u node claude-sandbox-node \
 #  d) Agent has no direct internet (only-via-proxy): a non-proxied curl must fail.
 docker compose -f docker-compose.sidecar.yml exec -u node claude-sandbox-node \
     env -u HTTPS_PROXY -u HTTP_PROXY curl -s --max-time 5 https://api.anthropic.com/   # expect failure
-#  e) Refresh works over time: leave it running past the access-token TTL and confirm calls keep
+#  e) Agent cannot query Docker DNS (the sidecar name still resolves from its pinned /etc/hosts entry).
+docker compose -f docker-compose.sidecar.yml exec -u node claude-sandbox-node \
+    dig +time=2 +tries=1 dns-canary.invalid @127.0.0.11       # expect failure
+#  f) Refresh works over time: leave it running past the access-token TTL and confirm calls keep
 #     working (the sidecar refreshes; watch ./audit.sh --mitm for REFRESH lines).
 ```
 
-All five must hold. Until they're confirmed on real Docker, treat this as a design + scaffold only.
+All six must hold. Until they're confirmed on real Docker, treat this as a design + scaffold only.
