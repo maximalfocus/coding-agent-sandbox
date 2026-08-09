@@ -1,0 +1,125 @@
+services:
+  claude-sandbox:
+    build:
+      context: .
+    image: coding-agent-sandbox:latest
+    container_name: claude-sandbox
+    # Least privilege: drop the WHOLE default capability set, then add back only the five caps
+    # this sandbox actually exercises. The article's recurring lesson is to lean on battle-tested
+    # primitives and minimize your own surface — a dropped cap is one the agent can't abuse even
+    # after a compromise. NET_RAW, SYS_ADMIN, MKNOD, etc. are all gone with ALL.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN     # entrypoint installs the iptables egress firewall
+      - SETUID        # gosu drops root->node; tinyproxy drops root->tinyproxy
+      - SETGID        # ditto (setgroups/setgid on privilege drop)
+      - CHOWN         # entrypoint owns the config volume for the node user
+      - DAC_OVERRIDE  # tinyproxy (root) writes its pid/log into tinyproxy-owned dirs at startup
+      # (KILL dropped — scripts/network/allow-domain.sh now signals tinyproxy as the tinyproxy user, not root.)
+    # Block privilege escalation via setuid binaries (Claude runs as the unprivileged `node`).
+    security_opt:
+      - "no-new-privileges:true"
+    # Kernel-escape resistance (optional). Docker shares the host kernel, so this is defense-in-
+    # depth, not a VM boundary (see SECURITY.md). If you've installed gVisor, uncomment to run the
+    # container under the runsc sandbox — a user-space kernel that intercepts syscalls — which is
+    # the same class of primitive the containment write-up uses for claude.ai. No other change
+    # needed; everything below still applies.
+    # runtime: runsc
+    # Cap blast radius of a runaway build/agent so it can't exhaust the host.
+    mem_limit: "${MEM_LIMIT:-6g}"
+    pids_limit: ${PIDS_LIMIT:-4096}
+    # Web terminal, bound to localhost only — never exposed to your LAN.
+    ports:
+      - "127.0.0.1:${TTYD_PORT:-7681}:7681"
+      # (Codex sign-in uses the device-auth flow — no localhost callback port needed.)
+    environment:
+      TTYD_USER: "${TTYD_USER:-coder}"
+      TTYD_PASS: "${TTYD_PASS:-changeme}"
+      # Browser terminal layout: 2x2 (default, four tiled panes) or 1 (single pane).
+      EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      # Exact IAM Identity Center region identifiers; empty keeps all AWS service egress off.
+      AWS_SSO_REGIONS: "${AWS_SSO_REGIONS:-}"
+      # Official package/download endpoints for deliberate CLI/toolchain upgrades. Off by default
+      # because registries are payload-ingress channels; image-pinned tools still require rebuilds.
+      ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"
+      # Headless Claude login: a long-lived token from `claude setup-token`, kept in .env.
+      # Present -> the web terminal's claude is already authenticated (no /login needed).
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
+      # GitHub egress is a capability grant (read payloads in / push data out). On by default;
+      # set ALLOW_GITHUB=false in .env for analysis-only or untrusted-workspace runs.
+      ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
+      # OpenAI/Codex egress (api/auth.openai.com + chatgpt.com) for cross-vendor peer review.
+      # Off by default; set true in .env to use the bundled Codex CLI (./scripts/auth/codex-login.sh).
+      ALLOW_OPENAI: "${ALLOW_OPENAI:-false}"
+      # GitHub over HTTPS (SSH/22 is blocked). Set GITHUB_TOKEN in .env to a PAT for full
+      # clone/pull/push; SSH github remotes are auto-rewritten to HTTPS. Needs ALLOW_GITHUB=true.
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GIT_USER_NAME: "${GIT_USER_NAME:-}"
+      GIT_USER_EMAIL: "${GIT_USER_EMAIL:-}"
+      # Skill repos to auto-load (space-separated HTTPS git URLs). On every start the entrypoint links
+      # any already cloned under /workspace/personal — so /cdd, /peerreview, … load with no manual step
+      # and survive volume resets — and clones any missing ones when a GitHub credential + egress exist.
+      # The host scripts/skills/skills-setup.sh reads the SAME var from .env for on-demand clone/pull.
+      SKILL_REPOS: "${SKILL_REPOS:-}"
+      # peerreview self-evolves + pushes peerreview-skills every run. Set PEERREVIEW_EVOLVE=off on
+      # environments that should NOT be the evolver (so only one place pushes — avoids git races).
+      # Unset (default) = this environment evolves. See skills-setup / SECURITY notes.
+      PEERREVIEW_EVOLVE: "${PEERREVIEW_EVOLVE:-}"
+      # Audit-log rotation (the local egress trail in the claude-audit volume). Defaults keep
+      # ~100 MiB max; tune if you want a longer or shorter local history.
+      AUDIT_LOG_MAX_BYTES: "${AUDIT_LOG_MAX_BYTES:-20971520}"
+      AUDIT_LOG_KEEP: "${AUDIT_LOG_KEEP:-5}"
+      AUDIT_ROTATE_INTERVAL: "${AUDIT_ROTATE_INTERVAL:-3600}"
+      # Telemetry/feature-flag egress is OFF by default (hardened) — but the same flag also gates
+      # /remote-control (/rc), which is feature-flag-gated. Leave as 1 to keep telemetry off; set
+      # it EMPTY in .env to re-enable that traffic and unlock /rc. The `-1` (no colon) lets an
+      # explicit empty value pass through to disable hardening; unset stays 1.
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC-1}"
+      # (Proxy env and CLAUDE_CONFIG_DIR are baked into the image so every launch — compose, exec,
+      #  or the claude-safe `docker run` — inherits them. The telemetry-off default is baked too,
+      #  so a bare `docker run` stays hardened; the line above lets compose override it from .env.)
+    volumes:
+      # The host files Claude can see or edit. ENFORCED MAPPING (symmetric two-tree):
+      #   /workspace/work     <-> WORK_DIR      (e.g. /Users/you/work)
+      #   /workspace/personal <-> PERSONAL_DIR  (e.g. /Users/you/personal)
+      # /workspace itself is just an inert umbrella (a named volume) holding those two mount points;
+      # nothing real lives at the root. Set WORK_DIR + PERSONAL_DIR to absolute host paths in .env.
+      # Defaults are NAMED VOLUMES (never repo-relative ./workspace/* paths) so an empty value can
+      # never silently bind a machine-dependent host dir — the mapping stays deterministic everywhere.
+      # Bigger mount = bigger blast radius, and mounted code is sent to Anthropic — see SECURITY.md.
+      - "${WORKSPACE_DIR:-claude-workspace}:/workspace"
+      - "${WORK_DIR:-claude-work}:/workspace/work"
+      # /workspace/personal is also the skills home: skill repos (scripts/skills/skills-setup.sh) are cloned at
+      # /workspace/personal/<repo> and symlinked into ~/.claude/skills.
+      - "${PERSONAL_DIR:-claude-personal}:/workspace/personal"
+      # Persists the subscription login + Claude settings across restarts.
+      - "claude-config:/home/node/.claude"
+      # Persists the Codex subscription login (~/.codex/auth.json) across restarts.
+      - "claude-codex:/home/node/.codex"
+      # Persists the GitHub CLI login (~/.config/gh) across restarts — gh's token carries the
+      # `workflow` scope, so pushes incl. .github/workflows/* work. One-time ./scripts/auth/gh-login.sh.
+      - "claude-gh:/home/node/.config/gh"
+      # Audit trail: every host the proxy was asked to reach (allowed + refused).
+      - "claude-audit:/var/log/tinyproxy"
+    restart: unless-stopped
+
+volumes:
+  # Explicit, project-name-independent names so renaming the folder never orphans your login.
+  claude-config:
+    name: coding-agent-sandbox-config
+  claude-codex:
+    name: coding-agent-sandbox-codex
+  claude-gh:
+    name: coding-agent-sandbox-gh
+  claude-audit:
+    name: coding-agent-sandbox-audit
+  # Inert fallbacks so an unset WORKSPACE_DIR/WORK_DIR/PERSONAL_DIR binds an isolated volume,
+  # never a repo-relative host dir (keeps the /workspace/work + /workspace/personal mapping
+  # deterministic across machines — see volumes section above).
+  claude-workspace:
+    name: coding-agent-sandbox-workspace
+  claude-work:
+    name: coding-agent-sandbox-work
+  claude-personal:
+    name: coding-agent-sandbox-personal

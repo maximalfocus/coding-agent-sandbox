@@ -1,0 +1,66 @@
+# OPT-IN TLS-intercepting (content-mediation) variant of the sandbox. The default stack
+# (docker-compose.yml, tinyproxy) is unchanged; this one swaps in mitmproxy so egress can be
+# filtered by request CONTENT — method/path rules (GitHub read-only by default), credential-header
+# stripping, domain-fronting defeat, and request logging (`docker logs claude-sandbox-mitm`).
+#
+#   docker compose -f docker-compose.mitm.yml up -d --build
+#
+# Requires the base image (coding-agent-sandbox:latest) built first: `docker compose build`.
+services:
+  claude-sandbox-mitm:
+    build:
+      context: .
+      dockerfile: Dockerfile.mitm
+    image: coding-agent-sandbox-mitm:latest
+    container_name: claude-sandbox-mitm
+    # Same least-privilege posture as the default stack.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      # (No KILL: this variant has no in-place reload path.)
+    security_opt:
+      - "no-new-privileges:true"
+    mem_limit: "${MEM_LIMIT:-6g}"
+    pids_limit: ${PIDS_LIMIT:-4096}
+    ports:
+      - "127.0.0.1:${TTYD_PORT:-7681}:7681"
+    environment:
+      TTYD_USER: "${TTYD_USER:-coder}"
+      TTYD_PASS: "${TTYD_PASS:-changeme}"
+      EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
+      AWS_SSO_REGIONS: "${AWS_SSO_REGIONS:-}"
+      ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"
+      ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
+      # Content-level rule unique to this variant: allow GitHub clone/fetch, block push/writes.
+      GITHUB_READONLY: "${GITHUB_READONLY:-true}"
+      # Anthropic API hardening: block upload/exfil endpoints, enforce a single credential, and
+      # (optional) pin the call to one provisioned token's sha256 (e.g. a `claude setup-token` value).
+      ANTHROPIC_BLOCK_PATHS: "${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
+      ANTHROPIC_SINGLE_CRED: "${ANTHROPIC_SINGLE_CRED:-true}"
+      ANTHROPIC_PIN_TOKEN: "${ANTHROPIC_PIN_TOKEN:-}"
+      # Subscription-token isolation (opt-in): move the real OAuth login into a tinyproxy-only vault
+      # and inject it per-request, so the agent never holds a usable token. Run ./scripts/auth/claim-token.sh
+      # (or ./scripts/auth/claim-token.ps1) once after `/login` — or just restart; the entrypoint reconciles.
+      ANTHROPIC_TOKEN_ISOLATION: "${ANTHROPIC_TOKEN_ISOLATION:-false}"
+    volumes:
+      - "${WORKSPACE_DIR:-./workspace}:/workspace"
+      # Shares the same login volume as the default stack — log in once, use either.
+      - "claude-config:/home/node/.claude"
+      # Persisted mitm decision log (audit trail): surfaced by `./audit.sh --mitm`.
+      - "claude-audit-mitm:/var/log/mitm"
+      # Tinyproxy-only credential vault (mode 0700, agent-unreadable) for token isolation.
+      - "claude-secret:/var/lib/sandbox/secret"
+    restart: unless-stopped
+
+volumes:
+  claude-config:
+    name: coding-agent-sandbox-config
+  claude-audit-mitm:
+    name: coding-agent-sandbox-audit-mitm
+  claude-secret:
+    name: coding-agent-sandbox-secret

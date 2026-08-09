@@ -1,0 +1,10 @@
+# OPT-IN AWS IAM Identity Center state for the sidecar stack.
+# Deliberately targets only the agent node; claude-sandbox-egress remains credential-free.
+services:
+  claude-sandbox-node:
+    volumes:
+      - "claude-aws:/home/node/.aws"
+
+volumes:
+  claude-aws:
+    name: coding-agent-sandbox-aws

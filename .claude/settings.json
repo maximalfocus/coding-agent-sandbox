@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/network/allow-domain.sh:*)",
+      "Bash(./scripts/network/allow-domain.ps1:*)",
+      "Bash(./audit.sh:*)",
+      "Bash(docker compose exec:*)",
+      "Bash(grep:*)",
+      "Bash(perl:*)",
+      "Read(./*)"
+    ],
+    "deny": [
+      "Edit(**/.env)",
+      "Write(**/.env)"
+    ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "denyWrite": [
+        "**/.env"
+      ],
+      "allowRead": [
+        "**/.env.example"
+      ]
+    }
+  }
+}

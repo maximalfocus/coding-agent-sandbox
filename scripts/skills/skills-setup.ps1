@@ -1,0 +1,54 @@
+# Clone (or update) your skill repos INTO the sandbox and load Claude's skills from those live git
+# clones — so /cdd, /peer-review work AND their *-evolve commands can commit/push to GitHub.
+# Windows counterpart of skills-setup.sh. Repos persist in the claude-config volume; re-run to pull.
+#   powershell -ExecutionPolicy Bypass -File .\scripts\skills\skills-setup.ps1
+#   ...or pass URLs:  .\scripts\skills\skills-setup.ps1 https://github.com/you/x-skills.git
+param([string[]]$Repos)
+
+$ErrorActionPreference = "Stop"
+Set-Location -Path (Join-Path $PSScriptRoot '../..')
+$svc = "claude-sandbox"
+
+$running = docker compose ps --status running --format '{{.Name}}' 2>$null
+if (-not $running) { Write-Host "Sandbox isn't running. Start it first:  start-sandbox.cmd"; exit 1 }
+
+if (-not $Repos -or $Repos.Count -eq 0) {
+    $line = Select-String -Path .env -Pattern '^SKILL_REPOS=' -ErrorAction SilentlyContinue | Select-Object -Last 1
+    if ($line) {
+        $val = ($line.Line -replace '^SKILL_REPOS=', '').Trim().Trim('"')
+        $Repos = $val -split '\s+' | Where-Object { $_ -ne '' }
+    }
+}
+if (-not $Repos -or $Repos.Count -eq 0) {
+    Write-Host "No repos given. Set SKILL_REPOS in .env (space-separated HTTPS URLs) or pass them as args."; exit 1
+}
+
+# Same per-repo clone/pull as skills-setup.sh, run in-container as node. Linking is delegated below
+# to the shared /usr/local/bin/sandbox-link-skills helper (same code the entrypoint runs on boot).
+$routine = @'
+set -e
+url="$1"; name="$(basename "$url" .git)"
+base="/workspace/personal"; mkdir -p "$base"
+if [ -d "$base/$name/.git" ]; then
+  echo "  updating $name"; git -C "$base/$name" pull --ff-only || echo "  (pull skipped)"
+else
+  echo "  cloning $name"; git clone "$url" "$base/$name"
+fi
+'@
+
+# One-time migration: older versions cloned into ~/.claude/skill-repos or ~/ws; /workspace/personal
+# is the home now. Drop the stale locations so we don't leave duplicate clones behind.
+docker compose exec -T -u node $svc sh -c 'rm -rf "$HOME/.claude/skill-repos" "$HOME/ws" 2>/dev/null || true'
+
+foreach ($url in $Repos) {
+    Write-Host "=== $url ==="
+    docker compose exec -T -u node $svc sh -c $routine _ $url
+}
+
+# Link via the SINGLE source of truth (manifest-managed; never touches your copied/sync-skills
+# content), the same helper the entrypoint runs on every boot.
+Write-Host "=== linking skills ==="
+docker compose exec -T -u node $svc sandbox-link-skills @Repos
+
+Write-Host ""
+Write-Host "Done. Skills also auto-load on every sandbox start. /cdd-evolve & /peerreview-evolve can commit + push."

@@ -1,0 +1,13 @@
+.env
+.DS_Store
+workspace/
+__pycache__/
+*.pyc
+.playwright-mcp/
+volume-backups/
+.cdd-auto/
+
+# Corporate / TLS-inspecting-proxy root CAs — provided locally, never committed.
+certs/*.crt
+certs/*.pem
+!certs/.gitkeep

@@ -1,0 +1,10 @@
+# OPT-IN AWS IAM Identity Center state for the default sandbox stack.
+# Use only with docker-compose.yml; the named volume is never a host ~/.aws bind mount.
+services:
+  claude-sandbox:
+    volumes:
+      - "claude-aws:/home/node/.aws"
+
+volumes:
+  claude-aws:
+    name: coding-agent-sandbox-aws

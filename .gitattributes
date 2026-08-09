@@ -1,0 +1,28 @@
+# Cross-platform line endings. Without this, a `git clone` on Windows (core.autocrlf=true)
+# rewrites the container's shell scripts to CRLF and the sandbox fails to boot
+# (`#!/usr/bin/env bash\r` -> "no such file"). Keep these deterministic.
+
+# Default: normalize text, check out with LF.
+* text=auto eol=lf
+
+# Files that run INSIDE the Linux container MUST be LF.
+*.sh             text eol=lf
+entrypoint.sh    text eol=lf
+init-firewall.sh text eol=lf
+*.conf           text eol=lf
+*.py             text eol=lf
+Dockerfile       text eol=lf
+Dockerfile.*     text eol=lf
+
+# PowerShell: LF keeps the embedded `sh -c` here-strings (scripts/skills/skills-setup.ps1) clean; pwsh tolerates LF.
+*.ps1 text eol=lf
+
+# Windows batch wrappers: cmd.exe is happiest with CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary-ish: never touch.
+*.png  binary
+*.jpg  binary
+*.woff2 binary
+*.tar.gz binary
