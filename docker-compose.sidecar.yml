@@ -52,11 +52,11 @@ services:
     entrypoint: ["/usr/local/bin/agent-entrypoint.sh"]
     depends_on: [claude-sandbox-egress]
     cap_drop: [ALL]
-    cap_add: [NET_ADMIN, SETUID, SETGID, CHOWN, DAC_OVERRIDE]   # NET_ADMIN: optional agent-side firewall
+    cap_add: [NET_ADMIN, SETUID, SETGID, CHOWN, DAC_OVERRIDE]   # NET_ADMIN: mandatory agent firewall
     security_opt: ["no-new-privileges:true"]
     mem_limit: "${MEM_LIMIT:-6g}"
     pids_limit: ${PIDS_LIMIT:-4096}
-    networks: [internal]                            # internal-only → no route off-host except the proxy
+    networks: [internal]                            # mandatory firewall permits only the pinned proxy
     ports:
       - "127.0.0.1:${TTYD_PORT:-7681}:7681"
     environment:
@@ -88,7 +88,7 @@ services:
 networks:
   egress: {}                  # normal bridge: internet-capable (sidecar only)
   internal:
-    internal: true            # NO gateway → containers here have no internet route
+    internal: true            # externally isolated; agent firewall also blocks Docker DNS forwarding
 
 volumes:
   claude-config:

@@ -20,6 +20,7 @@ ok()   { echo "  PASS  $1"; pass=$((pass+1)); }
 no()   { echo "  FAIL  $1"; fail=$((fail+1)); }
 note() { echo "  SKIP  $1"; skip=$((skip+1)); }
 aexec() { "${COMPOSE[@]}" exec -T -u node "$AGENT" sh -c "$1" 2>/dev/null; }
+rexec() { "${COMPOSE[@]}" exec -T -u root "$AGENT" sh -c "$1" 2>/dev/null; }
 eexec() { "${COMPOSE[@]}" exec -T -u root "$EGRESS" sh -c "$1" 2>/dev/null; }
 
 # --- preflight ---
@@ -45,21 +46,66 @@ done
 
 echo "Structural guarantees (no login required):"
 
-# 1. The agent has NO direct internet — only via the proxy. A non-proxied curl must fail.
+# 1. The agent firewall is mandatory and default-deny; an AGENT_FIREWALL setting cannot disable it.
+if rexec 'iptables -S OUTPUT | grep -qx -- "-P OUTPUT DROP"'; then
+    ok "agent firewall is mandatory (OUTPUT policy DROP)"
+else
+    no "agent firewall is not enforcing a default-DROP OUTPUT policy"
+fi
+
+# 2. Resolve the sidecar from the pinned /etc/hosts entry and confirm the only proxy-port allow rule
+#    is bound to that exact IPv4 address and interface (not tcp/8888 to any destination).
+pinned_ip=$(aexec "getent ahostsv4 $EGRESS | awk '\$2 == \"STREAM\" { print \$1; exit }'")
+pinned_if=$(rexec "ip -4 route get '${pinned_ip:-invalid}' | awk '{ for (i=1; i<=NF; i++) if (\$i == \"dev\") { print \$(i+1); exit } }'")
+if [ -n "$pinned_ip" ] && [ -n "$pinned_if" ] \
+   && rexec "grep -Eq '^${pinned_ip//./\\.}[[:space:]]+$EGRESS([[:space:]]|$)' /etc/hosts" \
+   && rexec "iptables -C OUTPUT -o '$pinned_if' -p tcp -d '$pinned_ip/32' --dport 8888 -j ACCEPT" \
+   && ! rexec 'iptables -C OUTPUT -p tcp --dport 8888 -j ACCEPT'; then
+    ok "sidecar proxy is pinned to $pinned_ip:8888 on $pinned_if"
+else
+    no "proxy allow rule is not pinned to the sidecar's /etc/hosts IPv4 and interface"
+fi
+
+# 3. DNS canary: Docker's embedded resolver must not accept arbitrary agent queries after startup.
+if aexec 'dig +short +time=2 +tries=1 issue-45-dns-canary.invalid @127.0.0.11' >/dev/null 2>&1; then
+    no "agent queried Docker DNS directly (DNS exfiltration channel open)"
+else
+    ok "Docker DNS rejects the agent DNS canary; sidecar resolution is hosts-pinned"
+fi
+
+# 4. The Docker network gateway is a private target and must be covered by an explicit REJECT rule.
+#    An internal network omits the endpoint's .Gateway, so read the gateway from network IPAM.
+network_id=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' "$AGENT" 2>/dev/null)
+gateway=$(docker network inspect --format '{{(index .IPAM.Config 0).Gateway}}' "$network_id" 2>/dev/null)
+case "$gateway" in
+    10.*) gateway_net=10.0.0.0/8 ;;
+    172.*) gateway_net=172.16.0.0/12 ;;
+    192.168.*) gateway_net=192.168.0.0/16 ;;
+    *) gateway_net="" ;;
+esac
+if [ -n "$gateway" ] && [ -n "$gateway_net" ] \
+   && rexec "iptables -C OUTPUT -d '$gateway_net' -j REJECT" \
+   && ! aexec "timeout 3 socat - TCP:'$gateway':80" >/dev/null 2>&1; then
+    ok "Docker host gateway $gateway is explicitly rejected"
+else
+    no "Docker host gateway is not covered by the agent's private-range rejection"
+fi
+
+# 5. The agent has NO direct internet — only via the proxy. A non-proxied curl must fail.
 if aexec 'env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy curl -s --max-time 6 -o /dev/null https://api.anthropic.com/'; then
     no "agent reached the internet WITHOUT the proxy (egress lockdown broken)"
 else
     ok "agent has no direct internet (must go through the sidecar proxy)"
 fi
 
-# 2. The agent CANNOT see the vault — it's mounted only in the sidecar.
+# 6. The agent CANNOT see the vault — it's mounted only in the sidecar.
 if aexec 'ls /var/lib/sandbox/secret' >/dev/null 2>&1; then
     no "agent can list /var/lib/sandbox/secret (vault leaked into the agent container)"
 else
     ok "vault is not present in the agent container at all"
 fi
 
-# 3. The proxy path works end to end: TLS interception + CA trust + allowlist let the agent reach
+# 7. The proxy path works end to end: TLS interception + CA trust + allowlist let the agent reach
 #    api.anthropic.com (any HTTP status = the chain works; only a connect/TLS failure yields 000).
 code=$(aexec "curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://api.anthropic.com/")
 if [ -n "$code" ] && [ "$code" != "000" ]; then
@@ -68,7 +114,7 @@ else
     no "agent could not reach api.anthropic.com through the proxy (got '${code:-none}') — CA/proxy issue"
 fi
 
-# 4. The allowlist still denies a non-allowlisted host (content-mediation intact). For HTTPS through
+# 8. The allowlist still denies a non-allowlisted host (content-mediation intact). For HTTPS through
 #    a proxy the refusal is the CONNECT status, so read %{http_connect} — a denied tunnel leaves
 #    %{http_code}=000 even though the proxy returned 403 (matches the repo's mitm self-test).
 code=$(aexec "curl -sS -o /dev/null -w '%{http_connect}' --max-time 20 https://example.com/")
@@ -78,7 +124,7 @@ else
     no "example.com not denied as expected (http_connect='${code:-none}')"
 fi
 
-# 5. The sidecar actually holds the vault directory (sanity on the other side of the boundary).
+# 9. The sidecar actually holds the vault directory (sanity on the other side of the boundary).
 if eexec 'test -d /var/lib/sandbox/secret'; then
     ok "sidecar holds the vault directory"
 else
