@@ -8,7 +8,8 @@ not just the destination hostname (which is all the default tinyproxy can see).
 Authorization is keyed on `request.host` — the actual routing target (CONNECT authority or
 absolute-URI host) — NOT `request.pretty_host`, which prefers the spoofable `Host` header. CONNECT
 itself is gated in `http_connect()` so tunnels (incl. raw-TCP, which is also disabled in the
-entrypoint) can't reach a non-allowlisted host:port before `request()` would ever run.
+entrypoint) can't reach a non-allowlisted host:port before `request()` would ever run. The same
+destination-port set is enforced again in `request()` for ordinary HTTP forwarding.
 
 For each request, in order:
   1. Hostname allowlist (parity with the tinyproxy name filter), from $ALLOWLIST.
@@ -281,6 +282,10 @@ async def request(flow: http.HTTPFlow):
     if sni and not _any(sni, ALLOW):
         _log("DENY", method, sni, path, "sni-not-allowlisted")
         return _deny(flow, "Filtered: TLS SNI not on allowlist")
+    port = flow.request.port
+    if port not in ALLOWED_CONNECT_PORTS:
+        _log("DENY", method, host, f":{port}", "port-not-allowed")
+        return _deny(flow, "Filtered: destination port not allowed")
 
     # 2. Anthropic API hardening
     if _any(host, ANTHROPIC_HOSTS):

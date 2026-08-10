@@ -119,7 +119,7 @@ class FakeHeaders(dict):  # emulate mitmproxy's case-insensitive Headers (set re
             if kk.lower() == k.lower(): dict.__delitem__(self, kk)
         dict.__setitem__(self, k, val)
 class FakeReq:
-    def __init__(self, headers): self.host="api.anthropic.com"; self.method="POST"; self.path="/v1/messages"; self.headers=FakeHeaders(headers); self.host_header="api.anthropic.com"
+    def __init__(self, headers): self.host="api.anthropic.com"; self.port=443; self.method="POST"; self.path="/v1/messages"; self.headers=FakeHeaders(headers); self.host_header="api.anthropic.com"
 class FakeConn: sni="api.anthropic.com"
 class FakeFlow:
     def __init__(self, headers): self.request=FakeReq(headers); self.client_conn=FakeConn(); self.response=None

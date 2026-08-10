@@ -177,7 +177,8 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   no, via `GITHUB_READONLY`), Anthropic API hardening (block the Files API, strip `x-api-key`,
   optional token pin), `Authorization`/`Cookie`/`x-api-key` stripping to non-first-party hosts, and
   per-request logging (`audit.sh --mitm`). Authorization is keyed on the real routing host
-  (`request.host`, not the spoofable `Host` header), CONNECT is gated to allowlisted hosts on port
-  443, and raw-TCP passthrough is disabled — so host-spoofing and raw tunnels can't slip a
-  non-allowlisted destination through. It's a prototype (rules in `mitm/filter_addon.py`, extend as
-  needed) and heavier (a CA the in-container tools must trust), so it's opt-in, not default.
+  (`request.host`, not the spoofable `Host` header), CONNECT and ordinary HTTP forwarding are gated
+  to allowlisted hosts on port 443, and raw-TCP passthrough is disabled — so host-spoofing, raw
+  tunnels, and plain requests to alternate ports can't slip a destination through. It's a prototype
+  (rules in `mitm/filter_addon.py`, extend as needed) and heavier (a CA the in-container tools must
+  trust), so it's opt-in, not default.
