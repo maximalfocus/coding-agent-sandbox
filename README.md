@@ -351,6 +351,13 @@ firewall) as Claude. Two steps to enable it:
 Then drive Codex from the web terminal like Claude: type `codex`. Same trust caveat as any
 allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENAI` is on.
 
+> **Credential boundary:** this login remains readable to Codex and other processes running as the
+> agent user. The experimental sidecar does not currently offer Codex subscription isolation.
+> Codex `0.140.0` has no supported credential-only broker: its host-managed token mode is marked
+> internal/unstable and its App Server is also a command/filesystem execution surface. See the
+> pinned [feasibility decision](docs/codex-subscription-broker-feasibility.md). Do not copy
+> `auth.json`, substitute an API key, or add OpenAI sidecar routes as a workaround.
+
 > **Codex Linux sandbox:** the shipped Docker seccomp profile blocks Codex bubblewrap from creating
 > a nested user namespace. Installing Debian `bubblewrap` only removes the PATH warning; it does not
 > make the sandbox functional. Keep the stronger outer Docker boundary and use
