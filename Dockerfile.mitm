@@ -19,7 +19,9 @@ RUN mkdir -p /etc/mitmproxy && chown tinyproxy:tinyproxy /etc/mitmproxy
 COPY mitm/filter_addon.py /usr/local/share/mitm/filter_addon.py
 COPY mitm/entrypoint.sh   /usr/local/bin/entrypoint-mitm.sh
 COPY mitm/claim-token     /usr/local/bin/claim-token
-RUN chmod +x /usr/local/bin/entrypoint-mitm.sh /usr/local/bin/claim-token
+COPY mitm/resolve-sidecar-interfaces /usr/local/bin/resolve-sidecar-interfaces
+RUN chmod +x /usr/local/bin/entrypoint-mitm.sh /usr/local/bin/claim-token \
+    /usr/local/bin/resolve-sidecar-interfaces
 
 # Make the intercept CA trusted by the whole toolchain. The system bundle is refreshed at runtime
 # (update-ca-certificates) once the CA is generated. curl/git/python read the system bundle below;

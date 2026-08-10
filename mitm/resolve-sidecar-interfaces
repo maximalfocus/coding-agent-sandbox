@@ -1,0 +1,41 @@
+#!/bin/bash
+# Resolve the sidecar's internal and egress interfaces from an internal-network-only Docker alias.
+# Output: INTERNAL_IF EGRESS_IF INTERNAL_IP
+set -euo pipefail
+
+die() { echo "resolve-sidecar-interfaces: $*" >&2; exit 1; }
+count_lines() { printf '%s\n' "$1" | awk 'NF { count++ } END { print count + 0 }'; }
+
+INTERNAL_ALIAS="${1:-}"
+case "$INTERNAL_ALIAS" in
+    ""|*[!A-Za-z0-9.-]*) die "invalid internal network alias" ;;
+esac
+
+# The alias exists only on the Compose internal network. Docker may return one record per socket
+# type, so deduplicate before enforcing exactly one address.
+INTERNAL_IPS="$({ getent ahostsv4 "$INTERNAL_ALIAS" 2>/dev/null || true; } \
+    | awk '$1 ~ /^[0-9][0-9.]*$/ { print $1 }' | sort -u)"
+ip_count="$(count_lines "$INTERNAL_IPS")"
+[ "$ip_count" -eq 1 ] || die "expected exactly one IPv4 for internal network alias '$INTERNAL_ALIAS', found $ip_count"
+INTERNAL_IP="$INTERNAL_IPS"
+
+# Prove the resolved address belongs to exactly one local interface. A remote/ambiguous alias must
+# never influence an INPUT rule.
+INTERNAL_IFS="$(ip -o -4 addr show 2>/dev/null \
+    | awk -v target="$INTERNAL_IP" '{ split($4, addr, "/"); iface = $2; sub(/@.*/, "", iface); if (addr[1] == target) print iface }' \
+    | sort -u)"
+internal_count="$(count_lines "$INTERNAL_IFS")"
+[ "$internal_count" -eq 1 ] || die "expected exactly one local interface for internal IPv4 '$INTERNAL_IP', found $internal_count"
+INTERNAL_IF="$INTERNAL_IFS"
+
+# The internet-facing network must contribute exactly one default-route interface, and the
+# internal alias must not resolve to it.
+EGRESS_IFS="$(ip -o -4 route show default 2>/dev/null \
+    | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev" && i < NF) print $(i + 1) }' \
+    | sort -u)"
+egress_count="$(count_lines "$EGRESS_IFS")"
+[ "$egress_count" -eq 1 ] || die "expected exactly one default-route interface, found $egress_count"
+EGRESS_IF="$EGRESS_IFS"
+[ "$INTERNAL_IF" != "$EGRESS_IF" ] || die "internal and egress interfaces must differ (both resolved to '$INTERNAL_IF')"
+
+printf '%s %s %s\n' "$INTERNAL_IF" "$EGRESS_IF" "$INTERNAL_IP"

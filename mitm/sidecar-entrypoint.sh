@@ -13,6 +13,16 @@ say() { [ -n "${SANDBOX_QUIET:-}" ] || echo "$@"; }
 
 [ "$(id -u)" = "0" ] || { echo "sidecar-entrypoint must start as root" >&2; exit 1; }
 
+# Compose assigns this alias only on the isolated network. Resolve it back to one local IPv4 and
+# interface, and prove that interface is not the default-route/egress interface before binding the
+# proxy. Missing or ambiguous network identity is a startup error, never a silently skipped rule.
+if ! interface_record="$(/usr/local/bin/resolve-sidecar-interfaces "${SIDECAR_INTERNAL_ALIAS:-}")"; then
+    echo "ERROR: refusing to start without one verified internal sidecar interface" >&2
+    exit 1
+fi
+read -r INTERNAL_IF EGRESS_IF INTERNAL_IP <<< "$interface_record"
+say "Interfaces: egress=$EGRESS_IF internal=$INTERNAL_IF internal_ip=$INTERNAL_IP alias=$SIDECAR_INTERNAL_ALIAS"
+
 # --- allowlist (compact parity with mitm/entrypoint.sh) ---
 BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev opencode.ai pi.dev)
 TOOL_UPGRADE_DOMAINS=(
@@ -113,10 +123,7 @@ done
 # no prior vault, the addon passes requests through.
 /usr/local/bin/claim-token || echo "  WARN: claim-token reconciliation failed (continuing)" >&2
 
-# --- firewall: fail-closed egress, plus accept :8888 only on the internal interface ---
-EGRESS_IF="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
-INTERNAL_IF="$(ip -o -4 addr show 2>/dev/null | awk -v e="${EGRESS_IF:-}" '$2!="lo" && $2!=e {print $2; exit}')"
-say "Interfaces: egress=${EGRESS_IF:-?} internal=${INTERNAL_IF:-?}"
+# --- firewall: fail-closed egress, plus accept :8888 only on the verified internal interface ---
 PROXY_UID="$(id -u tinyproxy)"
 iptables -P INPUT DROP; iptables -P FORWARD DROP; iptables -P OUTPUT DROP
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
@@ -130,7 +137,7 @@ fi
 iptables -A INPUT  -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT  -i lo -j ACCEPT
 # The agent reaches the proxy here — accept :8888 ONLY on the internal interface (never egress side).
-[ -n "${INTERNAL_IF:-}" ] && iptables -A INPUT -i "$INTERNAL_IF" -p tcp --dport 8888 -j ACCEPT
+iptables -A INPUT -i "$INTERNAL_IF" -p tcp --dport 8888 -j ACCEPT
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -o lo -d 127.0.0.11 -m owner --uid-owner "$PROXY_UID" -j ACCEPT
 # claim-token (root) reconciles a /login through the proxy on demand; allow NEW loopback connects

@@ -12,6 +12,9 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 COMPOSE=(docker compose -f docker-compose.sidecar.yml)
+if [ -n "${SIDECAR_COMPOSE_OVERRIDE:-}" ]; then
+    COMPOSE+=(-f "$SIDECAR_COMPOSE_OVERRIDE")
+fi
 AGENT=claude-sandbox-node
 EGRESS=claude-sandbox-egress
 PLACEHOLDER="${TOKEN_PLACEHOLDER:-sandbox-placeholder-do-not-use}"
@@ -39,12 +42,13 @@ for _ in $(seq 1 60); do
     up_a=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$AGENT" || true)
     up_e=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$EGRESS" || true)
     # The CA file appears as soon as the SIDECAR publishes it, which can precede the agent's
-    # mandatory firewall by a second or two. Only start the structural checks once the agent has
-    # actually installed its default-DROP OUTPUT policy and the pinned proxy rule (issue #45).
+    # mandatory firewall by a second or two. Only start the structural checks once both containers
+    # have installed their relevant proxy rules (issues #45 and #49).
     [ "$up_a" = "1" ] && [ "$up_e" = "1" ] \
         && aexec 'test -s /etc/mitmproxy-ca/mitmproxy-ca-cert.pem' \
         && rexec 'iptables -S OUTPUT | grep -q -- "-P OUTPUT DROP"' \
-        && rexec 'iptables -S OUTPUT | grep -q -- "--dport 8888 -j ACCEPT"' && break
+        && rexec 'iptables -S OUTPUT | grep -q -- "--dport 8888 -j ACCEPT"' \
+        && eexec 'iptables -S INPUT | grep -q -- "--dport 8888 -j ACCEPT"' && break
     sleep 1
 done
 "${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$AGENT"  || { echo "agent container not running — see: ${COMPOSE[*]} logs $AGENT"; exit 1; }
@@ -59,7 +63,39 @@ else
     no "agent firewall is not enforcing a default-DROP OUTPUT policy"
 fi
 
-# 2. Resolve the sidecar from the pinned /etc/hosts entry and confirm the only proxy-port allow rule
+# 2. Read Docker's internal endpoint after startup and confirm :8888 is accepted only on its local
+#    interface, never on the default-route interface or without an interface match. The sidecar
+#    intentionally blocks root from querying Docker DNS after startup, so validate the configured
+#    network-only alias through Docker metadata and the entrypoint decision log instead.
+sidecar_id=$(docker inspect --format '{{.Id}}' "$EGRESS" 2>/dev/null)
+sidecar_internal_network=""
+for network_id in $(docker inspect --format '{{range .NetworkSettings.Networks}}{{println .NetworkID}}{{end}}' "$EGRESS" 2>/dev/null); do
+    if [ "$(docker network inspect --format '{{.Internal}}' "$network_id" 2>/dev/null)" = true ]; then
+        [ -z "$sidecar_internal_network" ] || { sidecar_internal_network="AMBIGUOUS"; break; }
+        sidecar_internal_network=$(docker network inspect --format '{{.Name}}' "$network_id" 2>/dev/null)
+    fi
+done
+configured_alias=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$EGRESS" 2>/dev/null \
+    | sed -n 's/^SIDECAR_INTERNAL_ALIAS=//p')
+sidecar_internal_ip=$(docker inspect --format "{{(index .NetworkSettings.Networks \"$sidecar_internal_network\").IPAddress}}" "$EGRESS" 2>/dev/null)
+sidecar_internal_if=$(eexec "ip -o -4 addr show | awk -v target='$sidecar_internal_ip' '{ split(\$4, addr, \"/\"); iface = \$2; sub(/@.*/, \"\", iface); if (addr[1] == target) print iface }' | sort -u")
+sidecar_egress_if=$(eexec 'ip -o -4 route show default | awk "{ for (i=1; i<=NF; i++) if (\$i == \"dev\") print \$(i+1) }" | sort -u')
+if [ -n "$sidecar_id" ] && [ -n "$sidecar_internal_network" ] && [ "$sidecar_internal_network" != AMBIGUOUS ] \
+   && [ -n "$configured_alias" ] && [ -n "$sidecar_internal_ip" ] \
+   && docker inspect --format '{{range $name, $cfg := .NetworkSettings.Networks}}{{range $cfg.Aliases}}{{printf "%s %s\n" $name .}}{{end}}{{end}}' "$EGRESS" \
+        | grep -Fxq "$sidecar_internal_network $configured_alias" \
+   && docker logs "$EGRESS" 2>&1 | grep -Fq "internal_ip=$sidecar_internal_ip alias=$configured_alias" \
+   && [ -n "$sidecar_internal_if" ] && [ -n "$sidecar_egress_if" ] \
+   && [ "$sidecar_internal_if" != "$sidecar_egress_if" ] \
+   && eexec "iptables -C INPUT -i '$sidecar_internal_if' -p tcp --dport 8888 -j ACCEPT" \
+   && ! eexec "iptables -C INPUT -i '$sidecar_egress_if' -p tcp --dport 8888 -j ACCEPT" \
+   && ! eexec 'iptables -C INPUT -p tcp --dport 8888 -j ACCEPT'; then
+    ok "sidecar accepts :8888 only on verified internal interface $sidecar_internal_if ($sidecar_internal_ip)"
+else
+    no "sidecar :8888 INPUT rule is not bound exclusively to its verified internal interface"
+fi
+
+# 3. Resolve the sidecar from the pinned /etc/hosts entry and confirm the only proxy-port allow rule
 #    is bound to that exact IPv4 address and interface (not tcp/8888 to any destination).
 pinned_ip=$(aexec "getent ahostsv4 $EGRESS | awk '\$2 == \"STREAM\" { print \$1; exit }'")
 pinned_if=$(rexec "ip -4 route get '${pinned_ip:-invalid}' | awk '{ for (i=1; i<=NF; i++) if (\$i == \"dev\") { print \$(i+1); exit } }'")
@@ -72,14 +108,14 @@ else
     no "proxy allow rule is not pinned to the sidecar's /etc/hosts IPv4 and interface"
 fi
 
-# 3. DNS canary: Docker's embedded resolver must not accept arbitrary agent queries after startup.
+# 4. DNS canary: Docker's embedded resolver must not accept arbitrary agent queries after startup.
 if aexec 'dig +short +time=2 +tries=1 issue-45-dns-canary.invalid @127.0.0.11' >/dev/null 2>&1; then
     no "agent queried Docker DNS directly (DNS exfiltration channel open)"
 else
     ok "Docker DNS rejects the agent DNS canary; sidecar resolution is hosts-pinned"
 fi
 
-# 4. The Docker network gateway is a private target and must be covered by an explicit REJECT rule.
+# 5. The Docker network gateway is a private target and must be covered by an explicit REJECT rule.
 #    An internal network omits the endpoint's .Gateway, so read the gateway from network IPAM.
 network_id=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' "$AGENT" 2>/dev/null)
 gateway=$(docker network inspect --format '{{(index .IPAM.Config 0).Gateway}}' "$network_id" 2>/dev/null)
@@ -97,21 +133,21 @@ else
     no "Docker host gateway is not covered by the agent's private-range rejection"
 fi
 
-# 5. The agent has NO direct internet — only via the proxy. A non-proxied curl must fail.
+# 6. The agent has NO direct internet — only via the proxy. A non-proxied curl must fail.
 if aexec 'env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy curl -s --max-time 6 -o /dev/null https://api.anthropic.com/'; then
     no "agent reached the internet WITHOUT the proxy (egress lockdown broken)"
 else
     ok "agent has no direct internet (must go through the sidecar proxy)"
 fi
 
-# 6. The agent CANNOT see the vault — it's mounted only in the sidecar.
+# 7. The agent CANNOT see the vault — it's mounted only in the sidecar.
 if aexec 'ls /var/lib/sandbox/secret' >/dev/null 2>&1; then
     no "agent can list /var/lib/sandbox/secret (vault leaked into the agent container)"
 else
     ok "vault is not present in the agent container at all"
 fi
 
-# 7. The proxy path works end to end: TLS interception + CA trust + allowlist let the agent reach
+# 8. The proxy path works end to end: TLS interception + CA trust + allowlist let the agent reach
 #    api.anthropic.com (any HTTP status = the chain works; only a connect/TLS failure yields 000).
 code=$(aexec "curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://api.anthropic.com/")
 if [ -n "$code" ] && [ "$code" != "000" ]; then
@@ -120,7 +156,7 @@ else
     no "agent could not reach api.anthropic.com through the proxy (got '${code:-none}') — CA/proxy issue"
 fi
 
-# 8. The allowlist still denies a non-allowlisted host (content-mediation intact). For HTTPS through
+# 9. The allowlist still denies a non-allowlisted host (content-mediation intact). For HTTPS through
 #    a proxy the refusal is the CONNECT status, so read %{http_connect} — a denied tunnel leaves
 #    %{http_code}=000 even though the proxy returned 403 (matches the repo's mitm self-test).
 code=$(aexec "curl -sS -o /dev/null -w '%{http_connect}' --max-time 20 https://example.com/")
@@ -130,7 +166,7 @@ else
     no "example.com not denied as expected (http_connect='${code:-none}')"
 fi
 
-# 9. The sidecar actually holds the vault directory (sanity on the other side of the boundary).
+# 10. The sidecar actually holds the vault directory (sanity on the other side of the boundary).
 if eexec 'test -d /var/lib/sandbox/secret'; then
     ok "sidecar holds the vault directory"
 else
