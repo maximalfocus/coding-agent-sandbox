@@ -162,6 +162,17 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   is also required for `/remote-control` (`/rc`), which is feature-flag-gated and so silently stays
   unavailable while nonessential traffic is disabled.
 - **AWS SSO is a deliberate credential grant.** `AWS_SSO_REGIONS` adds only exact regional IAM Identity Center/OIDC and STS hosts; the matching AWS Compose override mounts a dedicated agent-only volume. The coding agent can read every token and role credential in that volume, so use short-lived least-privilege roles and avoid administrator roles. Never mount host `~/.aws`, put AWS state in the egress sidecar, or print cache/credential contents. See [`docs/aws-sso.md`](docs/aws-sso.md) for logout and isolated reset.
+- **DeepSeek static keys require the experimental sidecar.** `ALLOW_DEEPSEEK=true` is a dedicated,
+  default-off grant for Pi and only normalized exact `api.deepseek.com:443`; DeepSeek names in
+  `EXTRA_ALLOWED_DOMAINS` are ignored. The real key is a `0600` file under a `0700` directory in a
+  sidecar-only volume. The agent receives only an inert placeholder, and the TLS proxy overwrites
+  credentials for that exact host on every request. Missing, unreadable, empty, symlinked, or
+  permissively-owned storage denies requests and prevents an enabled sidecar from starting. Use
+  `scripts/auth/deepseek-key.sh` (or `.ps1`) to provision, rotate, inspect status, and revoke without
+  placing the key in `.env`, Pi auth files, command arguments, Docker metadata, or logs. This does
+  not protect against compromise of the egress proxy/container itself, and it does not change the
+  separate deferred Claude subscription path. See
+  [`docs/architecture/token-isolation-sidecar.md`](docs/architecture/token-isolation-sidecar.md).
 - The Claude CLI version is pinned and its **runtime auto-updater is disabled** (`DISABLE_AUTOUPDATER=1`),
   so the binary can't change mid-session. Bump `CLAUDE_CODE_VERSION` and rebuild to update it.
 - Mount `WORKSPACE_DIR` read-only (`:ro` in `docker-compose.yml`) if you only want analysis, not edits.

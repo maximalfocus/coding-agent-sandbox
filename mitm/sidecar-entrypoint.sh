@@ -43,6 +43,11 @@ case "$(printf '%s' "${ALLOW_TOOL_UPGRADES:-false}" | tr '[:upper:]' '[:lower:]'
     false|0|no|off) ;;
     *) echo "  WARN: unrecognized ALLOW_TOOL_UPGRADES='${ALLOW_TOOL_UPGRADES}' — treating as OFF (fail-closed)" >&2 ;;
 esac
+case "$(printf '%s' "${ALLOW_DEEPSEEK:-false}" | tr '[:upper:]' '[:lower:]')" in
+    true|1|yes|on) deepseek=1 ;;
+    false|0|no|off|"") deepseek=0 ;;
+    *) deepseek=0; echo "  WARN: unrecognized ALLOW_DEEPSEEK='${ALLOW_DEEPSEEK}' — treating as OFF (fail-closed)" >&2 ;;
+esac
 aws_auth_hosts=""
 if [ -n "${AWS_SSO_REGIONS:-}" ]; then
     aws_output=$(/usr/local/bin/aws-sso-domains "$AWS_SSO_REGIONS") || {
@@ -62,6 +67,9 @@ if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
         if [ "$gh" = "0" ] && printf '%s' "$d" | grep -qiE '(^|\.)(github\.com|githubusercontent\.com)$'; then
             echo "  WARN: ignoring '$d' — GitHub egress is disabled (ALLOW_GITHUB)" >&2; continue
         fi
+        if printf '%s' "$d" | grep -qiE '(^|\.)deepseek\.com$'; then
+            echo "  WARN: ignoring '$d' — DeepSeek uses the dedicated exact-host ALLOW_DEEPSEEK gate" >&2; continue
+        fi
         domains+=("$d")
     done
     IFS=$OLDIFS; set +f
@@ -69,6 +77,21 @@ fi
 IFS=','; export ALLOWLIST="${domains[*]}"; unset IFS
 # AWS CLI signs STS calls in Authorization; preserve it only for these exact allowlisted hosts.
 export AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com${aws_auth_hosts:+,$aws_auth_hosts}"
+export EXACT_ALLOW_HOSTS=""
+export EXACT_AUTH_HOSTS=""
+export DEEPSEEK_ENABLED=false
+export DEEPSEEK_KEY_PATH="${DEEPSEEK_KEY_PATH:-/var/lib/sandbox/deepseek/api-key}"
+if [ "$deepseek" = "1" ]; then
+    # Validate before adding the exact destination or starting the proxy. Missing, unreadable,
+    # empty, symlinked, or permissively-owned storage therefore aborts startup fail-closed.
+    /usr/local/bin/deepseek-key validate || {
+        echo "ERROR: ALLOW_DEEPSEEK is on but its sidecar-only key is unavailable or unsafe" >&2
+        exit 1
+    }
+    export EXACT_ALLOW_HOSTS="api.deepseek.com"
+    export EXACT_AUTH_HOSTS="api.deepseek.com"
+    export DEEPSEEK_ENABLED=true
+fi
 export GITHUB_READONLY="${GITHUB_READONLY:-true}"
 export ANTHROPIC_BLOCK_PATHS="${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
 export ANTHROPIC_SINGLE_CRED="${ANTHROPIC_SINGLE_CRED:-true}"

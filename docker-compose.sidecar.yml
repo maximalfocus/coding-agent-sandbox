@@ -1,20 +1,38 @@
 # EXPERIMENTAL two-container token-isolation variant — see docs/architecture/token-isolation-sidecar.md.
-# The real OAuth login lives ONLY in the egress sidecar's vault (claude-secret), in a container the
-# agent never shares a namespace or mount with. The agent has no internet route except via the
-# sidecar's proxy. NOT YET VERIFIED end-to-end — confirm the checks in the design doc before trusting.
+# Real credentials live ONLY in dedicated egress-sidecar volumes, in a container the agent never
+# shares a namespace or secret mount with. The agent has no internet route except via the sidecar's
+# proxy. This remains experimental — confirm the checks in the design doc for each deployed image.
 #
 #   docker compose build                                   # base + mitm images first
 #   docker compose -f docker-compose.sidecar.yml up -d --build
 #
-# Reuses the existing images and the unchanged filter_addon.py / claim-token.
+# Reuses the existing images and shared filter_addon.py / claim-token policy.
 services:
+  # Explicit admin helper: no network and no agent/Claude/audit mounts — only the DeepSeek volume.
+  # `docker compose run deepseek-key-manager ...` activates this profiled service on demand.
+  deepseek-key-manager:
+    profiles: [deepseek-admin]
+    build:
+      context: .
+      dockerfile: Dockerfile.mitm
+    image: "${SIDECAR_MITM_IMAGE:-coding-agent-sandbox-mitm:latest}"
+    entrypoint: ["/usr/local/bin/deepseek-key"]
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [SETUID, CHOWN, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      DEEPSEEK_KEY_PATH: "/var/lib/sandbox/deepseek/api-key"
+    volumes:
+      - "deepseek-secret:/var/lib/sandbox/deepseek"
+
   # ── Egress sidecar: the ONLY container with internet, and the ONLY holder of the credential. ──
   claude-sandbox-egress:
     build:
       context: .
       dockerfile: Dockerfile.mitm
-    image: coding-agent-sandbox-mitm:latest
-    container_name: claude-sandbox-egress
+    image: "${SIDECAR_MITM_IMAGE:-coding-agent-sandbox-mitm:latest}"
+    container_name: "${SIDECAR_EGRESS_CONTAINER_NAME:-claude-sandbox-egress}"
     entrypoint: ["/usr/local/bin/sidecar-entrypoint.sh"]
     cap_drop: [ALL]
     cap_add: [NET_ADMIN, SETUID, SETGID, CHOWN, DAC_OVERRIDE]
@@ -34,6 +52,7 @@ services:
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
       AWS_SSO_REGIONS: "${AWS_SSO_REGIONS:-}"
       ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"
+      ALLOW_DEEPSEEK: "${ALLOW_DEEPSEEK:-false}"
       ALLOW_GITHUB: "${ALLOW_GITHUB:-true}"
       GITHUB_READONLY: "${GITHUB_READONLY:-true}"
       ANTHROPIC_BLOCK_PATHS: "${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
@@ -41,6 +60,7 @@ services:
     volumes:
       - "claude-config:/home/node/.claude"          # shared (read login to claim, write placeholder back)
       - "claude-secret:/var/lib/sandbox/secret"     # the vault — mounted ONLY here
+      - "deepseek-secret:/var/lib/sandbox/deepseek" # static API key — mounted ONLY here
       - "claude-audit-mitm:/var/log/mitm"
       - "claude-mitm-ca:/etc/mitmproxy"             # export the intercept CA to the agent (ro there)
       # Experimental entrypoint, bind-mounted so the variant needs no Dockerfile change. The addon
@@ -53,8 +73,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: coding-agent-sandbox:latest
-    container_name: claude-sandbox-node
+    image: "${SIDECAR_AGENT_IMAGE:-coding-agent-sandbox:latest}"
+    container_name: "${SIDECAR_AGENT_CONTAINER_NAME:-claude-sandbox-node}"
     entrypoint: ["/usr/local/bin/agent-entrypoint.sh"]
     depends_on: [claude-sandbox-egress]
     cap_drop: [ALL]
@@ -83,6 +103,8 @@ services:
       GIT_USER_NAME: "${GIT_USER_NAME:-}"
       GIT_USER_EMAIL: "${GIT_USER_EMAIL:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      # Pi sees only an inert sentinel. The proxy overwrites it for the exact DeepSeek API host.
+      DEEPSEEK_API_KEY: "sandbox-placeholder-do-not-use"
     volumes:
       - "${WORKSPACE_DIR:-./workspace}:/workspace"
       - "claude-config:/home/node/.claude"          # shared with the sidecar (login + placeholder)
@@ -98,10 +120,12 @@ networks:
 
 volumes:
   claude-config:
-    name: coding-agent-sandbox-config
+    name: "${SIDECAR_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"
   claude-secret:
-    name: coding-agent-sandbox-secret
+    name: "${SIDECAR_CLAUDE_SECRET_VOLUME_NAME:-coding-agent-sandbox-secret}"
+  deepseek-secret:
+    name: "${DEEPSEEK_SECRET_VOLUME_NAME:-coding-agent-sandbox-deepseek-secret}"
   claude-audit-mitm:
-    name: coding-agent-sandbox-audit-mitm
+    name: "${SIDECAR_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit-mitm}"
   claude-mitm-ca:
-    name: coding-agent-sandbox-mitm-ca
+    name: "${SIDECAR_CA_VOLUME_NAME:-coding-agent-sandbox-mitm-ca}"

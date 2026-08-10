@@ -34,6 +34,7 @@ import asyncio
 import hashlib
 import json
 import os
+import stat
 import sys
 import time
 import urllib.request
@@ -55,6 +56,8 @@ def _flag(env, default="true"):
 
 ALLOW = _domains("ALLOWLIST")
 AUTH_HOSTS = _domains("AUTH_HOSTS")
+EXACT_ALLOW_HOSTS = _domains("EXACT_ALLOW_HOSTS")
+EXACT_AUTH_HOSTS = _domains("EXACT_AUTH_HOSTS")
 GITHUB_HOSTS = ("github.com", "githubusercontent.com")
 ANTHROPIC_HOSTS = ("anthropic.com",)
 GITHUB_READONLY = _flag("GITHUB_READONLY")
@@ -63,6 +66,13 @@ ANTHROPIC_SINGLE_CRED = _flag("ANTHROPIC_SINGLE_CRED")
 ANTHROPIC_PIN_TOKEN = os.environ.get("ANTHROPIC_PIN_TOKEN", "").strip().lower()
 ALLOWED_CONNECT_PORTS = {int(p) for p in _csv("ALLOWED_CONNECT_PORTS", "443")}
 AUDIT_LOG = os.environ.get("AUDIT_LOG", "").strip()
+DEEPSEEK_ENABLED = os.environ.get("DEEPSEEK_ENABLED", "false").lower() in ("true", "1", "yes", "on")
+DEEPSEEK_KEY_PATH = os.environ.get("DEEPSEEK_KEY_PATH", "/var/lib/sandbox/deepseek/api-key").strip()
+if not DEEPSEEK_ENABLED:
+    # Defense in depth: an exact-host list cannot accidentally grant DeepSeek unless the dedicated
+    # runtime gate independently parsed as an explicit true value.
+    EXACT_ALLOW_HOSTS = []
+    EXACT_AUTH_HOSTS = []
 
 # Subscription-token isolation (opt-in). When on, the REAL OAuth login lives only in tinyproxy-only
 # storage; the addon injects it into api.anthropic.com requests and owns the OAuth refresh, so the
@@ -79,11 +89,25 @@ _audit_warned = False
 
 def _matches(host, domain):
     host = (host or "").lower().rstrip(".")
+    domain = (domain or "").lower().rstrip(".")
     return host == domain or host.endswith("." + domain)
 
 
 def _any(host, domains):
     return any(_matches(host, d) for d in domains)
+
+
+def _exact(host, domains):
+    host = (host or "").lower().rstrip(".")
+    return host in {domain.lower().rstrip(".") for domain in domains}
+
+
+def _allowed(host):
+    return _any(host, ALLOW) or _exact(host, EXACT_ALLOW_HOSTS)
+
+
+def _auth_host(host):
+    return _any(host, AUTH_HOSTS) or _exact(host, EXACT_AUTH_HOSTS)
 
 
 def _fp(secret):
@@ -246,12 +270,64 @@ class TokenVault:
 VAULT = TokenVault(SECRET_PATH) if TOKEN_ISOLATION else None
 
 
+class DeepSeekKey:
+    """Read the static key from sidecar-only storage for every request.
+
+    No value is cached, so an atomic replacement is the rotation boundary. Ownership, mode,
+    file type, size, and contents are checked before each injection; any unsafe state is a denial.
+    """
+
+    MAX_BYTES = 16 * 1024
+
+    def __init__(self, path):
+        self.path = path
+
+    def read(self):
+        directory = os.path.dirname(self.path)
+        try:
+            directory_info = os.lstat(directory)
+        except OSError as exc:
+            raise ValueError("secret directory unavailable") from exc
+        if (not stat.S_ISDIR(directory_info.st_mode) or stat.S_ISLNK(directory_info.st_mode)
+                or directory_info.st_uid != os.geteuid()
+                or stat.S_IMODE(directory_info.st_mode) != 0o700):
+            raise ValueError("unsafe secret directory")
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(self.path, flags)
+        except OSError as exc:
+            raise ValueError("key unavailable") from exc
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600):
+                raise ValueError("unsafe key file")
+            raw = os.read(descriptor, self.MAX_BYTES + 1)
+        finally:
+            os.close(descriptor)
+        if len(raw) > self.MAX_BYTES:
+            raise ValueError("key too large")
+        try:
+            value = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("key is not text") from exc
+        if (not value or value == TOKEN_PLACEHOLDER or value != value.strip()
+                or any(ord(char) < 0x20 or ord(char) == 0x7F for char in value)):
+            raise ValueError("invalid key contents")
+        return value
+
+
+DEEPSEEK_KEY = DeepSeekKey(DEEPSEEK_KEY_PATH) if DEEPSEEK_ENABLED else None
+
+
 def http_connect(flow: http.HTTPFlow):
     """Gate the CONNECT itself: a tunnel to a non-allowlisted host, or to a non-standard port, is
     refused before any bytes flow — closing raw-TCP/non-HTTP tunnels regardless of the inner data."""
     host = flow.request.host  # CONNECT authority — the real upstream, not a header
     port = flow.request.port
-    if not _any(host, ALLOW):
+    if not _allowed(host):
         _log("DENY", "CONNECT", host, f":{port}", "not-allowlisted")
         return _deny(flow, "Filtered: host not on allowlist")
     if port not in ALLOWED_CONNECT_PORTS:
@@ -267,11 +343,11 @@ async def request(flow: http.HTTPFlow):
     # 1. allowlist — BOTH the routing target AND the claimed vhost (Host header / :authority) must be
     # allowlisted. Checking host alone leaves plain-HTTP domain-fronting open (route to an allowed
     # host, set Host: blocked); checking the header alone is the round-1 spoof. Require both.
-    if not _any(host, ALLOW):
+    if not _allowed(host):
         _log("DENY", method, host, path, "not-allowlisted")
         return _deny(flow, "Filtered: host not on allowlist")
     hdr_host = _host_only(getattr(flow.request, "host_header", "") or flow.request.headers.get("host", ""))
-    if hdr_host and not _any(hdr_host, ALLOW):
+    if hdr_host and not _allowed(hdr_host):
         _log("DENY", method, hdr_host, path, "host-header-not-allowlisted")
         return _deny(flow, "Filtered: Host header not on allowlist")
     # TLS SNI must also be allowlisted: mitmproxy re-uses the client's ClientHello SNI for the
@@ -279,7 +355,7 @@ async def request(flow: http.HTTPFlow):
     # allowed Host) could otherwise front to a non-allowlisted vhost. connection_strategy=lazy means
     # this denial runs before the upstream connection is opened.
     sni = _host_only(getattr(flow.client_conn, "sni", "") or "")
-    if sni and not _any(sni, ALLOW):
+    if sni and not _allowed(sni):
         _log("DENY", method, sni, path, "sni-not-allowlisted")
         return _deny(flow, "Filtered: TLS SNI not on allowlist")
     port = flow.request.port
@@ -287,7 +363,22 @@ async def request(flow: http.HTTPFlow):
         _log("DENY", method, host, f":{port}", "port-not-allowed")
         return _deny(flow, "Filtered: destination port not allowed")
 
-    # 2. Anthropic API hardening
+    # 2. DeepSeek static-key isolation. This branch is exact-host only: unlike the suffix-based
+    # general allowlist, no subdomain inherits access or credential trust. Always overwrite any
+    # agent-supplied credential, and deny when sidecar-only storage is unavailable or unsafe.
+    if DEEPSEEK_KEY is not None and _exact(host, ("api.deepseek.com",)):
+        try:
+            key = DEEPSEEK_KEY.read()
+        except ValueError:
+            _log("DENY", method, host, path, "deepseek-key-unavailable-or-unsafe")
+            return _deny(flow, "Filtered: DeepSeek credential is unavailable or unsafe")
+        for header in ("authorization", "x-api-key", "api-key", "cookie", "proxy-authorization"):
+            if header in flow.request.headers:
+                del flow.request.headers[header]
+        flow.request.headers["authorization"] = f"Bearer {key}"
+        _log("INJECT", method, host, path, "DeepSeek key injected from sidecar storage")
+
+    # 3. Anthropic API hardening
     if _any(host, ANTHROPIC_HOSTS):
         norm = _norm_path(path)
         for blocked in ANTHROPIC_BLOCK_PATHS:
@@ -320,7 +411,7 @@ async def request(flow: http.HTTPFlow):
             del flow.request.headers["x-api-key"]
             _log("STRIP", method, host, path, "removed x-api-key on anthropic host (single-cred)")
 
-    # 3. GitHub read-only: permit clone/fetch, block push + writes. Match the smart-HTTP endpoints on
+    # 4. GitHub read-only: permit clone/fetch, block push + writes. Match the smart-HTTP endpoints on
     # the PATH COMPONENT (query stripped) so `POST /anything?git-upload-pack` can't sneak a write past
     # a loose substring check. WebSocket upgrades are denied (bidirectional, not content-inspected).
     if GITHUB_READONLY and _any(host, GITHUB_HOSTS):
@@ -336,9 +427,9 @@ async def request(flow: http.HTTPFlow):
             _log("DENY", method, host, path, "github-readonly (write)")
             return _deny(flow, "Filtered: GitHub is read-only in this sandbox (writes blocked)")
 
-    # 4. credential containment: don't leak auth to hosts outside the trusted set
-    if not _any(host, AUTH_HOSTS):
-        for h in ("authorization", "cookie", "proxy-authorization", "x-api-key"):
+    # 5. credential containment: don't leak auth to hosts outside the trusted set
+    if not _auth_host(host):
+        for h in ("authorization", "cookie", "proxy-authorization", "x-api-key", "api-key"):
             if h in flow.request.headers:
                 del flow.request.headers[h]
                 _log("STRIP", method, host, path, f"removed {h} header")
