@@ -1,10 +1,9 @@
 # Token isolation — sidecar variant (experimental)
 
-> **Status: experimental scaffold, NOT yet verified end-to-end.** The single-container token
-> isolation in the mitm variant (`ANTHROPIC_TOKEN_ISOLATION=true`, see `SECURITY.md`) is the
-> supported path. This document + `docker-compose.sidecar.yml` take the *same* mechanism one boundary
-> further — into a separate container — and need a real two-container run to confirm the Docker
-> networking before merge. See **Verification** below.
+> **Status: experimental.** The single-container Anthropic token isolation in the mitm variant
+> (`ANTHROPIC_TOKEN_ISOLATION=true`, see `SECURITY.md`) remains the supported path. This document +
+> `docker-compose.sidecar.yml` take credential isolation one namespace boundary further. Run the
+> real two-container checks in **Verification** for the exact image and configuration you deploy.
 
 ## Why a sidecar
 
@@ -26,7 +25,8 @@ that ever holds the credential.
         │  - workspace mount          │ HTTPS_  │  - VAULT  (claude-secret volume) ◄──┼── real tokens live ONLY here
         │  - claude-config (rw)       │ PROXY   │  - OAuth refresh loop               │
         │  - NO internet route        │ ──────► │  - claude-config (rw, for claim)    │
-        │  - NO claude-secret mount   │ :8888   │  - firewall: only it egresses       │
+        │  - inert DeepSeek key       │ :8888   │  - deepseek-secret (sidecar only)   │
+        │  - NO secret-volume mounts  │         │  - firewall: only it egresses       │
         └─────────────┬──────────────┘         └──────────────────┬─────────────────┘
                       │  internal network (internal: true;                │ egress network
                       │  mandatory firewall blocks DNS/direct egress)     ▼  (internet)
@@ -35,10 +35,12 @@ that ever holds the credential.
 
 ## How it maps onto the existing pieces
 
-Nothing in the addon or the claim logic changes — both are already env-driven:
+The credential paths share the same proxy boundary but keep separate storage and lifecycle rules:
 
-- **`mitm/filter_addon.py`** runs unchanged in the sidecar. `ANTHROPIC_TOKEN_ISOLATION=true` is forced
-  on (the sidecar's whole reason to exist), so it injects the vault token and owns the refresh.
+- **`mitm/filter_addon.py`** runs in the sidecar. `ANTHROPIC_TOKEN_ISOLATION=true` is forced on, so it
+  injects the Anthropic vault token and owns the refresh. When the separate DeepSeek gate is on, it
+  reads the static key from its dedicated volume for each exact-host request and overwrites the
+  agent placeholder.
 - **`mitm/claim-token`** runs in the sidecar. It first **validates the login with the OAuth server
   (refresh-token grant)** — a fake or unreachable login fails closed (the candidate is not vaulted;
   any prior vault stays unchanged) — then
@@ -94,6 +96,41 @@ Nothing in the addon or the claim logic changes — both are already env-driven:
 This is the form that actually approaches Anthropic's sealed-VM property for the credential: the
 secret lives behind a boundary the agent's container never shares.
 
+## DeepSeek static-key isolation
+
+`ALLOW_DEEPSEEK` is a dedicated sidecar-only gate and defaults to `false` in `.env.example`, Compose,
+and the runtime parser. Empty, false-like, and unknown values are off. A true-like value is accepted
+only if `/usr/local/bin/deepseek-key validate` confirms the sidecar secret directory is a real,
+tinyproxy-owned `0700` directory and `api-key` is a real, tinyproxy-owned `0600` file containing one
+non-placeholder line. Startup fails closed before the exact destination is exported if validation
+fails.
+
+DeepSeek is intentionally not added to the suffix allowlist. The addon uses separate exact-host
+allow/auth sets, normalizes DNS case and a trailing dot, and permits only `api.deepseek.com:443`.
+Parent domains, subdomains, suffix lookalikes, alternate Host headers/SNI, and other ports are
+denied. `EXTRA_ALLOWED_DOMAINS` ignores every DeepSeek domain so it cannot bypass the dedicated gate.
+For the accepted host, the proxy removes agent-controlled bearer/API-key/cookie/proxy credentials
+and installs `Authorization: Bearer <sidecar key>`. Other providers never inherit the key.
+
+The agent service mounts no DeepSeek volume or path and gets only
+`DEEPSEEK_API_KEY=sandbox-placeholder-do-not-use`, which lets Pi select its built-in DeepSeek
+provider without holding a usable credential. Provision and lifecycle commands pass the key over
+stdin to a profile-only, networkless key-manager container that mounts no other volume. Build the
+sidecar image once before the first command:
+
+```bash
+docker compose -f docker-compose.sidecar.yml build deepseek-key-manager
+./scripts/auth/deepseek-key.sh provision  # create; input hidden
+./scripts/auth/deepseek-key.sh rotate     # atomic replace; next request uses it
+./scripts/auth/deepseek-key.sh status     # readiness + short non-secret fingerprint
+./scripts/auth/deepseek-key.sh revoke     # remove only the key file
+```
+
+PowerShell uses the same actions through `scripts/auth/deepseek-key.ps1`. The key is never a command
+argument or Compose environment value. Audit decisions contain only `INJECT`/redacted failure
+events; never capture environment dumps, proxy headers, key files, Pi auth state, or the volume in
+acceptance evidence.
+
 ## Verification (REQUIRED before this is trusted / merged)
 
 **One-command path:** `./sidecar-smoketest.sh --up` brings the stack up and runs the structural
@@ -130,4 +167,9 @@ docker compose -f docker-compose.sidecar.yml exec -u node claude-sandbox-node \
 #     working (the sidecar refreshes; watch ./audit.sh --mitm for REFRESH lines).
 ```
 
-All six must hold. Until they're confirmed on real Docker, treat this as a design + scaffold only.
+For DeepSeek acceptance, use a disposable Compose project and dedicated volume name, provision the
+key without printing it, enable `ALLOW_DEEPSEEK=true`, and run one minimal Pi inference. Also prove
+that the agent sees the placeholder but cannot list `/var/lib/sandbox/deepseek`, a direct non-proxy
+request fails, a near-miss host is denied, and the audit contains an `INJECT` event without secret
+material. Record only image IDs, container/volume names, HTTP/result status, and redacted decisions;
+then tear down that exact project and volume. All checks must hold for each trusted run.

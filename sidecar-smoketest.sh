@@ -17,6 +17,8 @@ if [ -n "${SIDECAR_COMPOSE_OVERRIDE:-}" ]; then
 fi
 AGENT=claude-sandbox-node
 EGRESS=claude-sandbox-egress
+AGENT_CONTAINER="${SIDECAR_AGENT_CONTAINER_NAME:-claude-sandbox-node}"
+EGRESS_CONTAINER="${SIDECAR_EGRESS_CONTAINER_NAME:-claude-sandbox-egress}"
 PLACEHOLDER="${TOKEN_PLACEHOLDER:-sandbox-placeholder-do-not-use}"
 pass=0; fail=0; skip=0
 ok()   { echo "  PASS  $1"; pass=$((pass+1)); }
@@ -39,8 +41,8 @@ fi
 # Readiness: both containers running, and the agent has trusted the CA (proxy is up).
 echo "Waiting for the stack to be ready..."
 for _ in $(seq 1 60); do
-    up_a=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$AGENT" || true)
-    up_e=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$EGRESS" || true)
+    up_a=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$AGENT_CONTAINER" || true)
+    up_e=$("${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "$EGRESS_CONTAINER" || true)
     # The CA file appears as soon as the SIDECAR publishes it, which can precede the agent's
     # mandatory firewall by a second or two. Only start the structural checks once both containers
     # have installed their relevant proxy rules (issues #45 and #49).
@@ -51,8 +53,8 @@ for _ in $(seq 1 60); do
         && eexec 'iptables -S INPUT | grep -q -- "--dport 8888 -j ACCEPT"' && break
     sleep 1
 done
-"${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$AGENT"  || { echo "agent container not running — see: ${COMPOSE[*]} logs $AGENT"; exit 1; }
-"${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$EGRESS" || { echo "egress container not running — see: ${COMPOSE[*]} logs $EGRESS"; exit 1; }
+"${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$AGENT_CONTAINER"  || { echo "agent container not running — see: ${COMPOSE[*]} logs $AGENT"; exit 1; }
+"${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$EGRESS_CONTAINER" || { echo "egress container not running — see: ${COMPOSE[*]} logs $EGRESS"; exit 1; }
 
 echo "Structural guarantees (no login required):"
 
@@ -67,24 +69,24 @@ fi
 #    interface, never on the default-route interface or without an interface match. The sidecar
 #    intentionally blocks root from querying Docker DNS after startup, so validate the configured
 #    network-only alias through Docker metadata and the entrypoint decision log instead.
-sidecar_id=$(docker inspect --format '{{.Id}}' "$EGRESS" 2>/dev/null)
+sidecar_id=$(docker inspect --format '{{.Id}}' "$EGRESS_CONTAINER" 2>/dev/null)
 sidecar_internal_network=""
-for network_id in $(docker inspect --format '{{range .NetworkSettings.Networks}}{{println .NetworkID}}{{end}}' "$EGRESS" 2>/dev/null); do
+for network_id in $(docker inspect --format '{{range .NetworkSettings.Networks}}{{println .NetworkID}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null); do
     if [ "$(docker network inspect --format '{{.Internal}}' "$network_id" 2>/dev/null)" = true ]; then
         [ -z "$sidecar_internal_network" ] || { sidecar_internal_network="AMBIGUOUS"; break; }
         sidecar_internal_network=$(docker network inspect --format '{{.Name}}' "$network_id" 2>/dev/null)
     fi
 done
-configured_alias=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$EGRESS" 2>/dev/null \
+configured_alias=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null \
     | sed -n 's/^SIDECAR_INTERNAL_ALIAS=//p')
-sidecar_internal_ip=$(docker inspect --format "{{(index .NetworkSettings.Networks \"$sidecar_internal_network\").IPAddress}}" "$EGRESS" 2>/dev/null)
+sidecar_internal_ip=$(docker inspect --format "{{(index .NetworkSettings.Networks \"$sidecar_internal_network\").IPAddress}}" "$EGRESS_CONTAINER" 2>/dev/null)
 sidecar_internal_if=$(eexec "ip -o -4 addr show | awk -v target='$sidecar_internal_ip' '{ split(\$4, addr, \"/\"); iface = \$2; sub(/@.*/, \"\", iface); if (addr[1] == target) print iface }' | sort -u")
 sidecar_egress_if=$(eexec 'ip -o -4 route show default | awk "{ for (i=1; i<=NF; i++) if (\$i == \"dev\") print \$(i+1) }" | sort -u')
 if [ -n "$sidecar_id" ] && [ -n "$sidecar_internal_network" ] && [ "$sidecar_internal_network" != AMBIGUOUS ] \
    && [ -n "$configured_alias" ] && [ -n "$sidecar_internal_ip" ] \
-   && docker inspect --format '{{range $name, $cfg := .NetworkSettings.Networks}}{{range $cfg.Aliases}}{{printf "%s %s\n" $name .}}{{end}}{{end}}' "$EGRESS" \
+   && docker inspect --format '{{range $name, $cfg := .NetworkSettings.Networks}}{{range $cfg.Aliases}}{{printf "%s %s\n" $name .}}{{end}}{{end}}' "$EGRESS_CONTAINER" \
         | grep -Fxq "$sidecar_internal_network $configured_alias" \
-   && docker logs "$EGRESS" 2>&1 | grep -Fq "internal_ip=$sidecar_internal_ip alias=$configured_alias" \
+   && docker logs "$EGRESS_CONTAINER" 2>&1 | grep -Fq "internal_ip=$sidecar_internal_ip alias=$configured_alias" \
    && [ -n "$sidecar_internal_if" ] && [ -n "$sidecar_egress_if" ] \
    && [ "$sidecar_internal_if" != "$sidecar_egress_if" ] \
    && eexec "iptables -C INPUT -i '$sidecar_internal_if' -p tcp --dport 8888 -j ACCEPT" \
@@ -117,7 +119,7 @@ fi
 
 # 5. The Docker network gateway is a private target and must be covered by an explicit REJECT rule.
 #    An internal network omits the endpoint's .Gateway, so read the gateway from network IPAM.
-network_id=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' "$AGENT" 2>/dev/null)
+network_id=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' "$AGENT_CONTAINER" 2>/dev/null)
 gateway=$(docker network inspect --format '{{(index .IPAM.Config 0).Gateway}}' "$network_id" 2>/dev/null)
 case "$gateway" in
     10.*) gateway_net=10.0.0.0/8 ;;
@@ -171,6 +173,44 @@ if eexec 'test -d /var/lib/sandbox/secret'; then
     ok "sidecar holds the vault directory"
 else
     no "sidecar is missing the vault directory"
+fi
+
+deepseek_gate=$(eexec 'printf %s "${ALLOW_DEEPSEEK:-false}"' | tr '[:upper:]' '[:lower:]')
+if [ "$deepseek_gate" = true ] || [ "$deepseek_gate" = 1 ] \
+   || [ "$deepseek_gate" = yes ] || [ "$deepseek_gate" = on ]; then
+    echo "DeepSeek sidecar-only checks:"
+
+    agent_deepseek_env=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$AGENT_CONTAINER" 2>/dev/null \
+        | sed -n 's/^DEEPSEEK_API_KEY=//p')
+    if [ "$agent_deepseek_env" = "sandbox-placeholder-do-not-use" ] \
+       && ! docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null \
+            | grep -q '^DEEPSEEK_API_KEY='; then
+        ok "Docker metadata gives the agent only the inert DeepSeek placeholder"
+    else
+        no "DeepSeek key boundary is not reflected safely in container metadata"
+    fi
+
+    if ! aexec 'test -e /var/lib/sandbox/deepseek' \
+       && eexec '/usr/local/bin/deepseek-key validate'; then
+        ok "DeepSeek key volume exists only in the sidecar and passes ownership/mode validation"
+    else
+        no "DeepSeek key storage is missing, unsafe, or visible to the agent"
+    fi
+
+    code=$(aexec "curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://api.deepseek.com/")
+    if [ -n "$code" ] && [ "$code" != "000" ] \
+       && eexec "grep -F 'INJECT' /var/log/mitm/decisions.log | grep -Fq 'api.deepseek.com/'"; then
+        ok "exact api.deepseek.com proxy path injects from sidecar storage (HTTP $code)"
+    else
+        no "exact DeepSeek proxy/injection path failed (HTTP '${code:-none}')"
+    fi
+
+    code=$(aexec "curl -sS -o /dev/null -w '%{http_connect}' --max-time 20 https://evil.api.deepseek.com/")
+    if [ "$code" = "403" ]; then
+        ok "DeepSeek subdomain near-miss denied at CONNECT (403)"
+    else
+        no "DeepSeek subdomain near-miss was not denied (http_connect='${code:-none}')"
+    fi
 fi
 
 echo "Login-dependent checks:"

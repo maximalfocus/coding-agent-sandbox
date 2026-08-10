@@ -359,6 +359,32 @@ allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENA
 > [Codex Linux sandbox inside the agent container](docs/codex-sandbox.md) for the measured control
 > matrix, supported runtimes, exact fallback, and security trade-offs.
 
+## Pi with a DeepSeek API key (experimental sidecar)
+
+The two-container sidecar variant can run Pi against DeepSeek without giving the agent the real
+static key. This path is separate from Codex/OpenAI and Claude/Anthropic: it is off by default,
+allows only the normalized exact destination `api.deepseek.com:443`, mounts a dedicated key volume
+only in the egress sidecar, and gives Pi the inert `sandbox-placeholder-do-not-use` value. The TLS
+proxy overwrites that placeholder only for the exact DeepSeek API host.
+
+Provision first, then enable the gate and start the experimental sidecar stack:
+
+```bash
+docker compose -f docker-compose.sidecar.yml build deepseek-key-manager  # build sidecar image once
+./scripts/auth/deepseek-key.sh provision   # Windows: .\scripts\auth\deepseek-key.ps1 provision
+# Set ALLOW_DEEPSEEK=true in .env; never put the real key there.
+docker compose -f docker-compose.sidecar.yml up -d --build
+docker compose -f docker-compose.sidecar.yml exec -u node claude-sandbox-node \
+  pi --provider deepseek --model deepseek-v4-flash --no-tools --no-session -p "Reply exactly: OK"
+```
+
+Use `rotate` to atomically replace the key, `status` for a non-secret readiness check, and `revoke`
+to delete it. Rotation takes effect on the next proxied request and does not rebuild the agent
+image. After revocation, recreate/stop the stack; an enabled stack refuses to start without a safe
+`0600` key in its `0700` sidecar directory, and a running proxy denies DeepSeek if the key becomes
+missing or unsafe. `EXTRA_ALLOWED_DOMAINS` cannot bypass this dedicated gate. See the
+[sidecar architecture and acceptance checks](docs/architecture/token-isolation-sidecar.md#deepseek-static-key-isolation).
+
 ## Other bundled coding tools
 
 The image also installs pinned versions of:
@@ -369,8 +395,10 @@ The image also installs pinned versions of:
   `fd-find` is installed as `fd` so Pi does not need a blocked runtime download.
 
 Their first-party hosts are trust grants and are always enabled. Model-provider egress is separate:
-Anthropic is available by default, OpenAI requires `ALLOW_OPENAI=true`, and any other provider must
-be added narrowly to `EXTRA_ALLOWED_DOMAINS`.
+Anthropic is available by default, OpenAI requires `ALLOW_OPENAI=true`, and DeepSeek is available
+only through the experimental sidecar's dedicated `ALLOW_DEEPSEEK=true` path. Other providers must
+be added narrowly to `EXTRA_ALLOWED_DOMAINS`; DeepSeek domains are deliberately excluded from that
+generic escape hatch.
 
 ### Tool and package upgrades
 
@@ -541,6 +569,7 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | `ALLOW_TOOL_UPGRADES` | `false` | Official package/download endpoints for deliberate tool upgrades. |
 | `ALLOW_GITHUB` | `true` | github.com / githubusercontent.com egress on/off. |
 | `ALLOW_OPENAI` | `false` | OpenAI egress (openai.com + chatgpt.com) — needed for Codex / peer-review. |
+| `ALLOW_DEEPSEEK` | `false` | Experimental sidecar-only Pi → DeepSeek key injection for exact `api.deepseek.com:443`; provision with `scripts/auth/deepseek-key.*`. |
 | `GITHUB_TOKEN` | — | PAT for git clone/pull/**push** over HTTPS (see *GitHub access*). |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | — | Commit identity used inside the sandbox. |
 | `SKILL_REPOS` | — | Space-separated HTTPS skill-repo URLs that `scripts/skills/skills-setup.sh` clones into `/workspace/personal`. |
