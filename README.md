@@ -214,10 +214,15 @@ chmod +x shell.sh                 # first time
 ./shell.sh --shell                # escape hatch: a fresh Bash shell in /workspace
 ```
 
-On macOS, `shell.sh` transparently bridges Herdr's OSC 52 copy events to `pbcopy`, so copy works even
-in Apple Terminal (which does not support OSC 52 itself). Paste remains ordinary terminal input.
+`shell.sh` strips OSC 52 before output reaches the host terminal. Herdr represents its own selection
+events and application-generated clipboard writes with the same bytes, so forwarding either would
+let an untrusted pane overwrite the host clipboard. Copy with the host terminal's native gesture
+instead (for example, select then press Cmd-C in Apple Terminal; some terminals require holding
+Shift while selecting). Paste remains ordinary terminal input.
+The launcher requires host-side Python 3 so it can enforce this boundary fail-closed.
 
-Equivalent raw commands (no wrapper):
+Direct commands (bypass the launcher's OSC 52 filter and inherit the host terminal's clipboard
+policy):
 
 ```bash
 cd /path/to/coding-agent-sandbox
