@@ -131,6 +131,21 @@ argument or Compose environment value. Audit decisions contain only `INJECT`/red
 events; never capture environment dumps, proxy headers, key files, Pi auth state, or the volume in
 acceptance evidence.
 
+## Codex subscription isolation: NO-GO at 0.140.0
+
+The sidecar intentionally has no OpenAI capability gate, Codex state mount, or OpenAI/ChatGPT route.
+Codex `0.140.0` does not expose a supported credential-only subscription broker. Managed login
+keeps reusable auth in the Codex process; the host-managed App Server token mode is explicitly
+unstable/OpenAI-internal, carries replacement access tokens through its client protocol, and belongs
+to a full command/filesystem execution server. Moving that server into this container would violate
+the defining sidecar property shown above: the credential holder runs no agent code and mounts no
+workspace.
+
+The evidence and reevaluation condition are recorded in
+[`docs/codex-subscription-broker-feasibility.md`](../codex-subscription-broker-feasibility.md).
+Do not add OpenAI routes, copy `auth.json`, parse its private fields, or fall back to API-key billing
+to work around this boundary.
+
 ## Verification (REQUIRED before this is trusted / merged)
 
 **One-command path:** `./sidecar-smoketest.sh --up` brings the stack up and runs the structural

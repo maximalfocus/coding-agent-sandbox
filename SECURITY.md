@@ -141,6 +141,15 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   inside this already-contained environment, and verify the actual filesystem/network behavior
   with `scripts/verify-codex-sandbox.sh`; details and the runtime matrix are in
   [`docs/codex-sandbox.md`](docs/codex-sandbox.md).
+- **Codex subscription credentials are not isolated by the sidecar.** The default Codex login cache
+  remains in the agent-mounted `~/.codex` volume and contains reusable access tokens. A pinned
+  feasibility review of Codex `0.140.0` found no supported credential-only broker: managed login
+  keeps auth with the Codex process, while the only host-supplied token mode is marked unstable and
+  OpenAI-internal and carries access tokens over the App Server client protocol. Running that full
+  command/filesystem App Server in the credential sidecar would collapse the sidecar's “no agent
+  code, no workspace” boundary. The sidecar therefore has no `ALLOW_OPENAI`, Codex credential
+  mount, or OpenAI route. See
+  [`docs/codex-subscription-broker-feasibility.md`](docs/codex-subscription-broker-feasibility.md).
 - **One layer, mostly.** This is an *environment-layer* containment (sandbox + egress + caps).
   Anthropic's write-up stresses that defenses should overlap: model-layer and tool-permission
   checks exist precisely because no single layer is 100%. The cheap complementary layer here is
