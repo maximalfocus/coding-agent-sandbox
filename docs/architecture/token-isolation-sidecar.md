@@ -72,7 +72,10 @@ Nothing in the addon or the claim logic changes — both are already env-driven:
 - **Sidecar** reuses the existing fail-closed model: only the `tinyproxy` UID may egress; DNS only via
   `127.0.0.11`; private ranges, public DNS, and IPv6 are rejected. The one addition vs. the
   single-container firewall is an `INPUT` rule accepting `:8888` **only on the internal interface**
-  (the one with no default route), so the proxy port is never reachable from the egress side.
+  identified by an alias assigned only on the Compose `internal` network. Startup requires that
+  alias to resolve to exactly one IPv4 owned by exactly one local interface, and requires that
+  interface to differ from the sole default-route interface; otherwise the sidecar refuses to start.
+  The proxy port is therefore never accepted on the egress side because of interface ordering.
 - **Agent** (mandatory, fail-closed): default-DROP `OUTPUT` permits loopback and established traffic,
   plus new TCP connections only to the pinned sidecar IPv4 on `:8888` over the directly attached
   internal interface. Docker DNS (`127.0.0.11`), public DNS, IPv6, other private/gateway targets,

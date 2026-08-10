@@ -21,10 +21,16 @@ services:
     security_opt: ["no-new-privileges:true"]
     mem_limit: "${MEM_LIMIT:-2g}"
     pids_limit: ${PIDS_LIMIT:-2048}
-    networks: [internal, egress]
+    networks:
+      internal:
+        # This alias exists only on the isolated network. The entrypoint resolves it back to its
+        # own local IPv4/interface and refuses startup unless that mapping is unique and non-egress.
+        aliases: [sandbox-egress-internal]
+      egress: {}
     environment:
       # Isolation is the sidecar's entire purpose — force it on regardless of .env.
       ANTHROPIC_TOKEN_ISOLATION: "true"
+      SIDECAR_INTERNAL_ALIAS: "sandbox-egress-internal"
       EXTRA_ALLOWED_DOMAINS: "${EXTRA_ALLOWED_DOMAINS:-}"
       AWS_SSO_REGIONS: "${AWS_SSO_REGIONS:-}"
       ALLOW_TOOL_UPGRADES: "${ALLOW_TOOL_UPGRADES:-false}"
