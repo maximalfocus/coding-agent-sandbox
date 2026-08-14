@@ -13,7 +13,14 @@ cd "$(dirname "$0")/../.."
 
 # Auto-detect which isolation stack is up: the two-container sidecar variant (egress container) or
 # the single-container mitm variant. Claim runs in whichever holds the vault.
-if docker compose -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -q claude-sandbox-egress; then
+#
+# The sidecar's container name is operator-overridable (docker-compose.sidecar.yml), so detection
+# must honour that override or this script cannot see a stack started under issue-specific names —
+# which is exactly what an isolated validation run requires. `sidecar-smoketest.sh` already reads
+# these variables; this keeps the two helpers consistent. The mitm variant hardcodes its
+# container_name, so its branch needs no override.
+EGRESS_CONTAINER="${SIDECAR_EGRESS_CONTAINER_NAME:-claude-sandbox-egress}"
+if docker compose -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -qx "$EGRESS_CONTAINER"; then
     SVC=claude-sandbox-egress
     COMPOSE=(docker compose -f docker-compose.sidecar.yml)
 elif docker compose -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -q claude-sandbox-mitm; then
