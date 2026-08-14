@@ -124,6 +124,22 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   sandbox's egress firewall and proxy. Treat the override as host-level control, use it only for
   trusted workspaces, and recreate the sandbox without the override immediately afterward. This is
   deliberately never enabled by the default Compose file.
+- **Nested Docker is a convenience boundary, not an escape-resistant one.** `docker-compose.dind.yml`
+  (opt-in, default off, sidecar stack only) gives the agent a working `docker build`/`docker run`
+  **without** the host socket above — the daemon runs in its own container, holds the elevated
+  privilege the agent must not have, mounts no credential volume and no workspace, and joins only
+  the externally isolated network. Verified: from inside the sandbox the host's containers and
+  images are invisible, and the daemon's own image pulls are refused unless allowlisted (the refusal
+  appears in `audit.sh --mitm`). What it is **not**: the daemon container is privileged, so anything
+  that escapes a nested container is inside a privileged container. Use it for trusted build work.
+  It does not make `docker-compose.host.yml` safe, and that warning stands unchanged — prefer this
+  path, and reach for the host socket only when you genuinely need the host engine.
+  **Nested containers have no network at all** by construction: they cannot reach the internet, the
+  proxy, or a DNS resolver, so `RUN apt-get install` in a nested build fails. That is the strongest
+  form of `CAS-R131` rather than a filtered path, and it is a real functional limit — see
+  `README.md`. Preserving a registry's bearer token for pulls requires naming that registry in
+  `NESTED_DOCKER_REGISTRY_AUTH_HOSTS`; the sidecar honours it only for hosts already on the egress
+  allowlist and never for first-party providers.
 - **Anything inside `/workspace` is fair game.** Within the mounted folder, Claude can overwrite
   or delete files. There is no automatic backup. Use git and commit often; mount a throwaway
   copy if you're testing untrusted instructions. Note too that the bind mount can't distinguish

@@ -75,8 +75,38 @@ if [ -n "${EXTRA_ALLOWED_DOMAINS:-}" ]; then
     IFS=$OLDIFS; set +f
 fi
 IFS=','; export ALLOWLIST="${domains[*]}"; unset IFS
+# Nested container builds (issue #65): a registry hands the daemon a bearer token, so stripping
+# Authorization turns an otherwise-allowlisted pull into a 401. Exempt ONLY hosts the operator named
+# that are ALREADY on the egress allowlist — an exemption for a host we would refuse anyway is
+# meaningless, and one derived from an unvalidated string would be a token-harvesting channel.
+# First-party providers are never eligible here; they have their own injection/stripping policy.
+registry_auth_hosts=""
+if [ -n "${NESTED_DOCKER_REGISTRY_AUTH_HOSTS:-}" ]; then
+    # NOTE: IFS was unset on the line above, so it must not be read here under `set -u`.
+    set -f; IFS=','
+    for d in $NESTED_DOCKER_REGISTRY_AUTH_HOSTS; do
+        d=$(printf '%s' "$d" | tr -d '[:space:]')
+        [ -n "$d" ] || continue
+        if ! printf '%s' "$d" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$' \
+           || printf '%s' "$d" | grep -qE '^[0-9.]+$'; then
+            echo "  WARN: ignoring invalid registry auth host '$d'" >&2; continue
+        fi
+        if printf '%s' "$d" | grep -qiE '(^|\.)(anthropic\.com|claude\.ai|claude\.com|github\.com|githubusercontent\.com|deepseek\.com)$'; then
+            echo "  WARN: ignoring registry auth host '$d' — first-party credentials keep their own policy" >&2
+            continue
+        fi
+        found=0
+        for a in "${domains[@]}"; do [ "$a" = "$d" ] && { found=1; break; }; done
+        if [ "$found" = "0" ]; then
+            echo "  WARN: ignoring registry auth host '$d' — not on the egress allowlist" >&2; continue
+        fi
+        registry_auth_hosts="${registry_auth_hosts:+$registry_auth_hosts,}$d"
+    done
+    unset IFS; set +f
+    [ -n "$registry_auth_hosts" ] && echo "  Registry auth preserved for: $registry_auth_hosts"
+fi
 # AWS CLI signs STS calls in Authorization; preserve it only for these exact allowlisted hosts.
-export AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com${aws_auth_hosts:+,$aws_auth_hosts}"
+export AUTH_HOSTS="anthropic.com,claude.ai,claude.com,github.com,githubusercontent.com${aws_auth_hosts:+,$aws_auth_hosts}${registry_auth_hosts:+,$registry_auth_hosts}"
 export EXACT_ALLOW_HOSTS=""
 export EXACT_AUTH_HOSTS=""
 export DEEPSEEK_ENABLED=false
