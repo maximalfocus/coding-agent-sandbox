@@ -516,11 +516,49 @@ docker --version         # client works in every sandbox
 docker compose version
 ```
 
-The Docker **daemon is intentionally unavailable by default**. The opt-in below grants host-level
+The Docker **daemon is intentionally unavailable by default**. There are two opt-ins, and they are
+not equivalent — prefer the first.
+
+#### Nested daemon (no host access)
+
+`docker-compose.dind.yml` adds a Docker daemon in its own container, so the agent can build and run
+images while the **host engine stays completely unreachable**. It layers onto the sidecar stack:
+
+```bash
+docker compose build                                     # base + mitm images first
+docker compose -f docker-compose.sidecar.yml \
+               -f docker-compose.dind.yml up -d --build
+```
+
+The daemon holds the privilege the agent must not have, mounts no credential volume and no
+workspace, and joins only the isolated network. Its own image pulls go through the allowlist proxy,
+so a registry must be allowlisted to be reachable — and because the mediation layer strips
+credentials from non-first-party hosts, preserving a registry's bearer token also needs it named in
+`NESTED_DOCKER_REGISTRY_AUTH_HOSTS`:
+
+```bash
+EXTRA_ALLOWED_DOMAINS=docker.io,docker.com
+NESTED_DOCKER_REGISTRY_AUTH_HOSTS=docker.io,docker.com
+```
+
+**Know the limits before you rely on it:**
+
+- **Nested containers have no network at all.** They cannot reach the internet, the proxy, or a DNS
+  resolver. `FROM`, `COPY`, and offline `RUN` steps work; `RUN apt-get install` or `RUN npm ci`
+  does not. This is deliberate — it is a structural guarantee rather than a filtered path — but it
+  means build recipes that fetch dependencies need their layers prepared elsewhere.
+- **The workspace is not mounted into the daemon.** `docker build` works (the CLI streams its
+  context over the API), but `docker run -v /workspace/...:/...` cannot see your files.
+- A nested daemon is a container-level convenience boundary, **not** escape-resistant; the daemon
+  container is privileged. Use it for trusted build work.
+
+#### Host socket (host-level control)
+
+The opt-in below grants host-level
 control, and containers it launches bypass the sandbox's filesystem and egress controls; read
 [Opt-in host Docker access forfeits host containment](SECURITY.md#what-this-does-not-protect-against--read-this)
-before using it. For a trusted workspace that must build an image, start it, and inspect its Docker
-health check:
+before using it. Reach for it only when you genuinely need the *host* engine. For a trusted
+workspace that must build an image, start it, and inspect its Docker health check:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.host.yml up -d --build
@@ -725,6 +763,7 @@ coding-agent-sandbox/
 │   Dockerfile, Dockerfile.mitm      image build (default + content-mediation variant)
 │   docker-compose.yml, *.mitm.yml, docker-compose.host.yml, services, volumes, capabilities, limits
 │     *.sidecar.yml                  (sidecar.yml = experimental token-isolation variant)
+│     *.dind.yml                     (nested Docker daemon, no host socket — layers on sidecar)
 │   entrypoint.sh                    build allowlist → start proxy → install firewall → drop to
 │                                    node → launch ttyd with Herdr as the primary terminal
 │   init-firewall.sh                 fail-closed iptables egress rules

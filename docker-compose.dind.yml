@@ -1,0 +1,79 @@
+# OPT-IN nested container builds, WITHOUT a host Docker daemon (issue #65, SL-14).
+#
+# Overlay for the sidecar stack. The agent gets a usable `docker build` / `docker run` while the
+# host engine stays completely unreachable — this is the alternative to docker-compose.host.yml,
+# which grants effectively host-level control and is deliberately left unchanged.
+#
+#   docker compose build                                    # base + mitm images first
+#   docker compose -f docker-compose.sidecar.yml \
+#                  -f docker-compose.dind.yml up -d --build
+#
+# Boundary, stated plainly:
+#   * The daemon's elevated privilege lives ONLY in this third container. The agent keeps
+#     cap_drop ALL, its five explicit capabilities, and no-new-privileges (CAS-R132).
+#   * This container mounts NO agent credential volume — not claude-config, not the token vault,
+#     not the DeepSeek key, not the workspace.
+#   * It joins ONLY the isolated `internal` network, so nested containers have no NAT path out.
+#     Reaching the internet requires going through the sidecar proxy, same as the agent (CAS-R131).
+#   * A nested daemon is a container-level convenience boundary, NOT an escape-resistant one.
+#     Anything that escapes the nested daemon is inside a privileged container. Use it for trusted
+#     build work; it does not make untrusted workspaces safe.
+#   * Because the workspace is not mounted here, `docker build` works (the CLI streams its context
+#     over the API) but `docker run -v /workspace/...:/...` does NOT — the daemon cannot see agent
+#     files. That is intentional: it keeps nested containers off the agent's workspace.
+services:
+  # Registry pulls need their bearer token to survive to the registry. The mediation layer strips
+  # Authorization from non-first-party hosts by design, which turns an otherwise-allowlisted pull
+  # into a 401. The sidecar validates this list and honours it only for hosts already on the egress
+  # allowlist. Default empty, so the exemption is opt-in and never implied by enabling nested Docker.
+  # (AUTH_HOSTS itself is deliberately not settable from outside — the sidecar owns its trust set.)
+  claude-sandbox-egress:
+    environment:
+      NESTED_DOCKER_REGISTRY_AUTH_HOSTS: "${NESTED_DOCKER_REGISTRY_AUTH_HOSTS:-}"
+
+  claude-sandbox-dind:
+    image: "${NESTED_DOCKER_IMAGE:-docker:29.6.2-dind}"
+    container_name: "${NESTED_DOCKER_CONTAINER_NAME:-claude-sandbox-dind}"
+    entrypoint: ["/usr/local/bin/dind-entrypoint.sh"]
+    # A Docker daemon needs this to manage cgroups and network namespaces. Confining it to a
+    # separate service is precisely why the agent does not have to carry it.
+    privileged: true
+    mem_limit: "${NESTED_DOCKER_MEM_LIMIT:-4g}"
+    pids_limit: ${NESTED_DOCKER_PIDS_LIMIT:-4096}
+    networks: [internal]        # isolated only: no default route, asserted at startup
+    environment:
+      NESTED_DOCKER_PORT: "${NESTED_DOCKER_PORT:-2375}"
+      # The daemon pulls images through the sidecar proxy, like every other component.
+      HTTP_PROXY: "http://claude-sandbox-egress:8888"
+      HTTPS_PROXY: "http://claude-sandbox-egress:8888"
+      http_proxy: "http://claude-sandbox-egress:8888"
+      https_proxy: "http://claude-sandbox-egress:8888"
+      NO_PROXY: "localhost,127.0.0.1,::1,claude-sandbox-dind"
+      no_proxy: "localhost,127.0.0.1,::1,claude-sandbox-dind"
+      # Plain TCP is scoped by the isolated network; the daemon refuses to start if it ever has a
+      # default route. TLS certs would add a key-distribution problem without adding a boundary.
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - "claude-mitm-ca:/etc/mitmproxy-ca:ro"   # read-only CA so the daemon can pull through mitm
+      - "nested-docker-storage:/var/lib/docker" # image/layer storage, private to this container
+      - "./mitm/dind-entrypoint.sh:/usr/local/bin/dind-entrypoint.sh:ro"
+    restart: unless-stopped
+
+  claude-sandbox-node:
+    depends_on: [claude-sandbox-egress, claude-sandbox-dind]
+    environment:
+      ENABLE_NESTED_DOCKER: "true"
+      NESTED_DOCKER_HOST: "${NESTED_DOCKER_CONTAINER_NAME:-claude-sandbox-dind}"
+      NESTED_DOCKER_PORT: "${NESTED_DOCKER_PORT:-2375}"
+      # The docker CLI honours HTTP_PROXY, so without this it would send its API calls to the
+      # allowlist proxy and get "Filtered: host not on allowlist" instead of reaching the daemon.
+      # The daemon is a sandbox-internal peer, not an egress destination.
+      NO_PROXY: "localhost,127.0.0.1,::1,${NESTED_DOCKER_CONTAINER_NAME:-claude-sandbox-dind}"
+      no_proxy: "localhost,127.0.0.1,::1,${NESTED_DOCKER_CONTAINER_NAME:-claude-sandbox-dind}"
+      # The agent's docker CLI talks to the nested daemon and nothing else. No host socket exists
+      # in this stack, so there is no host daemon to fall back to.
+      DOCKER_HOST: "tcp://${NESTED_DOCKER_CONTAINER_NAME:-claude-sandbox-dind}:${NESTED_DOCKER_PORT:-2375}"
+
+volumes:
+  nested-docker-storage:
+    name: "${NESTED_DOCKER_STORAGE_VOLUME_NAME:-coding-agent-sandbox-nested-docker}"
