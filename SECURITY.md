@@ -189,6 +189,16 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   in `docker-compose.yml`. It runs the container under a user-space kernel that intercepts syscalls,
   narrowing the "shares the host kernel" gap above — the battle-tested-primitive approach the
   containment write-up favors over rolling your own isolation.
+- **MicroVM boundary via a third-party sandbox (investigated, not shipped):** the content-mediation
+  layer below has been verified to run as the upstream proxy beneath Docker Sandboxes `v0.38.0`,
+  which supplies a microVM kernel boundary and a per-sandbox Docker engine. Agent HTTPS traffic
+  stays fully mediated — allowlist, per-method/path rules, credential stripping, and the
+  `ALLOW`/`DENY`/`STRIP` audit all survive — and guest CA trust is established through a supported
+  `kit` mixin. One limitation is documented and unresolved: traffic that sandbox's own proxy
+  terminates itself (observed for container registries) cannot be TLS-intercepted, because it
+  validates the upstream certificate and that version exposes no custom-CA setting. Nothing in this
+  repository depends on that product; this is a recorded feasibility result, not a supported
+  deployment. See [`docs/sbx-upstream-proxy-feasibility.md`](docs/sbx-upstream-proxy-feasibility.md).
 - **Content-level egress mediation (shipped, opt-in):** the default proxy filters by hostname only,
   so it can't stop exfiltration through an *allowed* host or domain-fronting. A TLS-intercepting
   variant is included — `docker compose -f docker-compose.mitm.yml up -d --build` — that swaps
