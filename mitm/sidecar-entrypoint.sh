@@ -159,6 +159,14 @@ MITM_PID=$!
 for _ in $(seq 1 50); do [ -f "$CA_PEM" ] && break; sleep 0.2; done
 [ -f "$CA_PEM" ] || { echo "ERROR: mitmproxy CA not generated; see /var/log/mitm.log" >&2; cat /var/log/mitm.log >&2; exit 1; }
 gosu tinyproxy chmod 0644 "$CA_PEM" 2>/dev/null || true   # agent reads it (ro mount) to trust the CA
+# The sidecar must also trust its OWN intercept CA, exactly as the single-container variant does.
+# Its shell environment carries http_proxy=127.0.0.1:8888, so an in-container HTTPS client is
+# served a certificate this proxy re-signed. Without this, claim-token's OAuth validation runs as
+# root, is proxied through mitmproxy, and fails with CERTIFICATE_VERIFY_FAILED — which makes the
+# entire CAS-R072 claim path unusable in this variant. node/git/python pick the bundle up through
+# the CA env vars baked into Dockerfile.mitm.
+cp "$CA_PEM" /usr/local/share/ca-certificates/mitmproxy.crt
+update-ca-certificates >/dev/null 2>&1 || true
 proxy_ready=0
 for _ in $(seq 1 50); do
     if { exec 3<>/dev/tcp/127.0.0.1/8888; } 2>/dev/null; then

@@ -38,6 +38,7 @@ SECRET = os.environ.get("TOKEN_SECRET_PATH", "/var/lib/sandbox/secret/credential
 PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-use")
 FAR_FUTURE_MS = int((time.time() + 10 * 365 * 24 * 3600) * 1000)  # ~10 years out, in milliseconds
 OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token")
+OAUTH_USER_AGENT = os.environ.get("OAUTH_USER_AGENT", "coding-agent-sandbox-claim-token/1.0")
 OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "22422756-60c9-4084-8eb7-27705fd5cf9a")
 
 
@@ -142,9 +143,15 @@ def _validate_refresh(oauth):
         "client_id": client_id,
         "scope": " ".join(requested_scopes),
     }).encode()
+    # A User-Agent is required, not cosmetic. urllib's default ("Python-urllib/3.x") is refused by
+    # the edge in front of the OAuth host with an opaque `403 / error code: 1010` browser-signature
+    # block, which masks whatever the provider actually said. With a real agent string the same
+    # request returns the provider's own error, so a genuine failure stays diagnosable instead of
+    # being reported as a generic validation failure.
     req = urllib.request.Request(
         OAUTH_TOKEN_URL, data=body,
-        headers={"Content-Type": "application/json"}, method="POST")
+        headers={"Content-Type": "application/json",
+                 "User-Agent": OAUTH_USER_AGENT}, method="POST")
     with urllib.request.urlopen(req, timeout=15) as resp:
         r = json.loads(resp.read().decode())
     if not isinstance(r, dict):
@@ -200,7 +207,17 @@ def main():
     try:
         validated = _validate_refresh(oauth)
     except Exception as exc:
-        print(f"claim-token: REFUSED to claim — OAuth validation failed ({exc}); "
+        # Include the provider's own error body. Without it an operator sees only "HTTP Error 400:
+        # Bad Request" and cannot tell a stale client id from a revoked token — both refuse
+        # identically. The body is an OAuth error document (type/message), never credential
+        # material, and is truncated so an unexpected payload cannot flood the terminal.
+        detail = ""
+        if isinstance(exc, urllib.error.HTTPError):
+            try:
+                detail = " — " + exc.read().decode("utf-8", "replace").strip()[:300]
+            except Exception:
+                pass
+        print(f"claim-token: REFUSED to claim — OAuth validation failed ({exc}){detail}; "
               "node credentials left untouched", file=sys.stderr)
         return 1
 
