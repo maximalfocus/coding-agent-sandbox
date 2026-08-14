@@ -131,7 +131,9 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   the externally isolated network. Verified: from inside the sandbox the host's containers and
   images are invisible, and the daemon's own image pulls are refused unless allowlisted (the refusal
   appears in `audit.sh --mitm`). What it is **not**: the daemon container is privileged, so anything
-  that escapes a nested container is inside a privileged container. Use it for trusted build work.
+  that escapes a nested container is inside a privileged container. On a Linux host with AppArmor a
+  privileged container runs **`unconfined`** — verified on Ubuntu 26.04 — so no LSM profile narrows
+  it either. Use it for trusted build work.
   It does not make `docker-compose.host.yml` safe, and that warning stands unchanged — prefer this
   path, and reach for the host socket only when you genuinely need the host engine.
   **Nested containers have no network at all** by construction: they cannot reach the internet, the
