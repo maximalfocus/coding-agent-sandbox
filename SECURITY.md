@@ -123,7 +123,11 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   downgrade to a weaker boundary. Your credentials are left untouched.
   **How you recognise it:** run `scripts/check-provider-contracts.sh`. Each recorded dependency
   reports `PASS`, `DRIFTED`, or `UNEVALUATED`, and a non-zero exit means something recorded has
-  drifted. The check needs no credential, no subscription, and no network access, so it is safe to
+  drifted. On a live request, tell the two apart by who refused: **every refusal this project authors
+  carries an `X-Sandbox-Filter: deny` header and a `Filtered: …` body, and appears as `DENY` in
+  `./audit.sh --mitm`**. A provider's refusal has neither — the mediation layer never rewrites a
+  provider response — so its status and error document are the provider's own, which is where a
+  drifted contract or a revoked key shows up. The check needs no credential, no subscription, and no network access, so it is safe to
   run at any time. `UNEVALUATED` is deliberate and is **not** a pass: some contracts can only be
   confirmed by a live provider call, and the check states that instead of guessing. The inventory,
   the provenance of every pinned value, and the re-pinning procedure are in
