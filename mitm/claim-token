@@ -39,7 +39,7 @@ PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-us
 FAR_FUTURE_MS = int((time.time() + 10 * 365 * 24 * 3600) * 1000)  # ~10 years out, in milliseconds
 OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token")
 OAUTH_USER_AGENT = os.environ.get("OAUTH_USER_AGENT", "coding-agent-sandbox-claim-token/1.0")
-OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "22422756-60c9-4084-8eb7-27705fd5cf9a")
+OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "9d1c250a-e61b-44d9-88ed-5944d1962f5e")
 
 
 def _chown(path, user):

@@ -81,7 +81,7 @@ TOKEN_ISOLATION = _flag("ANTHROPIC_TOKEN_ISOLATION", "false")
 SECRET_PATH = os.environ.get("TOKEN_SECRET_PATH", "/var/lib/sandbox/secret/credentials.json").strip()
 TOKEN_PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-use").strip()
 OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token").strip()
-OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "22422756-60c9-4084-8eb7-27705fd5cf9a").strip()
+OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "9d1c250a-e61b-44d9-88ed-5944d1962f5e").strip()
 REFRESH_SKEW = int(os.environ.get("TOKEN_REFRESH_SKEW", "600"))  # refresh when <10 min remaining
 
 _audit_warned = False

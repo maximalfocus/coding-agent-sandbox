@@ -133,7 +133,7 @@ export ANTHROPIC_TOKEN_ISOLATION=true
 export TOKEN_SECRET_PATH="${TOKEN_SECRET_PATH:-/var/lib/sandbox/secret/credentials.json}"
 export TOKEN_PLACEHOLDER="${TOKEN_PLACEHOLDER:-sandbox-placeholder-do-not-use}"
 export OAUTH_TOKEN_URL="${OAUTH_TOKEN_URL:-https://platform.claude.com/v1/oauth/token}"
-export OAUTH_CLIENT_ID="${OAUTH_CLIENT_ID:-22422756-60c9-4084-8eb7-27705fd5cf9a}"
+export OAUTH_CLIENT_ID="${OAUTH_CLIENT_ID:-9d1c250a-e61b-44d9-88ed-5944d1962f5e}"
 export TOKEN_REFRESH_SKEW="${TOKEN_REFRESH_SKEW:-600}"
 secret_dir="$(dirname "$TOKEN_SECRET_PATH")"
 # chmod AS the owner (gosu): the container drops CAP_FOWNER, so root can't chmod a tinyproxy-owned

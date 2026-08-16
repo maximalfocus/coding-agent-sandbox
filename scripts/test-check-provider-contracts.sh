@@ -74,17 +74,16 @@ make_tree "$FIX_ROOT"
 # This is the regression guard that keeps the inventory honest: if a pinned literal is edited out of
 # the source without updating docs/provider-contracts.md, the check reports it and this test fails.
 run_check "$DOC" "$ROOT"
-[[ $STATUS -eq 1 ]] || fail "real inventory should exit 1 while a recorded contract is drifted (got $STATUS)"
-ok "real inventory exits 1 while a recorded contract is drifted"
-
-[[ "$(status_of claude.oauth-client-id)" == DRIFTED ]] \
-    || fail "the known-drifted Claude client registration must be reported DRIFTED"
-ok "known-drifted Claude client registration is reported DRIFTED"
-
 drifted_ids=$(awk '$1 == "DRIFTED" { print $2 }' <<<"$OUT")
-[[ "$drifted_ids" == "claude.oauth-client-id" ]] \
-    || fail "unexpected drift in the real tree: $(tr '\n' ' ' <<<"$drifted_ids")"
-ok "every other recorded pin still agrees with the source"
+[[ -z "$drifted_ids" ]] \
+    || fail "a recorded pin has drifted from the source: $(tr '\n' ' ' <<<"$drifted_ids")"
+ok "every recorded pin still agrees with the source"
+
+# Exit status must track the drift state rather than being asserted as a constant. An earlier version
+# of this test asserted exit 1 because a drift happened to exist at the time; it then failed the day
+# that drift was repaired, which is the wrong thing to have to fix.
+[[ $STATUS -eq 0 ]] || fail "with nothing drifted the real inventory should exit 0 (got $STATUS)"
+ok "with nothing drifted, the real inventory exits 0"
 
 grep -q '^PASS ' <<<"$OUT" || fail "real inventory reports no PASS at all"
 grep -q '^UNEVALUATED ' <<<"$OUT" || fail "real inventory reports no UNEVALUATED at all"
@@ -220,14 +219,15 @@ ok "malformed inventories fail closed with exit 2 (8 cases)"
 run_check "$DOC" "$ROOT" --json
 python3 -c 'import json,sys; json.load(sys.stdin)' <<<"$OUT" \
     || fail "--json output is not valid JSON"
-python3 - "$OUT" <<'PY' || fail "--json payload does not describe the drift correctly"
+python3 - "$OUT" <<'PY' || fail "--json payload does not match the human report"
 import json, sys
 d = json.loads(sys.argv[1])
-assert d["contractDrift"] is True, "contractDrift should be true while a pin is drifted"
-assert d["drifted"] >= 1, "drifted count should be at least 1"
+assert d["drifted"] == 0, "nothing should be drifted in the real inventory"
+assert d["contractDrift"] is False, "contractDrift should follow the drifted count"
 assert d["unevaluated"] >= 1, "unevaluated count should be at least 1"
 ids = {c["dependency"]: c["status"] for c in d["checks"]}
-assert ids["claude.oauth-client-id"] == "DRIFTED", "client id must be DRIFTED in JSON too"
+# A live-only dependency must never be reported as a pass just because nothing has drifted.
+assert ids["claude.oauth-client-id"] == "UNEVALUATED", "a live-only dependency must not read as PASS"
 assert set(ids.values()) <= {"PASS", "DRIFTED", "UNEVALUATED"}, "unexpected status in JSON"
 PY
 ok "--json emits valid JSON that matches the human report"
