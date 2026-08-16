@@ -82,7 +82,13 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   credentials in the host keychain, *never entering the guest*; a plain subscription login inside a
   container can't match that. The token only authorizes *your own* account, but it is reachable by
   the agent and therefore leakable via an allowed host.
-  **The TLS-intercepting variant now closes most of this gap.** Set `ANTHROPIC_TOKEN_ISOLATION=true`
+  **The TLS-intercepting variant is designed to close most of this gap — but it currently cannot,
+  because the OAuth client registration `claim-token` relies on is no longer recognised by the
+  provider.** A claim fails closed and leaves your login untouched, so nothing is weakened; the
+  capability is simply unavailable until the contract is re-pinned. Run
+  `scripts/check-provider-contracts.sh` to see the current state, and read
+  [`docs/provider-contracts.md`](docs/provider-contracts.md) for what is pinned and why. The rest of
+  this bullet describes the mechanism as designed. Set `ANTHROPIC_TOKEN_ISOLATION=true`
   (see `docker-compose.mitm.yml`) and the real OAuth login is moved out of the node volume into a
   **tinyproxy-only vault** (`/var/lib/sandbox/secret`, mode `0700`, unreadable by `node`); the
   agent's copy is replaced with a far-future **placeholder** so the CLI stays "logged in" but holds
@@ -104,6 +110,26 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   container. The default (tinyproxy) stack can't do this — injection needs TLS termination, so token
   isolation requires the mitm variant. Don't combine it with a managed-settings `forceLoginOrgUUID`
   policy (that makes the CLI validate the placeholder server-side and fail).
+- **Provider-controlled contracts can change without notice, and a change disables the capability
+  that rests on it.** Several capabilities here depend on something this project does not control: an
+  authentication endpoint, a grant shape, a client identifier, an injection destination and its
+  header contract, or a credential file whose schema is written by an agent CLI. Unlike a downloaded
+  binary, none of that can be checksummed — the provider can change it server-side at any time.
+  Affected: **Claude subscription token isolation** (`ANTHROPIC_TOKEN_ISOLATION`, both the mitm and
+  sidecar variants), **DeepSeek key injection** (`ALLOW_DEEPSEEK`), and the **Pi harness** assertion
+  that no usable key is visible in its own auth file. The `SL-13` Codex verdict rests on a pinned CLI
+  version for the same reason.
+  **What a change does:** the dependent capability fails closed — a refusal, never a silent
+  downgrade to a weaker boundary. Your credentials are left untouched.
+  **How you recognise it:** run `scripts/check-provider-contracts.sh`. Each recorded dependency
+  reports `PASS`, `DRIFTED`, or `UNEVALUATED`, and a non-zero exit means something recorded has
+  drifted. The check needs no credential, no subscription, and no network access, so it is safe to
+  run at any time. `UNEVALUATED` is deliberate and is **not** a pass: some contracts can only be
+  confirmed by a live provider call, and the check states that instead of guessing. The inventory,
+  the provenance of every pinned value, and the re-pinning procedure are in
+  [`docs/provider-contracts.md`](docs/provider-contracts.md).
+  This is detection and honest failure, not immunity — no configuration here can stop a provider
+  from changing its own contract.
 - **DNS is restricted to the proxy user** (queries to `127.0.0.11` from Claude/tools are dropped;
   only `tinyproxy` resolves). This closes the direct DNS-tunnelling channel. It is not a *hermetic*
   seal — the proxy still forwards lookups for allowlisted names daemon-side — but a non-proxy
