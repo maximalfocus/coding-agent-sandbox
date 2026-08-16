@@ -29,6 +29,36 @@ the requirement is that each property is covered, not that any particular fleet 
 | Firewall, proxy, allowlist, credential-injection logic | `any` | the `mitm/test_*.py` suites, `sidecar-smoketest.sh` |
 | Compose structure, documentation, verification tooling | `any` | the `scripts/test-*.sh` suites |
 
+## Reaching another machine
+
+When a verification needs a host this one is not, use:
+
+```bash
+scripts/verify-on-host.sh --list                    # which hosts are registered
+scripts/verify-on-host.sh idd -- 'docker build …'   # run it there
+```
+
+It prints the host class it actually reached, so a claim can name it:
+
+```
+host: idd (10.131.4.113) — arch:x86_64 kernel:bare Linux
+host-class: arch:x86_64 kernel:bare (idd)
+```
+
+**Do not reach these machines by alias alone.** They hold DHCP leases on a network that resolves no
+names, so an address is the only handle and it moves. A stale alias either fails in a way that looks
+like the host being down, or connects to whatever machine inherited the lease — and a result recorded
+against the wrong host class is worse than one that admits it did not run.
+
+Resolution is therefore delegated to the maintained fleet tool, which identifies a machine by its
+**SSH host key** — the one thing that does not move — and repairs the alias to match.
+`scripts/verify-on-host.sh` contains no discovery logic of its own, and a test asserts that no second
+implementation exists anywhere in `scripts/`. If the fleet tool is unavailable the wrapper stops and
+says so; it will not fall back to a plain `ssh <alias>`, because that fallback is the failure being
+removed.
+
+Point `FIND_HOST` at the tool if it is not in one of the documented locations or on `PATH`.
+
 ## Stating the host class in a claim
 
 A verification claim should name the host class it actually ran on, and a class that was not run is
