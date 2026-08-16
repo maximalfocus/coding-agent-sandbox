@@ -111,6 +111,20 @@ services:
       - "claude-mitm-ca:/etc/mitmproxy-ca:ro"        # read-only view of the CA
       # Experimental entrypoint, bind-mounted into the stock base image (no Dockerfile change).
       - "./mitm/agent-entrypoint.sh:/usr/local/bin/agent-entrypoint.sh:ro"
+      - "./mitm/agent-healthcheck.sh:/usr/local/bin/agent-healthcheck.sh:ro"
+    # The base image's healthcheck asserts an in-container tinyproxy is alive. In this variant the
+    # proxy lives in the egress sidecar by design, so the agent runs none and that check could never
+    # pass — the container reported `unhealthy` permanently on a working stack (issue #70). Assert
+    # this variant's own invariants instead: the mandatory agent firewall is installed and the pinned
+    # sidecar proxy is reachable. Read-only; it opens no egress and sends nothing through the proxy.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/agent-healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      # Longer than the base image's 25s: the agent waits for the sidecar to publish its CA and to
+      # become resolvable before it installs the firewall this check looks for.
+      start_period: 60s
+      retries: 3
     restart: unless-stopped
 
 networks:
