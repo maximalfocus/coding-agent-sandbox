@@ -38,7 +38,7 @@ import stat
 import sys
 import time
 import urllib.request
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 from mitmproxy import http
 
 
@@ -81,6 +81,11 @@ TOKEN_ISOLATION = _flag("ANTHROPIC_TOKEN_ISOLATION", "false")
 SECRET_PATH = os.environ.get("TOKEN_SECRET_PATH", "/var/lib/sandbox/secret/credentials.json").strip()
 TOKEN_PLACEHOLDER = os.environ.get("TOKEN_PLACEHOLDER", "sandbox-placeholder-do-not-use").strip()
 OAUTH_TOKEN_URL = os.environ.get("OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token").strip()
+# Host and path of the token endpoint, used to recognise the agent CLI's own refresh attempts.
+# Derived from the pinned URL rather than repeated, so there is one place to change.
+_oauth_parts = urlsplit(OAUTH_TOKEN_URL)
+OAUTH_TOKEN_HOST = _oauth_parts.hostname or ""
+OAUTH_TOKEN_PATH = _oauth_parts.path or "/"
 OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "9d1c250a-e61b-44d9-88ed-5944d1962f5e").strip()
 REFRESH_SKEW = int(os.environ.get("TOKEN_REFRESH_SKEW", "600"))  # refresh when <10 min remaining
 
@@ -183,6 +188,23 @@ def _deny(flow, msg):
     flow.response = http.Response.make(
         403, (msg + "\n").encode(),
         {"Content-Type": "text/plain", SANDBOX_FILTER_HEADER: "deny"})
+
+
+# Matches mitm/claim-token's placeholder expiry: far enough out that the CLI never treats the
+# credential as expired on arithmetic alone.
+FAR_FUTURE_MS = int((time.time() + 10 * 365 * 24 * 3600) * 1000)
+
+
+def _stub(flow, payload):
+    """Answer a request locally instead of forwarding it, with a synthetic JSON body.
+
+    Used for exactly one case: the agent CLI refreshing the placeholder credential (see `request`).
+    It is marked as sandbox-authored like every denial is, so it is never mistaken for a provider
+    response, and the payload it carries contains only placeholders — never vault material.
+    """
+    flow.response = http.Response.make(
+        200, json.dumps(payload).encode(),
+        {"Content-Type": "application/json", SANDBOX_FILTER_HEADER: "stub"})
 
 
 class TokenVault:
@@ -373,6 +395,45 @@ async def request(flow: http.HTTPFlow):
     if port not in ALLOWED_CONNECT_PORTS:
         _log("DENY", method, host, f":{port}", "port-not-allowed")
         return _deny(flow, "Filtered: destination port not allowed")
+
+    # 1b. The agent CLI's own OAuth refresh, when token isolation is on.
+    #
+    # The agent holds only an inert placeholder, and the CLI refreshes anyway — the far-future
+    # `expiresAt` the placeholder carries does not stop it. That refresh presents the placeholder as
+    # its refresh token, the provider correctly refuses it, and the CLI treats the refusal as a dead
+    # session and zeroes its own credential file. The result was a variant that served exactly one
+    # invocation per claim (issue #86).
+    #
+    # This addon already OWNS the OAuth refresh — TokenVault refreshes the real credential behind the
+    # agent's back. What was missing is the other half: telling the CLI its refresh succeeded, without
+    # ever handing it anything usable. So a refresh that presents *the placeholder* is answered here,
+    # with another placeholder and a fresh far-future expiry.
+    #
+    # The trigger is deliberately narrow, and everything about it is fail-open toward the provider:
+    #   - token isolation must be on (otherwise there is no placeholder in play),
+    #   - the routing host and normalized path must be the pinned token endpoint,
+    #   - and the presented refresh_token must be EXACTLY the placeholder.
+    # Anything else — a real refresh token, a different host, an unparsable body — passes through
+    # untouched. That matters for CAS-R172: drift is still detected on every path that carries a real
+    # credential (claim-token's validation and TokenVault's own refresh both reach the provider), so
+    # a retired client registration or endpoint still surfaces the provider's own error. The only
+    # request short-circuited here is one this sandbox fabricated and which could never succeed.
+    if (VAULT is not None and method == "POST"
+            and _matches(host, OAUTH_TOKEN_HOST) and _norm_path(path) == _norm_path(OAUTH_TOKEN_PATH)):
+        presented = None
+        try:
+            presented = json.loads(flow.request.get_text() or "{}").get("refresh_token")
+        except Exception:
+            presented = None          # unparsable body: not ours to answer — fall through
+        if presented == TOKEN_PLACEHOLDER:
+            _log("STUB", method, host, path, "placeholder refresh answered locally; vault owns the real one")
+            far_future_seconds = max(1, int((FAR_FUTURE_MS / 1000.0) - time.time()))
+            return _stub(flow, {
+                "access_token": TOKEN_PLACEHOLDER,
+                "refresh_token": TOKEN_PLACEHOLDER,
+                "expires_in": far_future_seconds,
+                "token_type": "Bearer",
+            })
 
     # 2. DeepSeek static-key isolation. This branch is exact-host only: unlike the suffix-based
     # general allowlist, no subdomain inherits access or credential trust. Always overwrite any
