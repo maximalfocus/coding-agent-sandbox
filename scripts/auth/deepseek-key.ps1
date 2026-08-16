@@ -14,7 +14,11 @@ $managerAction = switch ($args[0]) {
     "status"    { "status" }
     "revoke"    { "delete" }
 }
-$compose = @("compose", "-f", "docker-compose.sidecar.yml", "run", "--rm", "--no-deps",
+# Scope to the selected project, the same way sidecar-smoketest.sh and claim-token do. Without `-p`
+# this cannot address a stack started with one (issue #95).
+$scope = @()
+if ($env:SIDECAR_COMPOSE_PROJECT) { $scope = @("-p", $env:SIDECAR_COMPOSE_PROJECT) }
+$compose = @("compose") + $scope + @("-f", "docker-compose.sidecar.yml", "run", "--rm", "--no-deps",
              "deepseek-key-manager", $managerAction)
 
 if ($managerAction -ne "store") {

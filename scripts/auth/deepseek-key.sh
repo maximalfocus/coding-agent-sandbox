@@ -18,7 +18,12 @@ case "$action" in
     *) usage ;;
 esac
 
-compose=(docker compose -f docker-compose.sidecar.yml)
+# Scope to the selected project, the same way sidecar-smoketest.sh and claim-token.sh do. Without
+# `-p` this cannot address a stack started with one, so an isolated validation run had to invoke
+# Compose directly to work around it (issue #95).
+compose=(docker compose)
+if [ -n "${SIDECAR_COMPOSE_PROJECT:-}" ]; then compose+=(-p "$SIDECAR_COMPOSE_PROJECT"); fi
+compose+=(-f docker-compose.sidecar.yml)
 manager=("${compose[@]}" run --rm --no-deps deepseek-key-manager "$manager_action")
 
 if [ "$manager_action" != store ]; then

@@ -14,23 +14,51 @@ cd "$(dirname "$0")/../.."
 # Auto-detect which isolation stack is up: the two-container sidecar variant (egress container) or
 # the single-container mitm variant. Claim runs in whichever holds the vault.
 #
-# The sidecar's container name is operator-overridable (docker-compose.sidecar.yml), so detection
-# must honour that override or this script cannot see a stack started under issue-specific names —
-# which is exactly what an isolated validation run requires. `sidecar-smoketest.sh` already reads
-# these variables; this keeps the two helpers consistent. The mitm variant hardcodes its
-# container_name, so its branch needs no override.
+# Which stack this resolves to is a credential-affecting choice — the claim MOVES a real subscription
+# token — so the selection has to be addressable and visible rather than inferred from whatever
+# happens to be running. `-p` is what makes it addressable: a Compose call without it cannot see a
+# project started with one, so honouring SIDECAR_EGRESS_CONTAINER_NAME alone was not enough to reach
+# an isolated stack, and an unset name could match the operator's own stack instead (issue #95).
+#
+# The mitm variant hardcodes its container_name, so its branch needs no name override.
+SIDECAR_PROJECT="${SIDECAR_COMPOSE_PROJECT:-}"
 EGRESS_CONTAINER="${SIDECAR_EGRESS_CONTAINER_NAME:-claude-sandbox-egress}"
-if docker compose -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -qx "$EGRESS_CONTAINER"; then
+COMPOSE=(docker compose)
+if [ -n "$SIDECAR_PROJECT" ]; then COMPOSE+=(-p "$SIDECAR_PROJECT"); fi
+
+if "${COMPOSE[@]}" -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -qx "$EGRESS_CONTAINER"; then
     SVC=claude-sandbox-egress
-    COMPOSE=(docker compose -f docker-compose.sidecar.yml)
-elif docker compose -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -q claude-sandbox-mitm; then
+    CONTAINER="$EGRESS_CONTAINER"
+    COMPOSE+=(-f docker-compose.sidecar.yml)
+elif "${COMPOSE[@]}" -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>/dev/null | grep -q claude-sandbox-mitm; then
     SVC=claude-sandbox-mitm
-    COMPOSE=(docker compose -f docker-compose.mitm.yml)
+    CONTAINER=claude-sandbox-mitm
+    COMPOSE+=(-f docker-compose.mitm.yml)
 else
-    echo "No isolation sandbox is running. Start one first:"
+    echo "No isolation sandbox is running${SIDECAR_PROJECT:+ in project '$SIDECAR_PROJECT'}. Start one first:"
     echo "  ANTHROPIC_TOKEN_ISOLATION=true docker compose -f docker-compose.mitm.yml up -d --build"
     echo "  # or the experimental sidecar: docker compose -f docker-compose.sidecar.yml up -d --build"
     exit 1
+fi
+
+# Say which stack is about to be acted on. A command that moves a credential should not leave the
+# operator to infer its target from the absence of an error.
+echo "Claiming into: $CONTAINER${SIDECAR_PROJECT:+  (project '$SIDECAR_PROJECT')}"
+
+# A validation run that declares a project but mounts the operator's own volumes would claim the
+# operator's real login. `-p` does not scope this project's volumes, which are named explicitly so a
+# renamed checkout never orphans a login, so the two can disagree (issue #93).
+if [ -n "$SIDECAR_PROJECT" ]; then
+    # `|| true`: the check exits 1 precisely when it finds something, and under `set -e` that would
+    # abort here — failing closed by accident, with no message saying why.
+    shared=$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$CONTAINER" 2>/dev/null \
+             | sort -u | ./scripts/check-stack-isolation.sh docker-compose.sidecar.yml | tr '\n' ' ' | sed 's/ *$//' || true)
+    if [ -n "$shared" ] && [ "${SIDECAR_ALLOW_SHARED_VOLUMES:-}" != true ]; then
+        echo "REFUSING: project '$SIDECAR_PROJECT' mounts the operator's own volumes: $shared" >&2
+        echo "  A claim here would move the real login, not this stack's. Set the volume variables" >&2
+        echo "  documented at the top of sidecar-smoketest.sh, or SIDECAR_ALLOW_SHARED_VOLUMES=true." >&2
+        exit 1
+    fi
 fi
 
 # Runs as root inside the container: it must write both the tinyproxy-owned vault and the node-owned
