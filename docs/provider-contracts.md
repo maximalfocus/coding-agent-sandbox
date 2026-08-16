@@ -63,9 +63,9 @@ the vaulted bearer, own the refresh).
 | Dependency | Where the value lives | What breaks if the provider changes it |
 |---|---|---|
 | OAuth token endpoint | `mitm/claim-token`, `mitm/filter_addon.py`, and the two entrypoints that export the default (`mitm/entrypoint.sh`, `mitm/sidecar-entrypoint.sh`) — `OAUTH_TOKEN_URL`, env-overridable | Claiming refuses and vault refresh stops rotating. `CAS-R072` token isolation becomes uncompletable in both the MITM and sidecar variants. |
-| OAuth client registration | the same four files — `OAUTH_CLIENT_ID`, env-overridable | The refresh grant is refused, so no login can be vaulted. **This is the observed 2026-08-14 drift.** |
+| OAuth client registration | the same four files — `OAUTH_CLIENT_ID`, env-overridable | The refresh grant is refused, so no login can be vaulted. Drifted once already (2026-08-14) and was re-pinned on 2026-08-16; see the provenance section. Load-bearing because the CLI no longer writes a `clientId` of its own. |
 | Refresh grant shape | `mitm/claim-token`, `mitm/filter_addon.py` (JSON body: `grant_type`, `refresh_token`, `client_id`, `scope`) | The grant is rejected or silently returns a narrower token than the caller expects. |
-| Credential file schema | `mitm/claim-token`, `mitm/filter_addon.py` — the `claudeAiOauth` root object holding `accessToken`, `refreshToken`, `expiresAt`, `scopes` | Written by the Claude Code CLI, not by this project. A schema change means the claim finds nothing to move, or the placeholder stops convincing the CLI it is logged in. The pin is the root object key; the field-level semantics are covered by `mitm/test_token_isolation.py`, which fails loudly on its own. |
+| Credential file schema | `mitm/claim-token`, `mitm/filter_addon.py` — the `claudeAiOauth` root object. As written by CLI `2.1.233` (observed 2026-08-16): `accessToken`, `refreshToken`, `expiresAt`, `refreshTokenExpiresAt`, `rateLimitTier`, `scopes`, `subscriptionType`. It has **gained** `refreshTokenExpiresAt` and `rateLimitTier`, and **lost `clientId`**, since this contract was first recorded | Written by the Claude Code CLI, not by this project. A schema change means the claim finds nothing to move, or the placeholder stops convincing the CLI it is logged in. The pin is the root object key; the field-level semantics are covered by `mitm/test_token_isolation.py`, which fails loudly on its own. |
 | Injection destination and header | `mitm/filter_addon.py` (`api.anthropic.com`, `authorization: Bearer`) | The vaulted token is injected on a host the API no longer serves, or in a form it no longer accepts — requests fail with the agent holding only a placeholder. |
 | Pinned CLI whose schema is consumed | `Dockerfile` (`CLAUDE_CODE_VERSION`) | This project's own pin, not the provider's. Recorded because the credential file schema above is only meaningful relative to a known CLI version. |
 
@@ -147,6 +147,31 @@ Every value recorded here came from this repository's own source at the commit t
 None was extracted from a compiled or obfuscated provider artifact, and none may be — `PRD §7` names
 that an explicit non-goal.
 
+### The one re-pin performed so far
+
+**`claude.oauth-client-id`, re-pinned 2026-08-16.**
+
+| | |
+|---|---|
+| Previous value | `22422756-60c9-4084-8eb7-27705fd5cf9a` — retired by the provider; rejected with `Client with id … not found` |
+| New value | `9d1c250a-e61b-44d9-88ed-5944d1962f5e` |
+| Source | the `client_id` query parameter of the authorization URL that Claude Code prints for the operator to open during `/login` |
+| CLI version that emitted it | `2.1.233` |
+| Observed | 2026-08-16, during a real subscription login in an isolated sandbox stack |
+| Verified | the claim succeeded against the live provider with this value: *"validated subscription token moved to the vault; placeholder installed for the agent"* |
+
+This is the source `CAS-R174` permits — "a provider's own artifacts **or observed traffic**". The value
+is emitted in plain text by the provider's own client, to the user, as part of the documented login
+flow. Nothing was extracted from a compiled or obfuscated artifact, which `PRD §7` forbids.
+
+**To obtain it again:** run `/login` in an agent container and read `client_id=` from the URL the CLI
+prints, before approving. An OAuth *client* registration is a public identifier, not a credential.
+
+Why this constant is load-bearing at all: `claim-token` uses `oauth.get("clientId") or
+OAUTH_CLIENT_ID`, and CLI `2.1.233` writes no `clientId` into its credential file, so the fall-back is
+always taken. If a future CLI starts storing one again, the recorded value stops being used and the
+check's `UNEVALUATED` status for this dependency becomes the honest one.
+
 When a pin has to change:
 
 1. Record where the replacement came from — official provider documentation, a supported API
@@ -175,7 +200,7 @@ Fields are `|`-separated; surrounding whitespace is ignored.
 ```contract-pins
 # id | provider | surface | files | pin | live | observed
 claude.oauth-token-endpoint | Claude | endpoint | mitm/claim-token,mitm/entrypoint.sh,mitm/filter_addon.py,mitm/sidecar-entrypoint.sh | https://platform.claude.com/v1/oauth/token | required | -
-claude.oauth-client-id | Claude | identifier | mitm/claim-token,mitm/entrypoint.sh,mitm/filter_addon.py,mitm/sidecar-entrypoint.sh | 22422756-60c9-4084-8eb7-27705fd5cf9a | required | drifted:2026-08-14
+claude.oauth-client-id | Claude | identifier | mitm/claim-token,mitm/entrypoint.sh,mitm/filter_addon.py,mitm/sidecar-entrypoint.sh | 9d1c250a-e61b-44d9-88ed-5944d1962f5e | required | -
 claude.oauth-grant-shape | Claude | grant shape | mitm/claim-token,mitm/filter_addon.py | "grant_type": "refresh_token" | required | -
 claude.credential-file-schema | Claude | credential schema | mitm/claim-token,mitm/filter_addon.py | claudeAiOauth | required | -
 claude.injection-destination | Claude | injection destination | mitm/filter_addon.py | _matches(host, "api.anthropic.com") | required | -

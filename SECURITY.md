@@ -82,11 +82,16 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   credentials in the host keychain, *never entering the guest*; a plain subscription login inside a
   container can't match that. The token only authorizes *your own* account, but it is reachable by
   the agent and therefore leakable via an allowed host.
-  **The TLS-intercepting variant is designed to close most of this gap — but it currently cannot,
-  because the OAuth client registration `claim-token` relies on is no longer recognised by the
-  provider.** A claim fails closed and leaves your login untouched, so nothing is weakened; the
-  capability is simply unavailable until the contract is re-pinned. Run
-  `scripts/check-provider-contracts.sh` to see the current state, and read
+  **The TLS-intercepting variant is designed to close most of this gap — and as of 2026-08-16 it does
+  not, for a reason worth knowing before you rely on it.** The claim itself works: a live run moved a
+  real subscription token into the sidecar vault, left the agent an inert placeholder, and served a
+  real model call by injecting the vaulted token — the agent's own credential was never the one used,
+  and direct egress stayed blocked. **But the placeholder does not survive.** After a single `claude`
+  invocation the CLI refreshes and writes a usable token back into agent-readable storage. The proxy
+  detects this and warns, but detection is not containment. Treat token isolation as **unproven** in
+  this variant until that is resolved — see
+  [issue #86](https://github.com/maximalfocus/coding-agent-sandbox/issues/86). Run
+  `scripts/check-provider-contracts.sh` for the state of the contracts it depends on, and read
   [`docs/provider-contracts.md`](docs/provider-contracts.md) for what is pinned and why. The rest of
   this bullet describes the mechanism as designed. Set `ANTHROPIC_TOKEN_ISOLATION=true`
   (see `docker-compose.mitm.yml`) and the real OAuth login is moved out of the node volume into a
