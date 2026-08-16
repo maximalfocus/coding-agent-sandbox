@@ -205,6 +205,42 @@ The evidence and reevaluation condition are recorded in
 Do not add OpenAI routes, copy `auth.json`, parse its private fields, or fall back to API-key billing
 to work around this boundary.
 
+## Verification record — 2026-08-16
+
+The first end-to-end run of this variant with a real subscription. Recorded here because issue #58
+required it; nothing below contains credential material.
+
+| | |
+|---|---|
+| Tested tree | the change that landed as squash `8f7a67b` on `main` |
+| Images | built from that tree — agent from `Dockerfile`, egress from `Dockerfile.mitm` |
+| Claude Code | `2.1.233` |
+| Host class | `arch:arm64`, `kernel:vm` (macOS, Docker in a VM) |
+| Stack | isolated Compose project with issue-specific containers, networks and volumes; no operator credential volume mounted; torn down afterwards |
+| Gates | `ENABLE_NESTED_DOCKER` unset, `ALLOW_DEEPSEEK=false`, no registry-auth exemption — i.e. the additions since this variant was written were all default-off |
+
+**Sequence and result**
+
+| Step | Observed |
+|---|---|
+| Before login | no credential file |
+| After interactive `/login` | real token, `expiresAt` +8.0 h |
+| After `claim-token` | placeholder (len 30), `expiresAt` +10 years; vault `0700`/`0600`, `tinyproxy`-owned |
+| Model call ×3 | all succeeded; placeholder intact after **every** one |
+| Direct non-proxied egress | blocked |
+| Vault visible to agent | no |
+
+**Proxy audit for the run:** 3 × `STUB`, 9 × `INJECT`, 43 × `ALLOW`, 21 × `DENY`, and **0**
+non-placeholder credentials presented by the agent. No credential-shaped material in the trail.
+
+**Smoke test: 11 passed, 0 failed, 0 skipped** — 10 structural checks plus the login-dependent
+placeholder check, which passed here for the first time. The count is stated because the structural
+inventory has grown since #58 was written.
+
+**What this does not establish.** Refresh beyond the access-token lifetime is still unexercised, which
+is why the variant remains **experimental** and why `SL-09` is not promoted. A separate run spanning
+the token TTL is required for that.
+
 ## Verification (REQUIRED before this is trusted / merged)
 
 **One-command path:** `./sidecar-smoketest.sh --up` brings the stack up and runs the structural
