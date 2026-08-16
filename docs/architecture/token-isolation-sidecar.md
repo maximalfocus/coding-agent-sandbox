@@ -84,6 +84,40 @@ The credential paths share the same proxy boundary but keep separate storage and
   other sidecar ports, and every other destination are rejected. Failure to resolve/pin the sidecar or
   install the firewall prevents the agent container from starting.
 
+## The CLI's own refresh is answered locally
+
+The vault owns the OAuth refresh. That was always the design, but half of it was missing: the **agent
+CLI also refreshes**, and nothing was answering it.
+
+The placeholder carries a far-future `expiresAt` so the CLI believes it is logged in. Against Claude
+Code `2.1.233` that is no longer enough — it refreshes anyway, presenting the placeholder as its
+refresh token. The provider correctly refuses a credential the sandbox fabricated, and the CLI treats
+that refusal as a dead session and **erases its own login**. The result was a variant that served
+exactly one invocation per claim (issue #86).
+
+So `mitm/filter_addon.py` answers that specific request itself, returning another placeholder with a
+fresh far-future expiry. The CLI stays logged in indefinitely and never receives anything usable.
+
+The trigger is deliberately narrow, and everything outside it reaches the provider untouched:
+
+| Condition | Required |
+|---|---|
+| Token isolation on | yes — otherwise no placeholder exists |
+| Routing host and normalized path | the pinned token endpoint |
+| `refresh_token` in the body | **exactly** the placeholder |
+
+A refresh carrying a **real** credential is never intercepted. That is what keeps `CAS-R172` intact:
+`claim-token`'s validation and the vault's own refresh both still reach the provider, so a retired
+client registration or a moved endpoint still surfaces the provider's own error — which is exactly how
+the 2026-08-14 drift was found.
+
+The answer is logged as `STUB` in the audit trail and carries `X-Sandbox-Filter: stub`, so it is never
+mistaken for a provider response. Its body contains only placeholders, never vault material.
+
+Verified live on 2026-08-16: claim, then three consecutive real model calls, placeholder intact after
+each, three `STUB` events, nine `INJECT` events, and **zero** non-placeholder credentials seen by the
+proxy.
+
 ## Health reporting
 
 Both containers report a health status that means something in *this* variant.

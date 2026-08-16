@@ -18,6 +18,7 @@ pull request; a unit test cannot prove it.
 Unlike the sibling suites, the fake Response here KEEPS the headers, which is what lets the marker be
 asserted at all.
 """
+import json
 import os
 import re
 import sys
@@ -83,11 +84,21 @@ check("a denial carries the sandbox marker header",
 check("a denial still declares a plain-text content type",
       flow.response[3].get("Content-Type") == "text/plain")
 
-# The marker must be on EVERY denial, not just the one sampled above. `_deny` is the only place the
-# addon constructs a response, so asserting that is what makes the guarantee total.
+# The marker must be on EVERY response the addon authors, not just the one sampled above. What makes
+# that total is not "there is one authoring site" — issue #86 added a second, `_stub` — but that every
+# site is a marked helper and nothing assigns `flow.response` inline.
 source = open(os.path.join(HERE, "filter_addon.py")).read()
 authored = re.findall(r"flow\.response\s*=", source)
-check("the addon authors a response in exactly one place", len(authored) == 1)
+helper_bodies = re.findall(r"^def (_deny|_stub)\(.*?(?=^\S)", source, re.M | re.S)
+check("every response the addon authors is inside a marked helper",
+      len(authored) == len(re.findall(r"^def (?:_deny|_stub)\(", source, re.M)))
+
+# And each of those helpers must set the marker header, so provenance cannot be dropped by adding a
+# new one that forgets it.
+for helper in ("_deny", "_stub"):
+    body = re.search(r"^def %s\(.*?(?=^(?:def |[A-Z_]+ =))" % helper, source, re.M | re.S)
+    check("%s() sets the sandbox marker header" % helper,
+          bool(body) and "SANDBOX_FILTER_HEADER" in body.group(0))
 
 deny_calls = len(re.findall(r"_deny\(", source)) - 1  # minus the definition itself
 check(f"all {deny_calls} refusal sites route through that one place", deny_calls >= 10)
@@ -123,6 +134,22 @@ check("a denial body names the condition, never a credential",
       or b"unavailable or unsafe" in leaky.response[2])
 check("a denial carries exactly the two expected headers",
       set(leaky.response[3]) == {"Content-Type", filter_addon.SANDBOX_FILTER_HEADER})
+
+# --- 4. the locally-answered refresh is marked too, and carries no vault material ---
+stubbed = Flow()
+filter_addon._stub(stubbed, {"access_token": filter_addon.TOKEN_PLACEHOLDER,
+                             "refresh_token": filter_addon.TOKEN_PLACEHOLDER,
+                             "expires_in": 1, "token_type": "Bearer"})
+check("a stubbed response is a 200", stubbed.response[1] == 200)
+check("a stubbed response is marked as sandbox-authored",
+      stubbed.response[3].get(filter_addon.SANDBOX_FILTER_HEADER) == "stub")
+check("a stubbed response is distinguishable from a denial",
+      stubbed.response[3].get(filter_addon.SANDBOX_FILTER_HEADER)
+      != leaky.response[3].get(filter_addon.SANDBOX_FILTER_HEADER))
+body = json.loads(stubbed.response[2].decode())
+check("a stubbed refresh returns only placeholders",
+      body["access_token"] == filter_addon.TOKEN_PLACEHOLDER
+      and body["refresh_token"] == filter_addon.TOKEN_PLACEHOLDER)
 
 print(f"\n{passed}/{passed + failed} checks passed")
 sys.exit(1 if failed else 0)
