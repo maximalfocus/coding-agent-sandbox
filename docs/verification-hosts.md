@@ -59,6 +59,37 @@ removed.
 
 Point `FIND_HOST` at the tool if it is not in one of the documented locations or on `PATH`.
 
+## Verifying both architecture branches
+
+The image resolves architecture-specific downloads through `case` statements on `TARGETARCH`, and
+each branch carries its **own SHA-256 constant**. A wrong checksum or a rotted URL in one branch
+cannot be caught by building the other — the branch that did not build was never executed.
+
+```bash
+scripts/verify-image-architectures.sh                    # both architectures
+REMOTE_ARCH_HOST=idd scripts/verify-image-architectures.sh
+```
+
+It builds locally for this machine's architecture and, through `scripts/verify-on-host.sh`, on a
+fleet host for the other. Each row names the host class it ran on, and an architecture that could not
+be built is reported **`NOT COVERED`** — never folded into a pass, because a partial run that reads
+like a complete one is worse than no check at all.
+
+**It builds with `--no-cache`, and that is the point.** A cached layer never executes, so a
+warm-cache build does not run `sha256sum` at all: deliberately corrupting an architecture's checksum
+and rebuilding reported `CACHED` and *succeeded*. Only with `--no-cache` does the same corruption
+fail the build — which is what `CAS-R160` actually asks for.
+
+Two consequences follow, and both are normal rather than faults:
+
+- **It is slow.** A clean build is tens of minutes per architecture. This is a per-release check, not
+  a per-change one.
+- **It is network-dependent.** A clean build re-fetches every pinned artifact, so a failure at a
+  download step may be a transient network problem rather than a broken branch. One such failure was
+  observed during this work — a Go module download — and a retry of the identical build succeeded.
+  **Read the reported cause before treating a failure as a broken architecture.** The gate
+  deliberately does not retry on your behalf: a check that retries until it passes is not a check.
+
 ## Stating the host class in a claim
 
 A verification claim should name the host class it actually ran on, and a class that was not run is

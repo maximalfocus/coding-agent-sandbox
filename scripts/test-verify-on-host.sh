@@ -59,8 +59,14 @@ printf 'ssh-invoked\n' >>"${SSH_TRACE:-/dev/null}"
 args=("$@")
 last=${args[${#args[@]}-1]}
 if [[ "$last" == *"uname -m"* ]]; then
+  # Model real ssh: without -n it reads stdin, which silently steals a caller's piped data.
+  [[ " $* " == *" -n "* ]] || cat >/dev/null
   [[ "${SSH_FACTS_SCENARIO:-ok}" == silent ]] && exit 1
   echo "x86_64 bare Linux"
+  exit 0
+fi
+if [[ "$last" == *STDIN-RELAY* ]]; then
+  printf 'RELAYED:'; cat
   exit 0
 fi
 echo "COMMAND-RAN: $last"
@@ -139,6 +145,17 @@ grep -q 'host-class: arch:x86_64 kernel:bare' <<<"$OUT" \
     || fail "the run must report the host class it reached: $OUT"
 grep -q '10.0.0.42' <<<"$OUT" || fail "the run should name the resolved address: $OUT"
 ok "a resolvable host runs the command and reports its host class"
+
+# --- piped stdin reaches the command ----------------------------------------
+# The host-facts probe runs first; without `ssh -n` it drains stdin and a caller piping data through
+# loses it silently. That broke `git archive | verify-on-host.sh host -- 'tar xf -'`.
+set +e
+OUT=$(printf 'PAYLOAD\n' | PATH="$STUB_DIR:$PATH" FIND_HOST="$STUB_DIR/find-host" \
+      "$WRAPPER" idd -- 'STDIN-RELAY' 2>/dev/null)
+STATUS=$?
+set -e
+grep -q 'RELAYED:PAYLOAD' <<<"$OUT" || fail "piped stdin did not reach the command: $OUT"
+ok "piped stdin reaches the command rather than being drained by the host-facts probe"
 
 # --- the command's own status is preserved -----------------------------------
 set +e
