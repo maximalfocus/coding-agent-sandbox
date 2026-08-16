@@ -180,7 +180,7 @@ claude.oauth-grant-shape | Claude | grant shape | mitm/claim-token,mitm/filter_a
 claude.credential-file-schema | Claude | credential schema | mitm/claim-token,mitm/filter_addon.py | claudeAiOauth | required | -
 claude.injection-destination | Claude | injection destination | mitm/filter_addon.py | _matches(host, "api.anthropic.com") | required | -
 claude.injection-header | Claude | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {tok}" | required | -
-claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.158 | na | -
+claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.233 | na | -
 deepseek.injection-host | DeepSeek | injection destination | mitm/filter_addon.py | _exact(host, ("api.deepseek.com",)) | required | -
 deepseek.exact-host-grant | DeepSeek | egress grant | mitm/sidecar-entrypoint.sh | export EXACT_ALLOW_HOSTS="api.deepseek.com" | required | -
 deepseek.auth-header | DeepSeek | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {key}" | required | -

@@ -140,9 +140,10 @@ RUN npm install -g "npm@${NPM_VERSION}" \
 # is DISABLED below (DISABLE_AUTOUPDATER) so the running CLI stays exactly this version — no
 # unreviewed binary drift mid-session. To update Claude, bump the arg and rebuild.
 # (The base image, npm, and ttyd are also pinned; apt packages come from moving Debian repos.)
-ARG CLAUDE_CODE_VERSION=2.1.158
+ARG CLAUDE_CODE_VERSION=2.1.233
 RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
-    "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && npm ls -g --depth=0 "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" >/dev/null
 
 # Codex CLI (OpenAI) for cross-vendor peer review, pinned at BUILD time. Authenticated separately
 # with your ChatGPT/OpenAI subscription via ./scripts/auth/codex-login.sh; egress is gated by ALLOW_OPENAI.
