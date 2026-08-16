@@ -16,8 +16,32 @@
 #   SIDECAR_EGRESS_CONTAINER_NAME  egress container name for `docker inspect`
 #   SIDECAR_COMPOSE_OVERRIDE       extra `-f` overlay (e.g. docker-compose.dind.yml)
 #
-#   SIDECAR_COMPOSE_PROJECT=idd69 SIDECAR_AGENT_CONTAINER_NAME=idd69-agent \
-#     SIDECAR_EGRESS_CONTAINER_NAME=idd69-egress ./sidecar-smoketest.sh
+# `-p` does NOT scope the volumes. This project names them explicitly so that renaming the checkout
+# never orphans a login, which means a project name alone leaves a "validation" stack mounting the
+# operator's real credentials. Set these too — they are the ones that protect a login (issue #93):
+#
+#   SIDECAR_CONFIG_VOLUME_NAME          the agent's ~/.claude — THE LOGIN
+#   SIDECAR_CLAUDE_SECRET_VOLUME_NAME   the sidecar's token vault
+#   DEEPSEEK_SECRET_VOLUME_NAME         the DeepSeek API key
+#   SIDECAR_AUDIT_VOLUME_NAME           the proxy audit log
+#   SIDECAR_CA_VOLUME_NAME              the intercept CA (shared, two stacks would fight over it)
+#
+# Copy this whole block, not half of it:
+#
+#   SIDECAR_COMPOSE_PROJECT=idd93 SIDECAR_AGENT_CONTAINER_NAME=idd93-agent \
+#     SIDECAR_EGRESS_CONTAINER_NAME=idd93-egress \
+#     SIDECAR_CONFIG_VOLUME_NAME=idd93-config \
+#     SIDECAR_CLAUDE_SECRET_VOLUME_NAME=idd93-secret \
+#     DEEPSEEK_SECRET_VOLUME_NAME=idd93-deepseek-secret \
+#     SIDECAR_AUDIT_VOLUME_NAME=idd93-audit-mitm \
+#     SIDECAR_CA_VOLUME_NAME=idd93-mitm-ca \
+#     ./sidecar-smoketest.sh
+#
+# Setting a project and then mounting an operator volume is treated as an error rather than a
+# warning, because the failure is silent — every structural check still passes, since those checks
+# concern the boundary and not which volume sits behind it — and because what usually follows in a
+# validation run is a write. Export SIDECAR_ALLOW_SHARED_VOLUMES=true if you genuinely mean to run a
+# custom project name against your own login.
 #
 # It does NOT perform /login (that's interactive device-auth) or a billed model call. Exit code is
 # non-zero if any structural check fails.
@@ -75,6 +99,28 @@ for _ in $(seq 1 60); do
 done
 "${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$AGENT_CONTAINER"  || { echo "agent container not running — see: ${COMPOSE[*]} logs $AGENT"; exit 1; }
 "${COMPOSE[@]}" ps --status running --format '{{.Name}}' 2>/dev/null | grep -q "$EGRESS_CONTAINER" || { echo "egress container not running — see: ${COMPOSE[*]} logs $EGRESS"; exit 1; }
+
+# 0. Which stack is this? `-p` scopes containers and networks but not this project's explicitly named
+#    volumes, so a run that declares isolation can still be mounting the operator's real login. That
+#    goes unnoticed otherwise: every check below would pass, because they assert the boundary rather
+#    than what is behind it, and the next thing a validation run does is usually write (issue #93).
+if [ -n "${SIDECAR_COMPOSE_PROJECT:-}" ]; then
+    echo "Stack isolation:"
+    mounted=$(for c in "$AGENT_CONTAINER" "$EGRESS_CONTAINER"; do
+        docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$c" 2>/dev/null
+    done | sort -u)
+    shared=$(printf '%s\n' "$mounted" | ./scripts/check-stack-isolation.sh docker-compose.sidecar.yml \
+             | tr '\n' ' ' | sed 's/ *$//')
+    if [ -z "$shared" ]; then
+        ok "project '$SIDECAR_COMPOSE_PROJECT' mounts no operator volume"
+    elif [ "${SIDECAR_ALLOW_SHARED_VOLUMES:-}" = true ]; then
+        note "project '$SIDECAR_COMPOSE_PROJECT' shares operator volumes, allowed explicitly: $shared"
+    else
+        no "project '$SIDECAR_COMPOSE_PROJECT' declares isolation but mounts the operator's own volumes: $shared.
+        Anything this run writes goes to the real thing. Set the volume variables listed at the top of
+        this script, or export SIDECAR_ALLOW_SHARED_VOLUMES=true if you mean it"
+    fi
+fi
 
 echo "Structural guarantees (no login required):"
 
