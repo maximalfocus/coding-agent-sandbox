@@ -48,18 +48,17 @@ echo "Claiming into: $CONTAINER${SIDECAR_PROJECT:+  (project '$SIDECAR_PROJECT')
 # A validation run that declares a project but mounts the operator's own volumes would claim the
 # operator's real login. `-p` does not scope this project's volumes, which are named explicitly so a
 # renamed checkout never orphans a login, so the two can disagree (issue #93).
-if [ -n "$SIDECAR_PROJECT" ]; then
-    # `|| true`: the check exits 1 precisely when it finds something, and under `set -e` that would
-    # abort here — failing closed by accident, with no message saying why.
-    shared=$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$CONTAINER" 2>/dev/null \
-             | sort -u | ./scripts/check-stack-isolation.sh docker-compose.sidecar.yml | tr '\n' ' ' | sed 's/ *$//' || true)
-    if [ -n "$shared" ] && [ "${SIDECAR_ALLOW_SHARED_VOLUMES:-}" != true ]; then
-        echo "REFUSING: project '$SIDECAR_PROJECT' mounts the operator's own volumes: $shared" >&2
-        echo "  A claim here would move the real login, not this stack's. Set the volume variables" >&2
-        echo "  documented at the top of sidecar-smoketest.sh, or SIDECAR_ALLOW_SHARED_VOLUMES=true." >&2
-        exit 1
-    fi
-fi
+#
+# The guard is shared with the other credential-mutating helpers rather than copied, so the three
+# cannot drift into three slightly different refusals (issue #97). Inspecting the running container
+# observes what IS mounted, which is stronger than predicting it.
+#
+# NOT a pipeline: the guard exits, and `exit` inside a pipeline leaves only the subshell.
+# shellcheck source=../stack-guard.sh
+. "$(dirname "$0")/../stack-guard.sh"
+stack_volumes=$(stack_guard_volumes_of_container "$CONTAINER")
+stack_guard_refuse_if_shared \
+    "A claim here would move the real login, not this stack's." <<<"$stack_volumes"
 
 # Runs as root inside the container: it must write both the tinyproxy-owned vault and the node-owned
 # placeholder. The real token never leaves the container.
