@@ -19,6 +19,16 @@ class SecretError(RuntimeError):
     pass
 
 
+class NotProvisioned(SecretError):
+    """No key has been stored here yet — distinct from the store being unsafe (issue #99).
+
+    A subclass so every existing `except SecretError` still fails closed, while the exit code and
+    the wording can tell an untouched store apart from a tampered one. Conflating them reported a
+    security failure on the normal first state of every stack, which both teaches the wrong response
+    and spends the alarm that should only ever mean "something touched the secret directory".
+    """
+
+
 def _owner():
     """Use tinyproxy in the container; stay testable as the current user off-container."""
     if os.geteuid() == 0:
@@ -90,6 +100,17 @@ def _secure_dir(path, uid, gid, create=False):
     if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
         raise SecretError("secret directory is not a real directory")
     if info.st_uid != uid or stat.S_IMODE(info.st_mode) != 0o700:
+        # Tell an untouched store apart from a tampered one. With no key file present there is no
+        # secret to protect: a fresh Docker volume arrives root-owned with Docker's default mode,
+        # and `store` is what claims and tightens it. Once a key IS there the full check applies
+        # unchanged, so a loosened directory around a real key still reports unsafe — as does a key
+        # sitting in a directory this tool never claimed.
+        #
+        # Deliberately not keyed on root ownership, which is only the in-container shape and cannot
+        # be exercised by a fixture. The symlink and non-directory checks above are untouched and
+        # still fire first, so a symlinked store is refused whether or not it holds a key.
+        if not os.path.lexists(path):
+            raise NotProvisioned("no DeepSeek key is configured")
         raise SecretError("secret directory owner or mode is unsafe")
     return directory
 
@@ -101,6 +122,10 @@ def read_secure(path, uid):
         flags |= os.O_NOFOLLOW
     try:
         fd = os.open(path, flags)
+    except FileNotFoundError as exc:
+        # A correctly-owned directory with no key in it is the state after a revoke, not a fault.
+        # O_NOFOLLOW makes a symlinked key ELOOP rather than ENOENT, so this cannot mask one.
+        raise NotProvisioned("no DeepSeek key is configured") from exc
     except OSError as exc:
         raise SecretError("key file is missing, unreadable, or unsafe") from exc
     try:
@@ -154,7 +179,11 @@ def validate(path, quiet=False):
 
 def delete(path):
     uid, gid = _owner()
-    _secure_dir(path, uid, gid)
+    try:
+        _secure_dir(path, uid, gid)
+    except NotProvisioned:
+        print("DeepSeek key is already absent.")
+        return
     try:
         info = os.lstat(path)
     except FileNotFoundError:
@@ -180,6 +209,15 @@ def main():
                 print("DeepSeek key status: ready.")
         else:
             delete(args.path)
+    except NotProvisioned as exc:
+        # Non-zero, so `deepseek-key validate ||` in sidecar-entrypoint.sh still aborts startup
+        # fail-closed; a distinct code, so nothing has to read the message to tell this apart from
+        # a safety violation. 3 rather than 2, which argparse and the wrapper use for usage errors.
+        if args.command == "status":
+            print(f"DeepSeek key status: not configured ({exc}).")
+        else:
+            print(f"NOT CONFIGURED: {exc}", file=sys.stderr)
+        return 3
     except SecretError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
