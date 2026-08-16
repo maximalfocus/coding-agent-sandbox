@@ -82,7 +82,9 @@ esac
 # Name the host class the result actually came from, so a claim can state it rather than imply it.
 # `kernel:bare` means Docker runs on this host's own kernel; macOS and Windows run it inside a Linux
 # virtual machine and are reported as `kernel:vm`.
-host_facts=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$alias_name" '
+# -n is load-bearing: without it this probe reads stdin, and a caller piping data through to the
+# command — `git archive | verify-on-host.sh host -- 'tar xf -'` — silently loses it here.
+host_facts=$(ssh -n -o BatchMode=yes -o ConnectTimeout=15 "$alias_name" '
     arch=$(uname -m)
     kind=$(uname -s)
     case "$kind" in
