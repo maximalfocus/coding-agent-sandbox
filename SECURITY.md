@@ -178,9 +178,10 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   ordinary project files from **hardlinks or secrets already copied under `WORKSPACE_DIR`** — if a
   file is reachable inside the mounted tree, it's readable. Don't keep credentials in the project.
 - **Container isolation, not a VM.** Docker shares the host kernel. A kernel-level escape is out
-  of scope here; this is strong defense-in-depth, not a hypervisor boundary. If you need a stronger
-  boundary, install gVisor and uncomment `runtime: runsc` in `docker-compose.yml` (see *Hardening*)
-  — a user-space kernel of the same class Anthropic uses for claude.ai.
+  of scope here; this is strong defense-in-depth, not a hypervisor boundary. **gVisor is not an
+  available answer to this** — it was investigated and does not work with this sandbox, because the
+  agent container installs its own firewall and gVisor requires a capability the baseline withholds
+  to do that. See [`docs/gvisor-variant-feasibility.md`](docs/gvisor-variant-feasibility.md).
 - **Codex relies on this outer boundary in the shipped profiles.** Codex's Linux `workspace-write`
   sandbox uses bubblewrap, whose nested user-namespace operation is blocked by Docker's built-in
   seccomp profile in the default, MITM, and sidecar agent variants. We deliberately do not add
@@ -233,10 +234,17 @@ it runs, or a prompt-injection in some file or web page) does something you didn
 - The Claude CLI version is pinned and its **runtime auto-updater is disabled** (`DISABLE_AUTOUPDATER=1`),
   so the binary can't change mid-session. Bump `CLAUDE_CODE_VERSION` and rebuild to update it.
 - Mount `WORKSPACE_DIR` read-only (`:ro` in `docker-compose.yml`) if you only want analysis, not edits.
-- **Stronger kernel boundary:** install [gVisor](https://gvisor.dev/) and uncomment `runtime: runsc`
-  in `docker-compose.yml`. It runs the container under a user-space kernel that intercepts syscalls,
-  narrowing the "shares the host kernel" gap above — the battle-tested-primitive approach the
-  containment write-up favors over rolling your own isolation.
+- **gVisor: investigated, does not work here — do not enable it.** Earlier versions of this document
+  recommended installing [gVisor](https://gvisor.dev/) and uncommenting `runtime: runsc`. That advice
+  was never exercised and is wrong: the container restart-loops. The agent installs its own
+  `iptables` rules, and gVisor needs `CAP_NET_RAW` in the container to allow that, which the
+  `cap_drop: ALL` baseline deliberately does not grant. Adding the capability to make it work would
+  hand the agent a packet-crafting primitive the default stack denies it — trading an enforced
+  boundary for a theoretical one, in the name of hardening. Nested container builds fail under it
+  too. Verified against `runsc release-20260810.0` on a bare-kernel Linux host; the full contrast and
+  the reevaluation triggers are in
+  [`docs/gvisor-variant-feasibility.md`](docs/gvisor-variant-feasibility.md), and
+  `scripts/probe-gvisor-support.sh` re-establishes the facts on any host that has gVisor.
 - **MicroVM boundary via a third-party sandbox (investigated, not shipped):** the content-mediation
   layer below has been verified to run as the upstream proxy beneath Docker Sandboxes `v0.38.0`,
   which supplies a microVM kernel boundary and a per-sandbox Docker engine. Agent HTTPS traffic

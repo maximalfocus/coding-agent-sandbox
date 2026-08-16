@@ -20,12 +20,14 @@ services:
     # Block privilege escalation via setuid binaries (Claude runs as the unprivileged `node`).
     security_opt:
       - "no-new-privileges:true"
-    # Kernel-escape resistance (optional). Docker shares the host kernel, so this is defense-in-
-    # depth, not a VM boundary (see SECURITY.md). If you've installed gVisor, uncomment to run the
-    # container under the runsc sandbox — a user-space kernel that intercepts syscalls — which is
-    # the same class of primitive the containment write-up uses for claude.ai. No other change
-    # needed; everything below still applies.
-    # runtime: runsc
+    # Kernel-escape resistance: gVisor was investigated and does NOT work here. Do not add
+    # `runtime: runsc` — this container installs its own iptables rules, and gVisor requires
+    # CAP_NET_RAW to do that, which the capability baseline above deliberately withholds. The
+    # container restart-loops with `iptables: Failed to initialize nft: Protocol not supported`.
+    # Verified against runsc release-20260810.0 on a bare-kernel Linux host; the reasoning, the
+    # three-way capability contrast, and the reevaluation triggers are in
+    # docs/gvisor-variant-feasibility.md, and scripts/probe-gvisor-support.sh re-establishes the
+    # facts. Docker still shares the host kernel here — defense in depth, not a VM boundary.
     # Cap blast radius of a runaway build/agent so it can't exhaust the host.
     mem_limit: "${MEM_LIMIT:-6g}"
     pids_limit: ${PIDS_LIMIT:-4096}
