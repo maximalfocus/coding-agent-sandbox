@@ -7,7 +7,7 @@ set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 GATE="$ROOT/scripts/powershell-syntax-gate.ps1"
 WRAPPER="$ROOT/scripts/test-powershell-syntax.sh"
-PWSH_IMAGE=${PWSH_IMAGE:-mcr.microsoft.com/powershell@sha256:73c08403182e3cd1a62176b6723645b2d2037cda8deefc0e2c2c01cb814abe43}
+PWSH_IMAGE=${PWSH_IMAGE:-coding-agent-sandbox-pwsh:7.6.5}
 
 PASSED=0
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -34,25 +34,20 @@ ok "gate detects incompatible syntax from the token stream"
 command -v docker >/dev/null 2>&1 || skip_all "docker unavailable; gate behaviour not exercised"
 docker info >/dev/null 2>&1 || skip_all "Docker daemon unreachable; gate behaviour not exercised"
 
-# Same host requirement as the gate itself, and for the same reason: there is no linux/arm64
-# PowerShell image, and emulating the published ones fails at random on unchanged input. Exercising
-# the fixtures under emulation would make this suite flaky, which is the defect it exists to prevent.
-host_arch=$(docker info --format '{{.Architecture}}' 2>/dev/null)
-case "$host_arch" in
-    x86_64|amd64) ;;
-    *) skip_all "gate behaviour needs an amd64 Docker host (this one is '${host_arch:-unknown}'); static checks above passed" ;;
-esac
 
-docker image inspect "$PWSH_IMAGE" >/dev/null 2>&1 \
-    || skip_all "pinned PowerShell image absent; gate behaviour not exercised"
+# Built on first use by the wrapper; build it here too so this suite is self-sufficient.
+if ! docker image inspect "$PWSH_IMAGE" >/dev/null 2>&1; then
+    docker build -f "$ROOT/Dockerfile.pwsh" -t "$PWSH_IMAGE" "$ROOT" >/dev/null 2>&1 \
+        || skip_all "could not build the pinned PowerShell image; gate behaviour not exercised"
+fi
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 run_gate() { # fixture-root -> sets STATUS and OUT
     set +e
-    OUT=$(docker run --rm --network none --platform linux/amd64 -v "$1:/repo:ro" "$PWSH_IMAGE" \
-        pwsh -NoProfile -NonInteractive -File /repo/scripts/powershell-syntax-gate.ps1 -Root /repo 2>&1)
+    OUT=$(docker run --rm --network none -v "$1:/repo:ro" --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" \
+        -NoProfile -NonInteractive -File /repo/scripts/powershell-syntax-gate.ps1 -Root /repo 2>&1)
     STATUS=$?
     set -e
 }
@@ -134,9 +129,9 @@ mkdir -p "$empty/scripts"
 cp "$GATE" "$TMP_DIR/gate-only.ps1"
 run_gate_empty() {
     set +e
-    OUT=$(docker run --rm --network none --platform linux/amd64 \
-        -v "$TMP_DIR/gate-only.ps1:/gate.ps1:ro" -v "$empty:/repo:ro" "$PWSH_IMAGE" \
-        pwsh -NoProfile -NonInteractive -File /gate.ps1 -Root /repo 2>&1)
+    OUT=$(docker run --rm --network none \
+        -v "$TMP_DIR/gate-only.ps1:/gate.ps1:ro" -v "$empty:/repo:ro" --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" \
+        -NoProfile -NonInteractive -File /gate.ps1 -Root /repo 2>&1)
     STATUS=$?
     set -e
 }
@@ -147,13 +142,13 @@ ok "a tree with no PowerShell files fails closed instead of passing vacuously"
 
 # --- the wrapper never reports success when it could not run -----------------
 set +e
-missing_out=$(PWSH_IMAGE="mcr.microsoft.com/powershell@sha256:$(printf '0%.0s' $(seq 1 64))" "$WRAPPER" 2>&1)
+missing_out=$(PWSH_IMAGE="coding-agent-sandbox-pwsh:does-not-exist" PWSH_DOCKERFILE=/nonexistent/Dockerfile "$WRAPPER" 2>&1)
 missing_rc=$?
 set -e
-[ $missing_rc -eq 2 ] || fail "an absent pinned image must exit 2 (got $missing_rc)"
-grep -q 'COULD NOT RUN' <<<"$missing_out" || fail "an absent pinned image must say it could not run"
+[ $missing_rc -eq 2 ] || fail "an unbuildable image must exit 2 (got $missing_rc)"
+grep -q 'COULD NOT RUN' <<<"$missing_out" || fail "an unbuildable image must say it could not run"
 grep -q '^PASS' <<<"$missing_out" && fail "the wrapper reported PASS while unable to run"
-ok "the wrapper reports 'could not run' rather than success when the image is absent"
+ok "the wrapper reports 'could not run' rather than success when the image cannot be built"
 
 # --- the real tree passes ----------------------------------------------------
 set +e

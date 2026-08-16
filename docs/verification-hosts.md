@@ -25,7 +25,7 @@ the requirement is that each property is covered, not that any particular fleet 
 | A pinned download, checksum, or `TARGETARCH` branch in `Dockerfile` | `arch:amd64` **and** `arch:arm64` | — (a build is the only proof) |
 | Nested Docker (`docker-compose.dind.yml`, `mitm/dind-entrypoint.sh`) | `kernel:bare` for the privilege and confinement claims; `kernel:vm` is a partial result | `scripts/test-nested-docker.sh` (structural) |
 | A gVisor / `runsc` variant | `kernel:bare` — `runsc` cannot be installed or exercised on a virtualized Docker host | — |
-| Any `*.ps1` | `arch:amd64` to run the syntax gate at all; `os:windows` before a release that changes launcher behaviour | **`scripts/test-powershell-syntax.sh`** (amd64 hosts only — see below) |
+| Any `*.ps1` | `any` for the syntax gate; `os:windows` before a release that changes launcher behaviour | **`scripts/test-powershell-syntax.sh`** |
 | Firewall, proxy, allowlist, credential-injection logic | `any` | the `mitm/test_*.py` suites, `sidecar-smoketest.sh` |
 | Compose structure, documentation, verification tooling | `any` | the `scripts/test-*.sh` suites |
 
@@ -41,7 +41,7 @@ Broad claims of cross-platform verification are not made from a single host clas
 
 `scripts/test-powershell-syntax.sh` parses every tracked `*.ps1` inside a pinned container and
 rejects constructs that Windows PowerShell 5.1 cannot parse. It needs **no Windows machine**, which
-is the entire point: a check that needs one does not get run, and this repository ships fourteen
+is the entire point: a check that needs one does not get run, and this repository ships fifteen
 PowerShell files that previously had no automated check at all while the shell half had `bash -n`.
 
 It works in two passes, because one is not enough:
@@ -63,12 +63,16 @@ for both and says plainly that neither substitutes for the other.
 If Docker or the pinned image is unavailable, or the run exceeds its timeout, the gate exits `2` and
 says it could not run. It never reports success for files it did not parse.
 
-### Why the gate needs an amd64 host
+### Why the image is built here rather than pulled
 
-Microsoft publishes `mcr.microsoft.com/powershell` for **linux/amd64** and **linux/arm (v7)** only.
-There is no `linux/arm64` build on any current tag. On an arm64 host — which is what this project is
-usually developed on — Docker therefore selects an image it has to emulate, and that emulation is not
-merely slow. On unchanged input it produced, in one sitting:
+`Dockerfile.pwsh` builds the verification image from the official PowerShell release tarball, pinned
+to an exact version with a distinct vendor-published SHA-256 per architecture — the same pattern used
+for `ttyd`, Herdr, and the AWS CLI.
+
+It does not use `mcr.microsoft.com/powershell`, which is published for **linux/amd64** and
+**linux/arm (v7)** only, with no `linux/arm64` on any current tag. On an arm64 host Docker therefore
+selects an image it has to emulate, and that emulation is not merely slow. On unchanged input it
+produced, in one sitting:
 
 - a container that hung indefinitely and had to be killed;
 - a spurious `You cannot call a method on a null-valued expression` from a script with no such call;
@@ -76,13 +80,22 @@ merely slow. On unchanged input it produced, in one sitting:
 - a Rosetta assertion under emulated `amd64` — `BasicBlock requested for unrecognized address`,
   exit `133` — *after* the gate had already printed a correct result.
 
-So the gate refuses to run under emulation and exits `2` with that reason. A check that fails at
-random teaches its operator to ignore it, which is worse than not having the check — this repository
-has already had to remove one such check, and will not ship another.
+A check that fails at random teaches its operator to ignore it, which is worse than not having the
+check. Building the image here removes the emulation entirely: it runs natively on both
+architectures, and the gate has no host-architecture requirement at all.
 
-**What this costs:** on an arm64 developer machine the gate reports that it could not run, so
-PowerShell changes made there are not parsed until they reach an amd64 host. That is a real gap in
-`CAS-R162`'s "as part of ordinary verification", stated here rather than papered over. Closing it
-would mean building a PowerShell image for `linux/arm64` from the official `linux-arm64` release
-tarball, which adds a pinned download and an image build to this repository — a deliberate decision
-that has not been taken.
+The image is built automatically on first use, so the gate needs no separate setup step. That is what
+makes it ordinary verification rather than something people forget to run.
+
+### Verified on both architectures
+
+Both checksum branches in `Dockerfile.pwsh` are exercised by real builds on real hardware, which is
+what `CAS-R160` asks for — an unexercised architecture branch is exactly where a wrong checksum or a
+rotted URL hides.
+
+| Host class | Machine | Image build | Gate | Fixture suite |
+|---|---|---|---|---|
+| `arch:arm64`, `kernel:vm` | macOS on Apple silicon | native, 19s | PASS — 15 files, 0 failed | 10/10 |
+| `arch:amd64`, `kernel:bare` | Ubuntu 26.04, kernel 7.0 | native, 29s | PASS — 15 files, 0 failed | 10/10 |
+
+No behavioural difference between the two.

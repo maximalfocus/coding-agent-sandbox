@@ -1,0 +1,57 @@
+# Verification-only image: PowerShell, for the syntax gate in scripts/test-powershell-syntax.sh.
+#
+# This is NOT part of the product. Nothing the sandbox ships depends on it, no service runs it, and
+# it holds no credential. It exists so `scripts/test-powershell-syntax.sh` can parse this
+# repository's *.ps1 files on the machine a contributor is actually using.
+#
+# Why this is built here rather than pulled from mcr.microsoft.com/powershell: that image is
+# published for linux/amd64 and linux/arm (v7) only — there is no linux/arm64 build on any current
+# tag. On an arm64 host Docker therefore selects an image it has to emulate, and that emulation is
+# not stable. On unchanged input it produced a hang, a spurious "cannot call a method on a
+# null-valued expression", a QEMU assertion under arm/v7 (exit 139), and a Rosetta assertion under
+# emulated amd64 (exit 133) — the last of these *after* the gate had already printed a correct
+# result. A gate that fails at random teaches people to ignore it, so the dependency was replaced
+# rather than worked around.
+#
+# Building it here also puts the download under this repository's own pinning discipline: an exact
+# version, an architecture case, and a distinct vendor-published SHA-256 per architecture — the same
+# pattern already used for ttyd, Herdr, and the AWS CLI.
+FROM debian:bookworm-slim
+
+ARG TARGETARCH
+
+# PowerShell 7.6.5, released 2026-08-14. Both checksums are the vendor's own, taken from the
+# `hashes.sha256` asset published alongside the release, not computed from a downloaded artifact.
+ARG PWSH_VERSION=7.6.5
+ARG PWSH_SHA256_AMD64=b34ab3b19acac1d3d4d0d3cfdb02acf62f457b0b6a962ff008132033f7566844
+ARG PWSH_SHA256_ARM64=ed4084f215d8bce2edd23aa7cb1f1e7b0818e41363a635a22065d2701b6141df
+
+# `less` and `locales` are what PowerShell warns about when absent; ca-certificates is needed for the
+# download itself. Nothing else is installed — this image only ever parses text.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl libicu72; \
+    case "${TARGETARCH}" in \
+      amd64) PWSH_ARCH=x64;   PWSH_SHA="${PWSH_SHA256_AMD64}" ;; \
+      arm64) PWSH_ARCH=arm64; PWSH_SHA="${PWSH_SHA256_ARM64}" ;; \
+      *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/powershell.tar.gz \
+      "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-${PWSH_ARCH}.tar.gz"; \
+    echo "${PWSH_SHA}  /tmp/powershell.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/microsoft/powershell/7; \
+    tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7; \
+    chmod +x /opt/microsoft/powershell/7/pwsh; \
+    ln -s /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh; \
+    rm -f /tmp/powershell.tar.gz; \
+    apt-get purge -y --auto-remove curl; \
+    rm -rf /var/lib/apt/lists/*; \
+    test "$(pwsh -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()')" = "${PWSH_VERSION}"
+
+# Telemetry off: a verification image should not talk to anyone. The gate also runs it with
+# --network none, so this is belt and braces.
+ENV POWERSHELL_TELEMETRY_OPTOUT=1 \
+    POWERSHELL_UPDATECHECK=Off \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+ENTRYPOINT ["/usr/bin/pwsh"]
