@@ -703,6 +703,36 @@ extended further. The default stack is unchanged; run whichever fits the task. V
 real subscription `/login` and `claude -p` inference round-trip both succeed through the intercepting
 proxy (Node trusts the generated CA via `--use-openssl-ca`), with every call visible in `audit.sh --mitm`.
 
+## Capabilities that depend on a provider contract
+
+Some capabilities here rest on something this project doesn't control — an auth endpoint, a client
+identifier, an injection destination and its header format, or a credential file whose shape is
+written by somebody else's CLI. A pinned binary can be checksummed; these can't, and a provider can
+change any of them server-side without notice.
+
+When that happens the affected capability **fails closed** — it refuses, it doesn't quietly fall back
+to a weaker boundary — and your credentials are left untouched. But nothing announces the change, so
+there's a check:
+
+```bash
+scripts/check-provider-contracts.sh          # PASS / DRIFTED / UNEVALUATED per dependency
+scripts/check-provider-contracts.sh --json
+```
+
+It needs no credential, no subscription, and no network, so it's safe to run any time. `UNEVALUATED`
+means a live provider call would be the only way to confirm that one — it is deliberately **not**
+reported as a pass. A non-zero exit means something recorded has drifted.
+
+What depends on a provider contract today: Claude subscription **token isolation**
+(`ANTHROPIC_TOKEN_ISOLATION`, both the mediated and sidecar variants), **DeepSeek key injection**
+(`ALLOW_DEEPSEEK`), and the Pi harness assertion about its own auth file. The full inventory, where
+each pinned value lives, what breaks if it changes, and how to re-pin it are in
+[`docs/provider-contracts.md`](docs/provider-contracts.md).
+
+> **Current state:** Claude token isolation is unavailable — the OAuth client registration it uses is
+> no longer recognised by the provider. The check reports it as `DRIFTED`. Everything else in the
+> sandbox is unaffected.
+
 ## Audit trail & resource limits
 
 Every host the proxy was asked to reach (allowed *and* refused) is logged to a persisted volume:
