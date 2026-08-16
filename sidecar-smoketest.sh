@@ -6,12 +6,32 @@
 #   ./sidecar-smoketest.sh                 # assumes the stack is already up
 #   ./sidecar-smoketest.sh --up            # bring the stack up (build) first, then test
 #
+# Targeting an isolated stack. Validation work needs issue-specific containers, networks, and volumes
+# that must not touch an operator's credential volumes, so every name this script addresses is
+# selectable, consistently through the environment:
+#
+#   SIDECAR_COMPOSE_PROJECT        Compose project to address (-p). Without it, the default project
+#                                  is used and `ps`/`exec` would address the operator's stack.
+#   SIDECAR_AGENT_CONTAINER_NAME   agent container name for `docker inspect`
+#   SIDECAR_EGRESS_CONTAINER_NAME  egress container name for `docker inspect`
+#   SIDECAR_COMPOSE_OVERRIDE       extra `-f` overlay (e.g. docker-compose.dind.yml)
+#
+#   SIDECAR_COMPOSE_PROJECT=idd69 SIDECAR_AGENT_CONTAINER_NAME=idd69-agent \
+#     SIDECAR_EGRESS_CONTAINER_NAME=idd69-egress ./sidecar-smoketest.sh
+#
 # It does NOT perform /login (that's interactive device-auth) or a billed model call. Exit code is
 # non-zero if any structural check fails.
 set -uo pipefail
 cd "$(dirname "$0")"
 
-COMPOSE=(docker compose -f docker-compose.sidecar.yml)
+COMPOSE=(docker compose)
+# Scope every `ps`/`exec` to the selected project. The container-name variables below only affect
+# `docker inspect`, so without this the script would inspect an isolated stack while executing
+# against the default one (issue #69).
+if [ -n "${SIDECAR_COMPOSE_PROJECT:-}" ]; then
+    COMPOSE+=(-p "$SIDECAR_COMPOSE_PROJECT")
+fi
+COMPOSE+=(-f docker-compose.sidecar.yml)
 if [ -n "${SIDECAR_COMPOSE_OVERRIDE:-}" ]; then
     COMPOSE+=(-f "$SIDECAR_COMPOSE_OVERRIDE")
 fi
@@ -65,36 +85,72 @@ else
     no "agent firewall is not enforcing a default-DROP OUTPUT policy"
 fi
 
-# 2. Read Docker's internal endpoint after startup and confirm :8888 is accepted only on its local
-#    interface, never on the default-route interface or without an interface match. The sidecar
-#    intentionally blocks root from querying Docker DNS after startup, so validate the configured
-#    network-only alias through Docker metadata and the entrypoint decision log instead.
-sidecar_id=$(docker inspect --format '{{.Id}}' "$EGRESS_CONTAINER" 2>/dev/null)
-sidecar_internal_network=""
-for network_id in $(docker inspect --format '{{range .NetworkSettings.Networks}}{{println .NetworkID}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null); do
-    if [ "$(docker network inspect --format '{{.Internal}}' "$network_id" 2>/dev/null)" = true ]; then
-        [ -z "$sidecar_internal_network" ] || { sidecar_internal_network="AMBIGUOUS"; break; }
-        sidecar_internal_network=$(docker network inspect --format '{{.Name}}' "$network_id" 2>/dev/null)
-    fi
-done
-configured_alias=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null \
-    | sed -n 's/^SIDECAR_INTERNAL_ALIAS=//p')
-sidecar_internal_ip=$(docker inspect --format "{{(index .NetworkSettings.Networks \"$sidecar_internal_network\").IPAddress}}" "$EGRESS_CONTAINER" 2>/dev/null)
-sidecar_internal_if=$(eexec "ip -o -4 addr show | awk -v target='$sidecar_internal_ip' '{ split(\$4, addr, \"/\"); iface = \$2; sub(/@.*/, \"\", iface); if (addr[1] == target) print iface }' | sort -u")
-sidecar_egress_if=$(eexec 'ip -o -4 route show default | awk "{ for (i=1; i<=NF; i++) if (\$i == \"dev\") print \$(i+1) }" | sort -u')
-if [ -n "$sidecar_id" ] && [ -n "$sidecar_internal_network" ] && [ "$sidecar_internal_network" != AMBIGUOUS ] \
-   && [ -n "$configured_alias" ] && [ -n "$sidecar_internal_ip" ] \
-   && docker inspect --format '{{range $name, $cfg := .NetworkSettings.Networks}}{{range $cfg.Aliases}}{{printf "%s %s\n" $name .}}{{end}}{{end}}' "$EGRESS_CONTAINER" \
-        | grep -Fxq "$sidecar_internal_network $configured_alias" \
-   && docker logs "$EGRESS_CONTAINER" 2>&1 | grep -Fq "internal_ip=$sidecar_internal_ip alias=$configured_alias" \
-   && [ -n "$sidecar_internal_if" ] && [ -n "$sidecar_egress_if" ] \
-   && [ "$sidecar_internal_if" != "$sidecar_egress_if" ] \
-   && eexec "iptables -C INPUT -i '$sidecar_internal_if' -p tcp --dport 8888 -j ACCEPT" \
-   && ! eexec "iptables -C INPUT -i '$sidecar_egress_if' -p tcp --dport 8888 -j ACCEPT" \
-   && ! eexec 'iptables -C INPUT -p tcp --dport 8888 -j ACCEPT'; then
-    ok "sidecar accepts :8888 only on verified internal interface $sidecar_internal_if ($sidecar_internal_ip)"
+# 2. Confirm :8888 is accepted only on the sidecar's internal interface, never on the default-route
+#    interface and never without an interface match. The sidecar intentionally blocks root from
+#    querying Docker DNS after startup, so the configured network-only alias is validated through
+#    Docker's current network metadata rather than by resolving it.
+#
+#    Every condition below is read at the moment of the check: current Docker metadata, the
+#    container's current addresses and routes, and the current iptables rules. This check used to
+#    also require a line in `docker logs` to still match — a historical fact whose read races with
+#    the log driver. Measured over 20 runs on one healthy stack, that single condition failed 7
+#    times while every other condition passed 20/20 and the live interface mapping never moved, so
+#    the flake was in the observation, not the boundary (issue #69). Nothing here reads the log.
+#
+#    Each condition names its own cause, so a failure says which one was not met.
+verify_sidecar_input_binding() {
+    local network_id internal_network alias ip iface_count binding_internal_if binding_egress_if
+
+    docker inspect --format '{{.Id}}' "$EGRESS_CONTAINER" >/dev/null 2>&1 \
+        || { echo "egress container is not inspectable"; return 1; }
+
+    internal_network=""
+    for network_id in $(docker inspect --format '{{range .NetworkSettings.Networks}}{{println .NetworkID}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null); do
+        if [ "$(docker network inspect --format '{{.Internal}}' "$network_id" 2>/dev/null)" = true ]; then
+            [ -z "$internal_network" ] || { echo "sidecar is attached to more than one internal network"; return 1; }
+            internal_network=$(docker network inspect --format '{{.Name}}' "$network_id" 2>/dev/null)
+        fi
+    done
+    [ -n "$internal_network" ] || { echo "sidecar is attached to no internal network"; return 1; }
+
+    alias=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null \
+        | sed -n 's/^SIDECAR_INTERNAL_ALIAS=//p')
+    [ -n "$alias" ] || { echo "SIDECAR_INTERNAL_ALIAS is not set on the egress container"; return 1; }
+
+    docker inspect --format '{{range $name, $cfg := .NetworkSettings.Networks}}{{range $cfg.Aliases}}{{printf "%s %s\n" $name .}}{{end}}{{end}}' "$EGRESS_CONTAINER" 2>/dev/null \
+        | grep -Fxq "$internal_network $alias" \
+        || { echo "alias '$alias' is not bound to the internal network '$internal_network'"; return 1; }
+
+    ip=$(docker inspect --format "{{(index .NetworkSettings.Networks \"$internal_network\").IPAddress}}" "$EGRESS_CONTAINER" 2>/dev/null)
+    [ -n "$ip" ] || { echo "sidecar has no IPv4 address on '$internal_network'"; return 1; }
+
+    # Exactly one local interface must own that address. `sort -u` alone would let two interfaces
+    # through as a multi-line value and produce a confusing iptables error further down.
+    binding_internal_if=$(eexec "ip -o -4 addr show | awk -v target='$ip' '{ split(\$4, addr, \"/\"); iface = \$2; sub(/@.*/, \"\", iface); if (addr[1] == target) print iface }' | sort -u")
+    [ -n "$binding_internal_if" ] || { echo "no local interface owns the internal address $ip"; return 1; }
+    iface_count=$(printf '%s\n' "$binding_internal_if" | grep -c .)
+    [ "$iface_count" -eq 1 ] || { echo "$iface_count interfaces own the internal address $ip"; return 1; }
+
+    binding_egress_if=$(eexec 'ip -o -4 route show default | awk "{ for (i=1; i<=NF; i++) if (\$i == \"dev\") print \$(i+1) }" | sort -u')
+    [ -n "$binding_egress_if" ] || { echo "sidecar has no default-route interface"; return 1; }
+    [ "$binding_internal_if" != "$binding_egress_if" ] \
+        || { echo "internal and default-route interface are the same ($binding_internal_if)"; return 1; }
+
+    eexec "iptables -C INPUT -i '$binding_internal_if' -p tcp --dport 8888 -j ACCEPT" \
+        || { echo ":8888 is not accepted on the internal interface $binding_internal_if"; return 1; }
+    ! eexec "iptables -C INPUT -i '$binding_egress_if' -p tcp --dport 8888 -j ACCEPT" \
+        || { echo ":8888 is ALSO accepted on the egress interface $binding_egress_if"; return 1; }
+    ! eexec 'iptables -C INPUT -p tcp --dport 8888 -j ACCEPT' \
+        || { echo "a bare :8888 INPUT rule accepts on every interface"; return 1; }
+
+    echo "$binding_internal_if ($ip)"
+    return 0
+}
+
+if binding_detail=$(verify_sidecar_input_binding); then
+    ok "sidecar accepts :8888 only on verified internal interface $binding_detail"
 else
-    no "sidecar :8888 INPUT rule is not bound exclusively to its verified internal interface"
+    no "sidecar :8888 INPUT rule is not bound exclusively to its verified internal interface — $binding_detail"
 fi
 
 # 3. Resolve the sidecar from the pinned /etc/hosts entry and confirm the only proxy-port allow rule

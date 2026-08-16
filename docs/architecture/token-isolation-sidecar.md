@@ -178,6 +178,37 @@ checks (3a–d below), the DNS canary, pinned-proxy policy, and Docker host-gate
 automatically, plus the placeholder check once you've claimed. It does NOT do the
 interactive `/login` or a billed model call. The manual walk-through below covers the same ground:
 
+### Pointing the smoke test at an isolated stack
+
+Validation work needs issue-specific containers, networks, and volumes that must not touch an
+operator's credential volumes. Every name the smoke test addresses is selectable through the
+environment:
+
+| Variable | Selects |
+|---|---|
+| `SIDECAR_COMPOSE_PROJECT` | the Compose project (`-p`) that every `ps` and `exec` addresses |
+| `SIDECAR_AGENT_CONTAINER_NAME` | the agent container name used by `docker inspect` |
+| `SIDECAR_EGRESS_CONTAINER_NAME` | the egress container name used by `docker inspect` |
+| `SIDECAR_COMPOSE_OVERRIDE` | an extra `-f` overlay, e.g. `docker-compose.dind.yml` |
+
+```bash
+SIDECAR_COMPOSE_PROJECT=issue-69 \
+  SIDECAR_AGENT_CONTAINER_NAME=issue-69-agent \
+  SIDECAR_EGRESS_CONTAINER_NAME=issue-69-egress \
+  ./sidecar-smoketest.sh
+```
+
+The project variable is load-bearing, not a convenience. The container-name variables steer only
+`docker inspect`; without project scope the script would inspect the isolated stack while running
+`ps` and `exec` against the **default** project — the operator's own stack (issue #69).
+
+One note on reading a failure: the interface-binding check asserts entirely from state read at check
+time — current Docker network metadata, the container's current addresses and routes, and the live
+`iptables` rules. It deliberately reads nothing from `docker logs`. Requiring a retained log line
+made a correct boundary report failure 7 times in 20 measured runs, because that read races with the
+log driver rather than reflecting the state being asserted. Each condition now names itself, so a
+failure says which one was not met rather than only stating the conclusion.
+
 Run on a host with a real Docker engine (e.g. Colima):
 
 ```bash
