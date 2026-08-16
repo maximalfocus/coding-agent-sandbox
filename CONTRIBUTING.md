@@ -31,7 +31,11 @@ start-sandbox.cmd         # day-to-day
 
 Before opening a PR:
 
-- `bash -n` your shell scripts; keep PowerShell to **Windows PowerShell 5.1**-compatible syntax.
+- `bash -n` your shell scripts. For PowerShell, run **`./scripts/test-powershell-syntax.sh`** — it
+  parses every `*.ps1` in a pinned container and rejects syntax **Windows PowerShell 5.1** cannot
+  accept, without needing a Windows machine. It parses rather than runs, so a change that alters
+  launcher *behaviour* still needs a real Windows pass; see
+  [`docs/verification-hosts.md`](docs/verification-hosts.md) for which host class a change requires.
 - Run `docker compose config` to confirm compose still parses.
 - Review the `./scan.sh` (Trivy) report — it's advisory, but avoid adding *new, avoidable* CVEs
   (e.g. an unnecessary package); `TRIVY_STRICT=1 ./scan.sh` makes it gate if you want a hard check.
