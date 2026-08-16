@@ -170,8 +170,19 @@ def _log(verdict, method, host, path, reason=""):
                 _audit_warned = True
 
 
+# Marks every refusal this proxy authors. Our denials are 403s, and a provider can return 403 too,
+# so without a marker an operator cannot tell "the sandbox refused this" from "the provider refused
+# this" — which makes a drifted contract indistinguishable from a revoked or expired credential
+# (CAS-R172). The provider never sets this header; every refusal we author always does. Nothing in
+# this addon rewrites a provider response: `_deny` below is the only place a response is
+# constructed, and there is deliberately no `response` hook.
+SANDBOX_FILTER_HEADER = "X-Sandbox-Filter"
+
+
 def _deny(flow, msg):
-    flow.response = http.Response.make(403, (msg + "\n").encode(), {"Content-Type": "text/plain"})
+    flow.response = http.Response.make(
+        403, (msg + "\n").encode(),
+        {"Content-Type": "text/plain", SANDBOX_FILTER_HEADER: "deny"})
 
 
 class TokenVault:

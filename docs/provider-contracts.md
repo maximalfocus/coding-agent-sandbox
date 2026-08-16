@@ -103,6 +103,44 @@ was reached against, so a CLI bump cannot quietly invalidate the recorded conclu
 pinned binary and asserts its actual command surface. That probe needs Codex installed; this check
 does not, and covers the pin rather than the surface.
 
+## Telling a drifted contract from a revoked credential
+
+A contract that fails closed is only half of what `CAS-R172` asks for. The other half is that you can
+tell *why* it failed. The mediation layer's own denials are `403`s, and a provider can return `403`
+too, so without a marker "the sandbox refused this" and "the provider refused this" look alike — and
+a drifted contract becomes indistinguishable from a revoked or expired key.
+
+**Every refusal this project authors carries `X-Sandbox-Filter: deny` and a `Filtered: …` body. A
+provider response never does.** `mitm/filter_addon.py` constructs a response in exactly one place and
+has no `response` hook, so a reply that came from the provider reaches the agent verbatim — status,
+body, and headers.
+
+Verified live against `api.deepseek.com` on 2026-08-16, all three on the same host:
+
+| What happened | Status | `X-Sandbox-Filter` | Body | Audit trail |
+|---|---|---|---|---|
+| The sidecar's key storage is missing, empty, or unsafe | `403` | `deny` | `Filtered: DeepSeek credential is unavailable or unsafe` | `DENY … deepseek-key-unavailable-or-unsafe` |
+| The host is not the exact allowlisted destination | `403` | `deny` | `Filtered: host not on allowlist` | `DENY … not-allowlisted` |
+| **The provider rejected the injected key** | `401` (the provider's) | **absent** | the provider's own error document | `INJECT` then `ALLOW` |
+
+So: a `DENY` line in `./audit.sh --mitm`, or an `X-Sandbox-Filter` header on the response, means this
+project refused before the provider was ever consulted. Their absence means the request reached the
+provider and the verdict is the provider's own — which is where a drifted contract shows up.
+
+### One residual, stated rather than hidden
+
+DeepSeek's authentication error echoes the **last four characters** of the key it was sent, in the
+form `Your api key: ****XXXX is invalid`. That is the provider's own redaction, in the provider's own
+response, and this project deliberately does not rewrite it: rewriting a provider error is precisely
+what `CAS-R172` forbids, and doing so would trade a real diagnostic for a token improvement.
+
+The consequence is that an agent which triggers an authentication failure learns four characters of
+the sidecar-held key. Four characters of a key the agent otherwise never sees is far below anything
+usable — it does not make the key guessable — but it is a real detail of the boundary, so it is
+recorded here rather than left for someone to discover. If a provider ever echoed materially more
+than this, the correct response would be to stop sending requests to it under injection, not to start
+editing its errors.
+
 ## Provenance and re-pinning (`CAS-R174`)
 
 Every value recorded here came from this repository's own source at the commit that added this file.
