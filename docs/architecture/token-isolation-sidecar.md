@@ -84,6 +84,31 @@ The credential paths share the same proxy boundary but keep separate storage and
   other sidecar ports, and every other destination are rejected. Failure to resolve/pin the sidecar or
   install the firewall prevents the agent container from starting.
 
+## Health reporting
+
+Both containers report a health status that means something in *this* variant.
+
+The egress sidecar keeps the MITM image's healthcheck (mitmdump alive and filtering). The agent
+cannot: the base image's healthcheck asserts an in-container `tinyproxy`, and this variant runs the
+proxy in the sidecar by design, so that check could never pass — the agent reported `unhealthy`
+permanently on a perfectly working stack (issue #70). `docker-compose.sidecar.yml` therefore
+overrides it with `mitm/agent-healthcheck.sh`, which asserts what is actually true here:
+
+1. the mandatory agent firewall is installed — default-deny `OUTPUT`, the pinned proxy `ACCEPT`
+   rule, and the catch-all `REJECT`; and
+2. the pinned sidecar proxy is reachable.
+
+It only reads. It runs no `iptables` mutation, opens no egress, and sends nothing through the proxy —
+reachability is a bare TCP connect to a peer the firewall already permits. Resolving the sidecar name
+is itself part of the assertion: DNS is rejected by that firewall, so the name can only resolve from
+the `/etc/hosts` pin the entrypoint installed. Each failure names the condition that was not met, so
+`docker inspect` shows a cause rather than a bare exit code.
+
+A supported variant that always reports `unhealthy` teaches its operator to ignore the health column,
+which is why this is a real check rather than a disabled one. Note that the healthcheck script is
+bind-mounted like `agent-entrypoint.sh`, so editing it on the host requires recreating the container
+before the change takes effect.
+
 ## What this buys vs. the single-container version
 
 | Threat | single-container (0700 file) | sidecar (separate container) |
