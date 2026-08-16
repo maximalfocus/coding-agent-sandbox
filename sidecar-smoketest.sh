@@ -270,14 +270,34 @@ if [ "$deepseek_gate" = true ] || [ "$deepseek_gate" = 1 ] \
 fi
 
 echo "Login-dependent checks:"
+# Report the state that is actually there. This used to be an if/elif/else, and everything that was
+# neither absent nor exactly the placeholder fell into the `else`, which asserted a real token was
+# present — including for a file whose tokens were empty strings. That reading sent a real
+# investigation down the wrong path (issue #89), so every state a credential file can be in is now
+# named and classified by a script that fixtures can drive. The remaining `*)` is not a state: it
+# fires only if the classifier itself misbehaves, and it fails rather than guessing.
 creds=$(aexec 'cat /home/node/.claude/.credentials.json' || true)
-if [ -z "$creds" ]; then
-    note "no login yet — run 'claude' + /login in the agent, then ./scripts/auth/claim-token.sh, then re-run"
-elif printf '%s' "$creds" | grep -q "\"accessToken\"[[:space:]]*:[[:space:]]*\"$PLACEHOLDER\""; then
-    ok "agent config holds ONLY the placeholder token (claim succeeded; real token is in the vault)"
-else
-    note "a real token is still in the agent config — run ./scripts/auth/claim-token.sh to move it into the vault"
-fi
+case "$(printf '%s' "$creds" | ./scripts/credential-state.sh "$PLACEHOLDER")" in
+    placeholder)
+        ok "agent config holds ONLY the placeholder token (claim succeeded; real token is in the vault)"
+        ;;
+    absent)
+        note "no login yet — run 'claude' + /login in the agent, then ./scripts/auth/claim-token.sh, then re-run"
+        ;;
+    cleared)
+        note "the agent's login has been erased (tokens are empty) — log in again, then re-run the claim.
+        Claiming cannot help here: there is nothing left to move into the vault"
+        ;;
+    credential)
+        note "a real token is still in the agent config — run ./scripts/auth/claim-token.sh to move it into the vault"
+        ;;
+    malformed)
+        no "the agent credential file has content but no accessToken — it is not a credential document"
+        ;;
+    *)
+        no "the credential classifier returned no state it is supposed to return — scripts/credential-state.sh is broken"
+        ;;
+esac
 
 echo
 echo "smoke test: $pass passed, $fail failed, $skip skipped"
