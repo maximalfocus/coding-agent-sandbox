@@ -62,7 +62,15 @@ if [[ "$last" == *"uname -m"* ]]; then
   # Model real ssh: without -n it reads stdin, which silently steals a caller's piped data.
   [[ " $* " == *" -n "* ]] || cat >/dev/null
   [[ "${SSH_FACTS_SCENARIO:-ok}" == silent ]] && exit 1
+  # A Windows host runs PowerShell, so the POSIX probe finds no `uname` and yields nothing.
+  [[ "${SSH_FACTS_SCENARIO:-ok}" == powershell ]] && exit 1
   echo "x86_64 bare Linux"
+  exit 0
+fi
+if [[ "$last" == *'$env:OS'* ]]; then
+  [[ " $* " == *" -n "* ]] || cat >/dev/null
+  [[ "${SSH_FACTS_SCENARIO:-ok}" == powershell ]] || exit 1
+  printf 'AMD64 vm Windows\r\n'          # real Windows OpenSSH emits CRLF
   exit 0
 fi
 if [[ "$last" == *STDIN-RELAY* ]]; then
@@ -178,5 +186,43 @@ run_wrapper idd 'echo hi'
 run_wrapper idd --
 [ "$STATUS" -eq 2 ] || fail "a missing command must exit 2 (got $STATUS)"
 ok "usage errors fail closed with exit 2"
+
+
+# --- a PowerShell host is classified rather than rejected (issue #104) -------
+# Windows OpenSSH hands each session PowerShell, so the POSIX probe finds no `uname`. That is the one
+# host class docs/verification-hosts.md still records as unverified, and reaching it any other way
+# would re-introduce the second implementation #80 removed.
+set +e
+OUT=$(PATH="$STUB_DIR:$PATH" FIND_HOST="$STUB_DIR/find-host" SSH_FACTS_SCENARIO=powershell \
+      "$WRAPPER" win -- 'hostname' 2>&1)
+STATUS=$?
+set -e
+grep -q 'arch:AMD64' <<<"$OUT" || fail "a PowerShell host's architecture was not reported: $OUT"
+grep -q 'kernel:vm' <<<"$OUT" || fail "a PowerShell host was not classified kernel:vm: $OUT"
+grep -q 'Windows' <<<"$OUT" || fail "a PowerShell host was not named as Windows: $OUT"
+[ "$STATUS" -eq 0 ] || fail "a PowerShell host stopped the run (status $STATUS): $OUT"
+ok "a PowerShell host is classified as arch:AMD64 kernel:vm Windows"
+
+# The CRLF real Windows OpenSSH emits must not survive into the reported facts.
+grep -q $'\r' <<<"$OUT" && fail "carriage returns leaked into the host facts"
+ok "carriage returns from a Windows host are stripped"
+
+# The POSIX answer must win: no Unix host's classification can change because a fallback exists.
+set +e
+OUT=$(PATH="$STUB_DIR:$PATH" FIND_HOST="$STUB_DIR/find-host" "$WRAPPER" idd -- 'hostname' 2>&1)
+set -e
+grep -q 'arch:x86_64 kernel:bare' <<<"$OUT" || fail "a Unix host's classification changed: $OUT"
+grep -q 'Windows' <<<"$OUT" && fail "a Unix host was probed as Windows"
+ok "the POSIX probe still answers first, so Unix hosts are unaffected"
+
+# A host that answers neither probe must still stop, not be reported as unknown-but-acceptable.
+set +e
+OUT=$(PATH="$STUB_DIR:$PATH" FIND_HOST="$STUB_DIR/find-host" SSH_FACTS_SCENARIO=silent \
+      "$WRAPPER" win -- 'hostname' 2>&1)
+STATUS=$?
+set -e
+grep -q 'could not read its host facts' <<<"$OUT" || fail "a silent host did not stop the run: $OUT"
+[ "$STATUS" -ne 0 ] || fail "a silent host returned success"
+ok "a host answering neither probe still stops the run"
 
 printf '\nAll %d checks passed.\n' "$PASSED"

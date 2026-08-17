@@ -121,6 +121,32 @@ test. Behavioural differences, path translation, and line-ending handling are ou
 `os:windows` run is still required before a release that changes launcher behaviour. `CAS-R162` asks
 for both and says plainly that neither substitutes for the other.
 
+## The `os:windows` runtime pass
+
+```sh
+scripts/verify-powershell-runtime.sh [alias]     # default alias: win
+```
+
+Ships the tracked `*.ps1` files to a real Windows host and parses each one with **that runtime's own
+parser**, through `scripts/verify-on-host.sh` so the machine is reached by stable identity and the
+host class it reached is reported. It refuses to report a pass unless `$PSVersionTable` shows
+version 5 and the `Desktop` edition, and it runs a negative control — a 7-only construct that the
+runtime must reject — because a gate that cannot be shown to fail is not evidence.
+
+**First run, 2026-08-17, `win` — `arch:AMD64 kernel:vm Windows`, PowerShell `5.1.26100.9168`
+(`Desktop`).** It immediately earned its existence: **4 of 16 tracked files failed to parse** on the
+runtime they target, while all 16 parse under the container gate.
+
+The cause is not a 7-only construct. Windows PowerShell 5.1 decodes a file without a BOM using the
+system code page — `Windows-1252` on this host — not UTF-8. This repository's files contain em dashes,
+including inside `Write-Host` strings, and 5.1's parser treats curly quotes as string delimiters, so
+the mis-decoded bytes unbalance the parse. Measured on the same file: **17 parse errors read with the
+default encoding, 0 read as explicit UTF-8.**
+
+The container gate cannot see this, and not because it was written carelessly — pwsh 7 defaults to
+UTF-8, so the file it parses is not the file 5.1 reads. This is exactly the class of difference
+`CAS-R162` exists to catch, and it is why "parsing is not running" is written into the table above.
+
 If Docker or the pinned image is unavailable, or the run exceeds its timeout, the gate exits `2` and
 says it could not run. It never reports success for files it did not parse.
 
