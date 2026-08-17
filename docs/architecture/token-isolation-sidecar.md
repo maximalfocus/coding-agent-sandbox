@@ -241,6 +241,48 @@ inventory has grown since #58 was written.
 is why the variant remains **experimental** and why `SL-09` is not promoted. A separate run spanning
 the token TTL is required for that.
 
+## Verification record — 2026-08-17: refresh beyond the access-token TTL
+
+`CAS-R081`'s second condition, and the last thing between this variant and promotion. The 2026-08-16
+record above proved inference; every call in it used a token still inside its first eight hours.
+Recorded here because issue #101 required it; nothing below contains credential material.
+
+| | |
+|---|---|
+| Tested tree | squash `975b810` on `main` |
+| Claude Code | `2.1.233` |
+| Host class | `arch:arm64`, `kernel:vm` (macOS, Docker in a VM) |
+| Stack | isolated Compose project, all five volumes scoped; no operator volume mounted; torn down afterwards |
+| Refresh skew | the default `600` s — not raised for this run |
+
+**The refresh is demand-driven, not scheduled.** `TokenVault.token()` refreshes when a request needs
+a token, so an idle stack does not refresh on a timer. That is the correct design — a timer would
+renew credentials nobody is using — and it shapes what "beyond the TTL" means here: the token is
+allowed to expire, and the next request is what must still succeed.
+
+| Time (UTC) | Observed |
+|---|---|
+| 01:53 | baseline recorded: access token expiring 09:49, i.e. **8.0 h** ahead; 4 refreshes in the audit log |
+| 09:39 | the skew window opens — nothing happens, because the stack is idle |
+| 13:47 | vault unchanged, same token shas, `expiresAt` **3.97 h in the past**; refresh count still 4 |
+| 13:47 | one model call — **succeeded** |
+| | the proxy refreshed on that call: audit records `REFRESH … rotated ok`, count 4 → 5 |
+| | both tokens rotated — access `fe101c117a` → `ac9dc6d0d0`, refresh `0c7f0d0a95` → `2813ca3439` |
+| | new expiry **+8.00 h** |
+| | a second model call on the refreshed token — succeeded |
+| | agent credential state `placeholder` throughout; proxy recorded **0** non-placeholder credentials |
+| | `sidecar-smoketest.sh`: **12 passed, 0 failed, 0 skipped** |
+
+The token shas are recorded as truncated SHA-256 of the values, never the values, so rotation is
+evidenced without exposing anything.
+
+**This run could not have passed before 2026-08-17.** The refresh had never worked: unidentified, it
+was rejected by Cloudflare on the client's fingerprint (`error code: 1010`) before reaching the OAuth
+endpoint, and `TokenVault` fails closed by continuing to serve the still-valid token — so the variant
+would simply have stopped serving about eight hours after every claim. Found by attempting this
+verification, fixed in issue #102, and the reason the fast path (forcing a refresh) was run before
+the slow one.
+
 ## Verification (REQUIRED before this is trusted / merged)
 
 **One-command path:** `./sidecar-smoketest.sh --up` brings the stack up and runs the structural
