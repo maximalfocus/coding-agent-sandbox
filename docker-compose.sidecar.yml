@@ -57,6 +57,11 @@ services:
       GITHUB_READONLY: "${GITHUB_READONLY:-true}"
       ANTHROPIC_BLOCK_PATHS: "${ANTHROPIC_BLOCK_PATHS:-/v1/files}"
       ANTHROPIC_SINGLE_CRED: "${ANTHROPIC_SINGLE_CRED:-true}"
+      # How long before the vault's access token expires the proxy refreshes it. The entrypoint has
+      # always honoured this, but it was never passed in, so the effective value could only ever be
+      # the default and the knob was dead. Raising it beyond a token's remaining lifetime is what
+      # makes the proxy-owned refresh path testable without waiting out a full TTL (issue #101).
+      TOKEN_REFRESH_SKEW: "${TOKEN_REFRESH_SKEW:-600}"
     volumes:
       - "claude-config:/home/node/.claude"          # shared (read login to claim, write placeholder back)
       - "claude-secret:/var/lib/sandbox/secret"     # the vault — mounted ONLY here
