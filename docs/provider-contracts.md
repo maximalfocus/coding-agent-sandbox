@@ -68,6 +68,7 @@ the vaulted bearer, own the refresh).
 | Credential file schema | `mitm/claim-token`, `mitm/filter_addon.py` — the `claudeAiOauth` root object. As written by CLI `2.1.233` (observed 2026-08-16): `accessToken`, `refreshToken`, `expiresAt`, `refreshTokenExpiresAt`, `rateLimitTier`, `scopes`, `subscriptionType`. It has **gained** `refreshTokenExpiresAt` and `rateLimitTier`, and **lost `clientId`**, since this contract was first recorded | Written by the Claude Code CLI, not by this project. A schema change means the claim finds nothing to move, or the placeholder stops convincing the CLI it is logged in. The pin is the root object key; the field-level semantics are covered by `mitm/test_token_isolation.py`, which fails loudly on its own. |
 | Injection destination and header | `mitm/filter_addon.py` (`api.anthropic.com`, `authorization: Bearer`) | The vaulted token is injected on a host the API no longer serves, or in a form it no longer accepts — requests fail with the agent holding only a placeholder. |
 | Pinned CLI whose schema is consumed | `Dockerfile` (`CLAUDE_CODE_VERSION`) | This project's own pin, not the provider's. Recorded because the credential file schema above is only meaningful relative to a known CLI version. |
+| Refresh client identification | `mitm/filter_addon.py` — `REFRESH_USER_AGENT`, env-overridable via `TOKEN_REFRESH_USER_AGENT` | The refresh POST is rejected **before it reaches the OAuth endpoint**. Observed 2026-08-17: with no `User-Agent`, Cloudflare answers `403` with `error code: 1010` as `text/plain` — a client-fingerprint ban, not a provider auth error; with one, the identical request returns `200` and rotates. Because `TokenVault` fails closed by continuing to serve the still-valid token, a break here is silent for the token's remaining lifetime and then takes the whole sidecar Claude path down. The observed access-token TTL is **8 hours**, so that is the delay between cause and symptom. |
 
 ## DeepSeek API-key path (`SL-12`)
 
@@ -206,6 +207,7 @@ claude.credential-file-schema | Claude | credential schema | mitm/claim-token,mi
 claude.injection-destination | Claude | injection destination | mitm/filter_addon.py | _matches(host, "api.anthropic.com") | required | -
 claude.injection-header | Claude | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {tok}" | required | -
 claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.233 | na | -
+claude.oauth-refresh-user-agent | Claude | client identification | mitm/filter_addon.py | claude-cli/2.1.233 (external, cli) | required | -
 deepseek.injection-host | DeepSeek | injection destination | mitm/filter_addon.py | _exact(host, ("api.deepseek.com",)) | required | -
 deepseek.exact-host-grant | DeepSeek | egress grant | mitm/sidecar-entrypoint.sh | export EXACT_ALLOW_HOSTS="api.deepseek.com" | required | -
 deepseek.auth-header | DeepSeek | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {key}" | required | -

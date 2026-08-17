@@ -89,6 +89,18 @@ OAUTH_TOKEN_PATH = _oauth_parts.path or "/"
 OAUTH_CLIENT_ID = os.environ.get("OAUTH_CLIENT_ID", "9d1c250a-e61b-44d9-88ed-5944d1962f5e").strip()
 REFRESH_SKEW = int(os.environ.get("TOKEN_REFRESH_SKEW", "600"))  # refresh when <10 min remaining
 
+# The refresh POST must identify itself. Unidentified, it never reaches the OAuth endpoint at all:
+# Cloudflare fingerprints the client and answers 403 with `error code: 1010` as text/plain, so the
+# addon saw a refusal that looked like an auth failure and was neither the provider's nor about the
+# credential. Left unsent, the sidecar variant stops working ~8h after every claim, when the access
+# token it is still serving finally expires (issue #102).
+#
+# This identifies the software honestly rather than impersonating a browser. It tracks the pinned CLI
+# because that is what the credential belongs to; a browser string also cleared the block in probing
+# and was deliberately not used.
+REFRESH_USER_AGENT = os.environ.get(
+    "TOKEN_REFRESH_USER_AGENT", "claude-cli/2.1.233 (external, cli)").strip()
+
 _audit_warned = False
 
 
@@ -261,7 +273,8 @@ class TokenVault:
         }).encode()
         req = urllib.request.Request(
             OAUTH_TOKEN_URL, data=body,
-            headers={"Content-Type": "application/json"}, method="POST")
+            headers={"Content-Type": "application/json",
+                     "User-Agent": REFRESH_USER_AGENT}, method="POST")
         # ProxyHandler({}) == no proxy: bypass the inherited HTTPS_PROXY so we don't tunnel the
         # refresh through ourselves. The firewall still allows it — we are the tinyproxy UID.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))

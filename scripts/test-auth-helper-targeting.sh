@@ -49,9 +49,13 @@ SHIM
 chmod +x "$TMP/bin/docker"
 
 run_claim() { # project  running-containers  [mounted-volumes]
+    # `env -u` first: these variables are the subject of the test, so an operator who happens to have
+    # them exported — say, from targeting a live isolated stack in the same shell — must not be able
+    # to change the result. A gate whose verdict depends on the caller's environment is not a gate.
     DOCKER_LOG="$TMP/log" RUNNING_CONTAINERS="$2" MOUNTED_VOLUMES="${3:-idd-config}" \
     PATH="$TMP/bin:$PATH" \
-    env ${1:+SIDECAR_COMPOSE_PROJECT="$1"} ${4:+SIDECAR_EGRESS_CONTAINER_NAME="$4"} \
+    env -u SIDECAR_COMPOSE_PROJECT -u SIDECAR_EGRESS_CONTAINER_NAME -u SIDECAR_ALLOW_SHARED_VOLUMES \
+        ${1:+SIDECAR_COMPOSE_PROJECT="$1"} ${4:+SIDECAR_EGRESS_CONTAINER_NAME="$4"} \
         DOCKER_LOG="$TMP/log" RUNNING_CONTAINERS="$2" MOUNTED_VOLUMES="${3:-idd-config}" \
         PATH="$TMP/bin:$PATH" bash "$CLAIM" 2>&1
 }
