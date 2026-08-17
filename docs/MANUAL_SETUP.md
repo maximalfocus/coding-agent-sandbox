@@ -92,8 +92,12 @@ logging in again. For rebuild-proof login, use Path B.
 
 1. Mint a long-lived (1-year) token. In the web terminal **or** via exec:
    ```bash
-   docker exec -it claude-sandbox claude setup-token
+   docker exec -it -u node claude-sandbox claude setup-token
    ```
+
+   `-u node` is load-bearing. The container sets no default user — the entrypoint needs root to
+   install the mandatory firewall before dropping privilege — so a bare `docker exec` runs as root
+   and writes credentials the agent itself cannot read. It then looks like the login silently failed.
    Open the URL it prints, approve in your browser, paste the returned `code#state`
    string back. It prints a token like `sk-ant-oat01-...`.
    **Copy it now — it is shown only once.**
@@ -130,7 +134,7 @@ docker ps --filter name=claude-sandbox --format '{{.Names}} {{.Status}}'
 curl -s -o /dev/null -w 'ttyd HTTP %{http_code}\n' http://127.0.0.1:7681/
 
 # Tooling is present:
-docker exec claude-sandbox bash -lc 'claude --version; which codex node git gh'
+docker exec -u node claude-sandbox bash -lc 'claude --version; which codex node git gh'
 
 # Login works — a real inference round-trip (expect: LOGIN_OK):
 docker exec -u node claude-sandbox bash -lc 'claude -p "Reply with exactly: LOGIN_OK"'

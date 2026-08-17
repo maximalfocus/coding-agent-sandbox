@@ -323,12 +323,34 @@ echo "Login-dependent checks:"
 # named and classified by a script that fixtures can drive. The remaining `*)` is not a state: it
 # fires only if the classifier itself misbehaves, and it fails rather than guessing.
 creds=$(aexec 'cat /home/node/.claude/.credentials.json' || true)
-case "$(printf '%s' "$creds" | ./scripts/credential-state.sh "$PLACEHOLDER")" in
+
+# Read as the agent (`aexec` is `-u node`), so an unreadable file arrives as empty content and would
+# classify as `absent` — indistinguishable from never having logged in. It is not the same thing, and
+# the difference is one the classifier cannot see: it takes content, and only the caller knows which
+# account did the reading. So the existence probe lives here, on the root side (issue #108).
+#
+# The state is reachable by following this project's own instructions. `docker exec` lands as root
+# because the entrypoint needs root to install the mandatory firewall before `exec gosu node`, so a
+# login run that way writes a root-owned 0600 file the agent cannot read. `entrypoint.sh` chowns
+# ~/.claude at container start, so a restart silently repairs it — which is why the failure looks
+# intermittent.
+cred_state=$(printf '%s' "$creds" | ./scripts/credential-state.sh "$PLACEHOLDER")
+if [ "$cred_state" = absent ] && rexec 'test -s /home/node/.claude/.credentials.json'; then
+    cred_state=unreadable
+fi
+
+case "$cred_state" in
     placeholder)
         ok "agent config holds ONLY the placeholder token (claim succeeded; real token is in the vault)"
         ;;
     absent)
-        note "no login yet — run 'claude' + /login in the agent, then ./scripts/auth/claim-token.sh, then re-run"
+        note "no login yet — run 'docker exec -it -u node <agent> claude' + /login, then ./scripts/auth/claim-token.sh, then re-run"
+        ;;
+    unreadable)
+        no "a credential file exists but the agent cannot read it — it is owned by another user, most
+        likely from a 'docker exec' login without '-u node', which lands as root. The agent is logged
+        in and cannot tell. Repair with 'docker exec -u root <agent> chown -R node:node /home/node/.claude',
+        or restart the container, which does the same at startup"
         ;;
     cleared)
         note "the agent's login has been erased (tokens are empty) — log in again, then re-run the claim.
