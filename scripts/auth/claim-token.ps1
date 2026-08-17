@@ -1,4 +1,4 @@
-# Move an existing Claude subscription login OUT of the agent-readable config volume and into the
+﻿# Move an existing Claude subscription login OUT of the agent-readable config volume and into the
 # tinyproxy-only vault, leaving a harmless placeholder behind — the "token isolation" hardening
 # (mitm variant only), on Windows. Run once after /login; the agent can then no longer read a usable
 # token, while the mitm proxy injects the real one into each Anthropic API call.

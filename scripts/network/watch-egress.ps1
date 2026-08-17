@@ -1,4 +1,4 @@
-# Watch the sandbox's egress audit trail and ALERT the moment a NEW host is refused (403/filtered).
+﻿# Watch the sandbox's egress audit trail and ALERT the moment a NEW host is refused (403/filtered).
 # Mirror of watch-egress.sh. For each new blocked host: a Windows toast + a console beep.
 #
 #   ./scripts/network/watch-egress.ps1              # interactive: notify + prompt allow/skip per host

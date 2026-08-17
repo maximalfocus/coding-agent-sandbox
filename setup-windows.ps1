@@ -1,4 +1,4 @@
-# First-run setup for Windows. Run from this folder:
+﻿# First-run setup for Windows. Run from this folder:
 #   powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -InstallPrereqs
 param(
     [string]$WorkspaceDir,

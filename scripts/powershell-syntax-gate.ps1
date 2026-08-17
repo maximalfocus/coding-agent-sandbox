@@ -1,4 +1,4 @@
-# Parses every PowerShell file handed to it and rejects syntax that Windows PowerShell 5.1 cannot
+﻿# Parses every PowerShell file handed to it and rejects syntax that Windows PowerShell 5.1 cannot
 # accept (issue #76, CAS-R162). Runs inside the pinned container started by
 # scripts/test-powershell-syntax.sh; it is not meant to be invoked directly.
 #

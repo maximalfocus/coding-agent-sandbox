@@ -1,4 +1,4 @@
-# uninstall-windows.ps1 - the Windows counterpart to uninstall.sh (and to setup-windows.ps1):
+﻿# uninstall-windows.ps1 - the Windows counterpart to uninstall.sh (and to setup-windows.ps1):
 # removes everything this sandbox created on the host, so you can start from a clean slate.
 #
 # Removes ONLY sandbox-owned resources (all have fixed, project-name-independent names) plus this

@@ -1,4 +1,4 @@
-# Hot-add domain(s) to the RUNNING sandbox's allowlist without restarting (Windows PowerShell).
+﻿# Hot-add domain(s) to the RUNNING sandbox's allowlist without restarting (Windows PowerShell).
 # Mirror of allow-domain.sh. Effect is immediate but TEMPORARY — for a permanent rule, also add the
 # host to EXTRA_ALLOWED_DOMAINS in .env (it's re-applied on every container (re)start).
 #
