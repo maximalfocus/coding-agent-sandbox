@@ -95,6 +95,20 @@ host_facts=$(ssh -n -o BatchMode=yes -o ConnectTimeout=15 "$alias_name" '
     printf "%s %s %s\n" "$arch" "$kernel" "$kind"
 ' 2>/dev/null)
 
+# Windows OpenSSH hands each session PowerShell, not a POSIX shell, so the probe above finds no
+# `uname` and returns nothing. That is the one host class `docs/verification-hosts.md` still records
+# as unverified, and reaching it any other way would re-introduce the second implementation #80
+# removed — so it gets a second probe here rather than a second script (issue #104).
+#
+# Deliberately a fallback and not a platform guess: the POSIX probe runs first and its answer wins,
+# so no Unix host's classification can change. This only runs where that probe produced nothing.
+# Windows runs Docker inside a Linux VM, so it reports `kernel:vm`, the same as macOS.
+if [ -z "$host_facts" ]; then
+    host_facts=$(ssh -n -o BatchMode=yes -o ConnectTimeout=15 "$alias_name" '
+        if ($env:OS -eq "Windows_NT") { "{0} vm Windows" -f $env:PROCESSOR_ARCHITECTURE }
+    ' 2>/dev/null | tr -d '\r')
+fi
+
 if [ -z "$host_facts" ]; then
     cannot_run "resolved '$alias_name' to $address but could not read its host facts over SSH"
 fi
