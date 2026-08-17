@@ -1,4 +1,4 @@
-# Manage the real DeepSeek API key in the dedicated egress-sidecar volume. The key is passed only
+﻿# Manage the real DeepSeek API key in the dedicated egress-sidecar volume. The key is passed only
 # on stdin to a one-off sidecar container; it is never a Compose environment value or argument.
 $ErrorActionPreference = "Stop"
 Set-Location -Path (Join-Path $PSScriptRoot '../..')

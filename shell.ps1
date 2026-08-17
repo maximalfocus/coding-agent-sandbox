@@ -1,4 +1,4 @@
-# Open Herdr in a local terminal with the same sandbox isolation as the browser.
+﻿# Open Herdr in a local terminal with the same sandbox isolation as the browser.
 #   ./shell.ps1            # attach another Herdr client to its persistent session
 #   ./shell.ps1 -Shell     # escape hatch: a fresh Bash shell in /workspace
 #   ./shell.ps1 -Attach    # backward-compatible alias for the default

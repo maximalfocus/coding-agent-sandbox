@@ -1,4 +1,4 @@
-# Regression coverage for issue #46's PowerShell egress-watcher policy.
+﻿# Regression coverage for issue #46's PowerShell egress-watcher policy.
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $Root 'scripts/network/watch-egress-policy.ps1')

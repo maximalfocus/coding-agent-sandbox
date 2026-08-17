@@ -1,4 +1,4 @@
-# Build + start the Claude Code sandbox on Windows (PowerShell). Run from this folder.
+﻿# Build + start the Claude Code sandbox on Windows (PowerShell). Run from this folder.
 param([switch]$NoStartBrowser)
 
 $ErrorActionPreference = "Stop"

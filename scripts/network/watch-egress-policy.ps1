@@ -1,4 +1,4 @@
-# Egress watcher host classification. Dot-sourced by watch-egress.ps1 and its regression test.
+﻿# Egress watcher host classification. Dot-sourced by watch-egress.ps1 and its regression test.
 
 # Risk verdict: returns 'allow' | 'reject' | 'review' | 'gray'.
 # Broad multi-tenant namespaces are review-only and must never enter unattended assessment.

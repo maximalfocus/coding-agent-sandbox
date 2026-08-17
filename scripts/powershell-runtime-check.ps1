@@ -1,4 +1,4 @@
-# Parses every .ps1 below the current directory using the runtime's OWN parser, and refuses to be
+﻿# Parses every .ps1 below the current directory using the runtime's OWN parser, and refuses to be
 # read as evidence unless that runtime is Windows PowerShell 5.1 (issue #104, CAS-R162).
 #
 # This is the other half of scripts/test-powershell-syntax.sh. That gate runs pwsh 7.6.5 and infers

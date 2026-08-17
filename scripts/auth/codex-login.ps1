@@ -1,4 +1,4 @@
-# Log in to the bundled Codex CLI with your ChatGPT/OpenAI subscription, on Windows.
+﻿# Log in to the bundled Codex CLI with your ChatGPT/OpenAI subscription, on Windows.
 # Uses the DEVICE-AUTH flow (Codex's recommended path for headless/containerized machines): it
 # prints a URL + code, you authorize in any browser, and Codex polls OpenAI through the egress
 # proxy to finish — no localhost:1455 loopback callback. Saved in the persisted codex volume.

@@ -1,4 +1,4 @@
-# Clone (or update) your skill repos INTO the sandbox and load Claude's skills from those live git
+﻿# Clone (or update) your skill repos INTO the sandbox and load Claude's skills from those live git
 # clones — so /cdd, /peer-review work AND their *-evolve commands can commit/push to GitHub.
 # Windows counterpart of skills-setup.sh. Repos persist in the claude-config volume; re-run to pull.
 #   powershell -ExecutionPolicy Bypass -File .\scripts\skills\skills-setup.ps1

@@ -1,4 +1,4 @@
-# Supply-chain scan (Windows). Mirrors scan.sh: ADVISORY by default (prints findings, does not
+﻿# Supply-chain scan (Windows). Mirrors scan.sh: ADVISORY by default (prints findings, does not
 # block the sandbox from starting), because this full Debian + Node image plus third-party CLIs
 # carries fixed CVEs you can't patch yourself. Set $env:TRIVY_STRICT=1 to gate on findings.
 #   powershell -ExecutionPolicy Bypass -File .\scan.ps1

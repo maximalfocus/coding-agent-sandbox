@@ -1,4 +1,4 @@
-# Log in to the bundled GitHub CLI (gh) on Windows — the PERMANENT fix for pushing GitHub Actions
+﻿# Log in to the bundled GitHub CLI (gh) on Windows — the PERMANENT fix for pushing GitHub Actions
 # workflow files (.github/workflows/*). A plain repo/Contents PAT cannot push those (GitHub needs
 # the `workflow` scope, and a classic PAT's scopes are fixed at creation), but gh's token carries
 # `workflow`. Device flow (URL + code in any browser); saved in the persisted gh-config volume so
