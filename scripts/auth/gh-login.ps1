@@ -8,7 +8,10 @@ Set-Location -Path (Join-Path $PSScriptRoot '../..')
 
 $svc = "claude-sandbox"
 
-$running = docker compose ps --status running --format '{{.Name}}' 2>$null
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting (issues #111, #117).
+$running = $null
+try { $running = docker compose ps --status running --format '{{.Name}}' 2>$null } catch { $running = $null }
 if (-not $running) {
     Write-Host "Sandbox isn't running. Start it first:  start-sandbox.cmd"
     exit 1
