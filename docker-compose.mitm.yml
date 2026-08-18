@@ -12,7 +12,7 @@ services:
       context: .
       dockerfile: Dockerfile.mitm
     image: coding-agent-sandbox-mitm:latest
-    container_name: claude-sandbox-mitm
+    container_name: "${SANDBOX_MITM_CONTAINER_NAME:-claude-sandbox-mitm}"
     # Same least-privilege posture as the default stack.
     cap_drop:
       - ALL
@@ -48,6 +48,12 @@ services:
       # (or ./scripts/auth/claim-token.ps1) once after `/login` — or just restart; the entrypoint reconciles.
       ANTHROPIC_TOKEN_ISOLATION: "${ANTHROPIC_TOKEN_ISOLATION:-false}"
     volumes:
+  # Overridable so a validation run can be isolated; defaults unchanged (issue #112).
+  #
+  # The SAME variables must be set for `down -v` as for `up`. Compose resolves these names at
+  # teardown too, so a `down -v` with them unset removes the DEFAULT-named volumes — the
+  # operator's — regardless of which stack was brought up. That is not hypothetical: it is how
+  # this note came to be written.
       - "${WORKSPACE_DIR:-./workspace}:/workspace"
       # Shares the same login volume as the default stack — log in once, use either.
       - "claude-config:/home/node/.claude"
@@ -59,8 +65,8 @@ services:
 
 volumes:
   claude-config:
-    name: coding-agent-sandbox-config
+    name: "${SANDBOX_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"
   claude-audit-mitm:
-    name: coding-agent-sandbox-audit-mitm
+    name: "${SANDBOX_MITM_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit-mitm}"
   claude-secret:
-    name: coding-agent-sandbox-secret
+    name: "${SANDBOX_MITM_SECRET_VOLUME_NAME:-coding-agent-sandbox-secret}"
