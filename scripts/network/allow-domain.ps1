@@ -10,7 +10,10 @@ Set-Location -Path (Join-Path $PSScriptRoot '../..')
 if (-not $Domains -or $Domains.Count -lt 1) {
     Write-Host "usage: ./scripts/network/allow-domain.ps1 <domain> [domain ...]"; exit 1
 }
-$running = docker compose ps --status running --format '{{.Name}}' 2>$null
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting (issues #111, #117).
+$running = $null
+try { $running = docker compose ps --status running --format '{{.Name}}' 2>$null } catch { $running = $null }
 if ([string]::IsNullOrWhiteSpace($running)) {
     Write-Host "Sandbox isn't running. Start it first:  ./run.ps1"; exit 1
 }
@@ -39,7 +42,10 @@ Start-Sleep -Seconds 1
 
 # Safety re-check: the allowlist must STILL deny a known-bad host. If example.com became reachable,
 # a bad entry widened the filter to allow-all — fail loudly.
-$code = docker compose exec -T claude-sandbox curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 -x http://127.0.0.1:8888 http://example.com/ 2>$null
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting (issues #111, #117).
+$code = $null
+try { $code = docker compose exec -T claude-sandbox curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 -x http://127.0.0.1:8888 http://example.com/ 2>$null } catch { $code = $null }
 if ($code -eq "403") {
     Write-Host "ok: allowlist still denies example.com (403)."
     Write-Host "proxy reloaded. (Permanent? add these to EXTRA_ALLOWED_DOMAINS in .env)"

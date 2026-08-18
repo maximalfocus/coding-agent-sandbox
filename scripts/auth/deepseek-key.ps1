@@ -61,8 +61,11 @@ if ($env:SIDECAR_COMPOSE_PROJECT) {
 }
 
 if ($managerAction -ne "store") {
-    & docker @compose
-    exit $LASTEXITCODE
+    # Guarded so docker's exit code still reaches the caller: an unguarded native stderr write throws
+    # under $ErrorActionPreference='Stop', replacing the code with a stack trace (issues #111, #117).
+    $rc = 1
+    try { & docker @compose; $rc = $LASTEXITCODE } catch { $rc = 1 }
+    exit $rc
 }
 
 $secure = Read-Host "DeepSeek API key" -AsSecureString

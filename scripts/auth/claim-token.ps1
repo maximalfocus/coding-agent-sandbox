@@ -25,8 +25,14 @@ if (-not $egressName) { $egressName = "claude-sandbox-egress" }
 $scope = @()
 if ($project) { $scope = @("-p", $project) }
 
-$sidecar = docker compose @scope -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>$null
-$mitm    = docker compose @scope -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>$null
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting (issues #111, #117).
+$sidecar = $null
+try { $sidecar = docker compose @scope -f docker-compose.sidecar.yml ps --status running --format '{{.Name}}' 2>$null } catch { $sidecar = $null }
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting (issues #111, #117).
+$mitm = $null
+try { $mitm = docker compose @scope -f docker-compose.mitm.yml ps --status running --format '{{.Name}}' 2>$null } catch { $mitm = $null }
 if ($sidecar -match [regex]::Escape($egressName)) {
     $compose = $scope + @("-f", "docker-compose.sidecar.yml"); $svc = "claude-sandbox-egress"
     $container = $egressName
@@ -50,7 +56,18 @@ Write-Host "Claiming into: $container$where"
 # `-p` does not scope this project's volumes, which are named explicitly so a renamed checkout never
 # orphans a login, so a run can declare a project and still mount the operator's own login (#93).
 if ($project) {
-    $mounted = docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' $container 2>$null
+    # Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+    # an unguarded probe throws instead of reporting (issues #111, #117).
+    $mounted = $null
+    try { $mounted = docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' $container 2>$null } catch { $mounted = $null }
+    # A guard that cannot resolve must REFUSE, not proceed. Catching the terminating error above would
+    # otherwise leave $mounted empty, $shared empty, and the check below silently passing — fail-open
+    # on a possibly-shared login, the opposite of #93/#97's intent. Matches scripts/stack-guard.sh.
+    if (-not $mounted) {
+        Write-Error "REFUSING: could not read the volumes mounted by '$container', so whether this stack
+  shares the operator's login cannot be determined. Refusing rather than guessing."
+        exit 1
+    }
     $defaults = Select-String -Path docker-compose.sidecar.yml -Pattern 'name:\s*"?\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]+)\}' |
                 ForEach-Object { $_.Matches[0].Groups[1].Value }
     $shared = @($mounted | Where-Object { $defaults -contains $_ })

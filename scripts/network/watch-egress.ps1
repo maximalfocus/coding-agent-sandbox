@@ -23,7 +23,10 @@ $SVC = "claude-sandbox"
 $LOG = "/var/log/tinyproxy/tinyproxy.log"
 $Mode = if ($Auto) { "auto" } elseif ($NotifyOnly) { "notify" } else { "interactive" }
 
-$running = docker compose ps --status running --format '{{.Name}}' 2>$null
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting (issues #111, #117).
+$running = $null
+try { $running = docker compose ps --status running --format '{{.Name}}' 2>$null } catch { $running = $null }
 if ([string]::IsNullOrWhiteSpace($running)) {
     Write-Host "Sandbox isn't running. Start it first:  ./run.ps1"; exit 1
 }

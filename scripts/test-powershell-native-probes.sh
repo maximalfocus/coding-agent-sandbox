@@ -18,63 +18,62 @@ set -uo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
+PWSH_IMAGE=${PWSH_IMAGE:-coding-agent-sandbox-pwsh:7.6.5}
 
 PASSED=0
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 ok() { PASSED=$((PASSED + 1)); printf 'ok  %s\n' "$*"; }
 
-# Actions, not probes: a failure here must stop the script rather than be swallowed.
-is_exempt() {
-    case "$1" in
-        *"wsl --install"*) return 0 ;;               # provisioning, not a check
-        *"& docker @compose"*) return 0 ;;           # the manager call itself
-        *"& docker @configArgs"*) return 1 ;;        # a resolution probe — must be guarded
-    esac
-    return 1
-}
+# The scan is done by scripts/native-probe-gate.ps1 in the pinned pwsh container, using the PARSER.
+# A textual scan cannot do this correctly: #111's version matched only `& native` and missed every
+# bare invocation (issue #117), and broadening the regex then flagged `docker`/`git` occurring inside
+# single-quoted shell strings passed to `docker compose exec` — the same false positives #76 hit
+# before it switched to the token stream.
+#
+# A "probe" is a native invocation whose result the script reads: assigned to a variable, or followed
+# by a `$LASTEXITCODE` test. An invocation whose failure should simply propagate is an ACTION and is
+# not required to be guarded.
+command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 || { echo "SKIP: no Docker daemon for the parser-based scan"; exit 0; }
+docker image inspect "$PWSH_IMAGE" >/dev/null 2>&1 || docker build -q -f "$ROOT/Dockerfile.pwsh" -t "$PWSH_IMAGE" "$ROOT" >/dev/null 2>&1 \
+    || { echo "SKIP: the pinned pwsh image is unavailable"; exit 0; }
 
-# A site is guarded when its line, or the line above it, opens a try.
-guarded() { # file line
-    local body prev
-    body=$(sed -n "$2p" "$1"); prev=$(sed -n "$(( $2 - 1 ))p" "$1")
-    grep -q 'try {' <<<"$body" && return 0
-    grep -qE 'try \{\s*$' <<<"$prev" && return 0
-    return 1
-}
-
-files=$(git ls-files '*.ps1')
-[ -n "$files" ] || fail "no PowerShell files are tracked — this check would pass vacuously"
-
-checked=0; offenders=""
-while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    grep -q 'ErrorActionPreference *= *"Stop"' "$f" || continue
-    while IFS= read -r hit; do
-        [ -n "$hit" ] || continue
-        n=${hit%%:*}; body=${hit#*:}
-        is_exempt "$body" && continue
-        checked=$((checked + 1))
-        guarded "$f" "$n" || offenders="$offenders
-    $f:$n:$(printf '%s' "$body" | sed 's/^[[:space:]]*//' | cut -c1-70)"
-    # Match guarded and unguarded alike — anchoring at line start would stop matching the moment a
-    # site is wrapped in `try { ... }`, silently reducing this gate to zero examined sites.
-    done < <(grep -nE '& (wsl|docker|git|npm|gh|tar|curl)\b' "$f" | grep -vE '^[0-9]+:[[:space:]]*#')
-done <<<"$files"
-
-[ "$checked" -gt 0 ] || fail "no native probes were examined — the scan pattern has stopped matching"
-ok "$checked native probe sites examined across the tracked PowerShell files"
-[ -z "$offenders" ] || fail "these native probes can throw instead of reporting failure:$offenders
-    Wrap in try/catch, or add to is_exempt() if the failure must propagate."
+out=$(docker run --rm -v "$ROOT:/w:ro" -w /w --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" \
+        -NoProfile -File ./scripts/native-probe-gate.ps1 2>&1)
+status=$?
+printf '%s\n' "$out" | grep -v '^SUMMARY' | sed 's/^/    /'
+summary=$(printf '%s\n' "$out" | grep '^SUMMARY' | tail -1)
+[ -n "$summary" ] || fail "the parser-based scan produced no summary: $out"
+probes=$(sed -nE 's/.*probes=([0-9]+).*/\1/p' <<<"$summary")
+unguarded=$(sed -nE 's/.*unguarded=([0-9]+).*/\1/p' <<<"$summary")
+[ "${probes:-0}" -gt 0 ] || fail "no native probes were examined — the scan has stopped matching"
+ok "$probes native probe sites examined by the parser, across every tracked .ps1"
+[ "$status" -eq 0 ] && [ "${unguarded:-1}" -eq 0 ] \
+    || fail "$unguarded native probe(s) can throw instead of reporting failure (listed above)"
 ok "every native probe is guarded against a terminating NativeCommandError"
 
-# --- the check must be able to fail -----------------------------------------
+# --- the check must be able to fail ----------------------------------------
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-printf '$ErrorActionPreference = "Stop"\n& docker info *> $null\nif ($LASTEXITCODE -eq 0) { "up" }\n' > "$TMP/bad.ps1"
-if ! guarded "$TMP/bad.ps1" 2; then ok "an unguarded probe is detected"; else fail "an unguarded probe was not detected"; fi
-printf '$ErrorActionPreference = "Stop"\ntry { & docker info *> $null } catch { }\n' > "$TMP/good.ps1"
-if guarded "$TMP/good.ps1" 2; then ok "a guarded probe is accepted"; else fail "a guarded probe was rejected"; fi
-printf '$ErrorActionPreference = "Stop"\ntry {\n    & docker info *> $null\n} catch { }\n' > "$TMP/multi.ps1"
-if guarded "$TMP/multi.ps1" 3; then ok "a probe guarded by a multi-line try is accepted"; else fail "multi-line try not recognised"; fi
+mkdir -p "$TMP/probe"
+printf '$ErrorActionPreference = "Stop"\n$r = docker compose ps 2>$null\nif ($r) { "up" }\n' > "$TMP/probe/bad.ps1"
+bad=$(docker run --rm -v "$TMP/probe:/w:ro" -w /w --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" \
+        -NoProfile -File /w/../w/bad.ps1 2>/dev/null; true)
+out=$(docker run --rm -v "$ROOT/scripts/native-probe-gate.ps1:/g.ps1:ro" -v "$TMP/probe:/w:ro" -w /w \
+        --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" -NoProfile -File /g.ps1 2>&1)
+grep -q 'UNGUARDED' <<<"$out" || fail "an unguarded bare probe was not detected: $out"
+ok "an unguarded BARE probe is detected — the blind spot #117 fixed stays fixed"
+
+printf '$ErrorActionPreference = "Stop"\n$r = $null\ntry { $r = docker compose ps 2>$null } catch { $r = $null }\nif ($r) { "up" }\n' > "$TMP/probe/bad.ps1"
+out=$(docker run --rm -v "$ROOT/scripts/native-probe-gate.ps1:/g.ps1:ro" -v "$TMP/probe:/w:ro" -w /w \
+        --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" -NoProfile -File /g.ps1 2>&1)
+grep -q 'UNGUARDED' <<<"$out" && fail "a guarded probe was flagged: $out"
+ok "a guarded probe is accepted"
+
+# A native command inside a single-quoted shell string must NOT be mistaken for an invocation.
+printf '$ErrorActionPreference = "Stop"\n$r = $null\ntry { $r = docker compose exec -T x sh -c %s } catch { $r = $null }\n' "'git pull || docker ps'" > "$TMP/probe/bad.ps1"
+out=$(docker run --rm -v "$ROOT/scripts/native-probe-gate.ps1:/g.ps1:ro" -v "$TMP/probe:/w:ro" -w /w \
+        --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" -NoProfile -File /g.ps1 2>&1)
+grep -q 'UNGUARDED' <<<"$out" && fail "a native name inside a shell string was treated as an invocation: $out"
+ok "a native name inside a quoted shell string is not a false positive"
 
 # --- the specific regression that started this ------------------------------
 grep -q 'Docker not found' shell.ps1 || fail "shell.ps1 lost its fail-closed message"
