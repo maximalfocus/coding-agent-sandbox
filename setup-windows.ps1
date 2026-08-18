@@ -129,9 +129,13 @@ function Install-WingetPackage([string]$Name, [string]$Id) {
 }
 
 function Test-WslReady {
+    # Guarded: native stderr becomes a TERMINATING NativeCommandError under
+    # $ErrorActionPreference='Stop', which `*> $null` redirects but does not prevent. A probe must be
+    # able to report "not available" rather than throw (issue #111).
     if (-not (Test-Command "wsl")) { return $false }
-    & wsl --status *> $null
-    return ($LASTEXITCODE -eq 0)
+    $rc = 1
+    try { & wsl --status *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+    return ($rc -eq 0)
 }
 
 function Ensure-WslReady {
@@ -184,9 +188,13 @@ function Add-GitToPathForThisSession {
 }
 
 function Test-DockerRunning {
+    # Guarded: native stderr becomes a TERMINATING NativeCommandError under
+    # $ErrorActionPreference='Stop', which `*> $null` redirects but does not prevent. A probe must be
+    # able to report "not available" rather than throw (issue #111).
     if (-not (Test-Command "docker")) { return $false }
-    & docker info *> $null
-    return ($LASTEXITCODE -eq 0)
+    $rc = 1
+    try { & docker info *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+    return ($rc -eq 0)
 }
 
 function Start-DockerDesktop {
@@ -259,8 +267,10 @@ if (-not (Test-Command "docker")) {
     throw "Docker was installed, but this PowerShell session cannot see it yet. Close PowerShell, open it again, and rerun this script."
 }
 
-& docker compose version *> $null
-if ($LASTEXITCODE -ne 0) {
+# Guarded so the specific message below is what the operator sees, not a NativeCommandError (#111).
+$rc = 1
+try { & docker compose version *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+if ($rc -ne 0) {
     throw "Docker Compose is not available. Update Docker Desktop, then rerun this script."
 }
 

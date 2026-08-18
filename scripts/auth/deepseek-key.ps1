@@ -29,7 +29,18 @@ $compose = @("compose") + $scope + @("-f", "docker-compose.sidecar.yml", "run", 
 # inspect until it is already too late.
 if ($env:SIDECAR_COMPOSE_PROJECT) {
     $configArgs = @("compose") + $scope + @("-f", "docker-compose.sidecar.yml", "config")
-    $rendered = & docker @configArgs 2>$null
+    # A resolution probe must be able to fail without throwing: native stderr terminates under
+    # $ErrorActionPreference='Stop' regardless of the redirect (issue #111).
+    $rendered = $null
+    try { $rendered = & docker @configArgs 2>$null } catch { $rendered = $null }
+    # A guard that cannot resolve must REFUSE, not proceed. Catching the terminating error above
+    # would otherwise leave $rendered empty, $shared empty, and the check below silently passing —
+    # fail-open on a possibly-shared credential volume, which is the opposite of #97's intent.
+    if (-not $rendered) {
+        Write-Error "REFUSING: could not resolve this stack's volumes via 'docker compose config', so
+  whether it shares the operator's DeepSeek key cannot be determined. Refusing rather than guessing."
+        exit 1
+    }
     $inVolumes = $false
     $resolved = @()
     foreach ($line in $rendered) {

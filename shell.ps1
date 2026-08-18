@@ -26,8 +26,16 @@ function Resolve-Docker {
         # to the scalar '--', turning the later '+' into string concat ('--docker version ...').
         [string[]]$pre = if ([string]::IsNullOrWhiteSpace($distro)) { @('--') } else { @('-d', $distro, '--') }
         # Confirm docker actually answers inside WSL before committing to this path.
-        & wsl @($pre + @('docker', 'version', '--format', '{{.Server.Version}}')) *> $null
-        if ($LASTEXITCODE -eq 0) {
+        #
+        # Guarded because a probe must be able to report "not available". `wsl.exe` writes to stderr
+        # when the subsystem is absent, and under $ErrorActionPreference='Stop' PowerShell turns
+        # native stderr into a TERMINATING NativeCommandError — `*> $null` redirects the stream but
+        # does not prevent the error. Unguarded, this throws instead of falling through to the
+        # caller's fail-closed message, and the operator gets a stack trace (issue #111).
+        $probeExit = 1
+        try { & wsl @($pre + @('docker', 'version', '--format', '{{.Server.Version}}')) *> $null; $probeExit = $LASTEXITCODE }
+        catch { $probeExit = 1 }
+        if ($probeExit -eq 0) {
             $script:DockerExe = 'wsl'; $script:DockerLead = $pre + 'docker'
             return $true
         }
