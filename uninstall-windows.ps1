@@ -102,9 +102,13 @@ function Add-DockerToPathForThisSession {
 Add-DockerToPathForThisSession
 
 function Test-DockerRunning {
+    # Guarded: native stderr becomes a TERMINATING NativeCommandError under
+    # $ErrorActionPreference='Stop', which `*> $null` redirects but does not prevent. A probe must be
+    # able to report "not available" rather than throw (issue #111).
     if (-not (Test-Command "docker")) { return $false }
-    & docker info *> $null
-    return ($LASTEXITCODE -eq 0)
+    $rc = 1
+    try { & docker info *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+    return ($rc -eq 0)
 }
 
 # --- Preview ------------------------------------------------------------------
@@ -164,52 +168,62 @@ if (-not $SkipDocker) {
         # Graceful compose down first (handles anything the explicit lists miss).
         Write-Host ""
         Write-Host "==> docker compose down (default + mitm stacks)"
-        & docker compose down --remove-orphans *> $null
+        # Best-effort cleanup: a stderr line here must not abort the uninstall part-way (#111).
+        try { & docker compose down --remove-orphans *> $null } catch { }
         if (Test-Path -LiteralPath (Join-Path $RepoDir "docker-compose.mitm.yml")) {
-            & docker compose -f docker-compose.mitm.yml down --remove-orphans *> $null
+            try { & docker compose -f docker-compose.mitm.yml down --remove-orphans *> $null } catch { }
         }
 
         Write-Host "==> Removing containers"
         foreach ($c in $Containers) {
-            $found = & docker ps -aq -f "name=^$c$"
+            $found = $null
+            try { $found = & docker ps -aq -f "name=^$c$" } catch { $found = $null }
             if ($found) {
-                & docker rm -f $c *> $null
-                if ($LASTEXITCODE -eq 0) { Write-Host "    removed container $c" } else { Write-Host "    (could not remove $c)" }
+                # Guarded so the "(could not remove)" branch below is reachable at all (#111).
+                $rc = 1
+                try { & docker rm -f $c *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+                if ($rc -eq 0) { Write-Host "    removed container $c" } else { Write-Host "    (could not remove $c)" }
             }
         }
 
         Write-Host "==> Removing volumes (logins + audit logs live here)"
         foreach ($v in $Volumes) {
-            $found = & docker volume ls -q -f "name=^$v$"
+            $found = $null
+            try { $found = & docker volume ls -q -f "name=^$v$" } catch { $found = $null }
             if ($found) {
-                & docker volume rm $v *> $null
-                if ($LASTEXITCODE -eq 0) { Write-Host "    removed volume $v" } else { Write-Host "    (in use? could not remove $v)" }
+                $rc = 1
+                try { & docker volume rm $v *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+                if ($rc -eq 0) { Write-Host "    removed volume $v" } else { Write-Host "    (in use? could not remove $v)" }
             }
         }
 
         if (-not $KeepImages) {
             Write-Host "==> Removing images"
             foreach ($i in $Images) {
-                & docker image inspect $i *> $null
-                if ($LASTEXITCODE -eq 0) {
-                    & docker image rm -f $i *> $null
-                    if ($LASTEXITCODE -eq 0) { Write-Host "    removed image $i" } else { Write-Host "    (could not remove $i)" }
+                $rc = 1
+                try { & docker image inspect $i *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+                if ($rc -eq 0) {
+                    $rc2 = 1
+                    try { & docker image rm -f $i *> $null; $rc2 = $LASTEXITCODE } catch { $rc2 = 1 }
+                    if ($rc2 -eq 0) { Write-Host "    removed image $i" } else { Write-Host "    (could not remove $i)" }
                 }
             }
         }
 
         Write-Host "==> Removing network"
         foreach ($n in $Networks) {
-            $found = & docker network ls -q -f "name=^$n$"
+            $found = $null
+            try { $found = & docker network ls -q -f "name=^$n$" } catch { $found = $null }
             if ($found) {
-                & docker network rm $n *> $null
-                if ($LASTEXITCODE -eq 0) { Write-Host "    removed network $n" } else { Write-Host "    (could not remove $n)" }
+                $rc = 1
+                try { & docker network rm $n *> $null; $rc = $LASTEXITCODE } catch { $rc = 1 }
+                if ($rc -eq 0) { Write-Host "    removed network $n" } else { Write-Host "    (could not remove $n)" }
             }
         }
 
         if ($PruneDangling) {
             Write-Host "==> Pruning dangling images (host-wide)"
-            & docker image prune -f *> $null
+            try { & docker image prune -f *> $null } catch { }
         }
     }
 
