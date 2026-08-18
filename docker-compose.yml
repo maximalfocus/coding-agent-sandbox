@@ -3,7 +3,7 @@ services:
     build:
       context: .
     image: coding-agent-sandbox:latest
-    container_name: claude-sandbox
+    container_name: "${SANDBOX_CONTAINER_NAME:-claude-sandbox}"
     # Least privilege: drop the WHOLE default capability set, then add back only the five caps
     # this sandbox actually exercises. The article's recurring lesson is to lean on battle-tested
     # primitives and minimize your own surface — a dropped cap is one the agent can't abuse even
@@ -108,20 +108,28 @@ services:
 
 volumes:
   # Explicit, project-name-independent names so renaming the folder never orphans your login.
+  # Each is overridable so a validation run can be genuinely isolated: `-p` scopes containers and
+  # networks but not a volume named here, so without these a test stack would mount the operator's
+  # real logins. Defaults are unchanged, so an existing operator sees no difference (issue #112).
+  #
+  # The SAME variables must be set for `down -v` as for `up`. Compose resolves these names at
+  # teardown too, so a `down -v` with them unset removes the DEFAULT-named volumes — the
+  # operator's — regardless of which stack was brought up. That is not hypothetical: it is how
+  # this note came to be written.
   claude-config:
-    name: coding-agent-sandbox-config
+    name: "${SANDBOX_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"
   claude-codex:
-    name: coding-agent-sandbox-codex
+    name: "${SANDBOX_CODEX_VOLUME_NAME:-coding-agent-sandbox-codex}"
   claude-gh:
-    name: coding-agent-sandbox-gh
+    name: "${SANDBOX_GH_VOLUME_NAME:-coding-agent-sandbox-gh}"
   claude-audit:
-    name: coding-agent-sandbox-audit
+    name: "${SANDBOX_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit}"
   # Inert fallbacks so an unset WORKSPACE_DIR/WORK_DIR/PERSONAL_DIR binds an isolated volume,
   # never a repo-relative host dir (keeps the /workspace/work + /workspace/personal mapping
   # deterministic across machines — see volumes section above).
   claude-workspace:
-    name: coding-agent-sandbox-workspace
+    name: "${SANDBOX_WORKSPACE_VOLUME_NAME:-coding-agent-sandbox-workspace}"
   claude-work:
-    name: coding-agent-sandbox-work
+    name: "${SANDBOX_WORK_VOLUME_NAME:-coding-agent-sandbox-work}"
   claude-personal:
-    name: coding-agent-sandbox-personal
+    name: "${SANDBOX_PERSONAL_VOLUME_NAME:-coding-agent-sandbox-personal}"
