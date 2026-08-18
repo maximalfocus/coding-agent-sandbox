@@ -42,9 +42,18 @@ function Resolve-Docker {
     return $false
 }
 
+# Deliberately a SIMPLE function using $args, not an advanced one with
+# [Parameter(ValueFromRemainingArguments)]. That attribute makes this an advanced function, which
+# gains the common parameters — and PowerShell then tries to bind a literal `-token` in a caller's
+# source as a PARAMETER NAME before treating it as a value. `-w` is an ambiguous prefix of
+# -WarningAction/-WarningVariable, so `Invoke-Docker exec … -w /workspace …` threw AmbiguousParameter
+# before docker ever ran, on both the Docker Desktop and WSL paths (issue #115).
+#
+# A simple function has no common parameters, so -w, -e, -o and -d all arrive as plain values.
+# Measured on Windows PowerShell 5.1: with the attribute -w/-e/-o are ambiguous and -d silently binds
+# to -Debug; without it, all four bind as values.
 function Invoke-Docker {
-    param([Parameter(ValueFromRemainingArguments = $true)]$DockerArgs)
-    & $script:DockerExe @($script:DockerLead + $DockerArgs)
+    & $script:DockerExe @($script:DockerLead + $args)
 }
 
 if (-not (Resolve-Docker)) {
