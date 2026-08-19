@@ -36,7 +36,7 @@ check 'PowerShell launcher applies selected Compose files to build and up' conta
 check 'entrypoint initializes opt-in AWS volume for node' contains_all "$ROOT/entrypoint.sh" 'AWS_SSO_REGIONS' 'mkdir -p /home/node/.aws' 'chown -R node:node /home/node/.aws'
 
 check 'opt-in Compose overlays isolate AWS state to agent services' python3 - "$ROOT" <<'PY'
-import pathlib, sys, yaml
+import pathlib, re, sys, yaml
 root = pathlib.Path(sys.argv[1])
 cases = [
     ('docker-compose.aws.yml', 'claude-sandbox'),
@@ -50,7 +50,13 @@ for filename, agent in cases:
     volumes = services[agent].get('volumes', [])
     assert volumes == ['claude-aws:/home/node/.aws'], (filename, volumes)
     top = doc.get('volumes', {}).get('claude-aws', {})
-    assert top.get('name') == 'coding-agent-sandbox-aws', (filename, top)
+    # The name is parameterised so an addressed uninstall resolves it to the installation being
+    # removed rather than to the operator's (issues #123, #125). What matters here is unchanged:
+    # with nothing overridden it must still resolve to coding-agent-sandbox-aws.
+    declared = top.get('name')
+    m = re.fullmatch(r'\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]+)\}', declared or '')
+    resolved = m.group(1) if m else declared
+    assert resolved == 'coding-agent-sandbox-aws', (filename, declared)
 assert 'claude-sandbox-egress' not in yaml.safe_load((root / 'docker-compose.sidecar.aws.yml').read_text())['services']
 PY
 
