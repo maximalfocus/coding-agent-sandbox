@@ -25,24 +25,65 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 # Docker engine that pre-existed this sandbox unless --remove-docker-engine forces it.
 ENGINE_MARKER="$HOME/.coding-agent-sandbox/installed-orbstack"
 
-# --- What belongs to the sandbox (fixed names from both compose files) -------
-CONTAINERS=(claude-sandbox claude-sandbox-mitm)
-IMAGES=(coding-agent-sandbox:latest coding-agent-sandbox-mitm:latest)
-VOLUMES=(
-  coding-agent-sandbox-config
-  coding-agent-sandbox-codex
-  coding-agent-sandbox-gh
-  coding-agent-sandbox-workspace
-  coding-agent-sandbox-work
-  coding-agent-sandbox-personal
-  coding-agent-sandbox-ws
-  coding-agent-sandbox-audit
-  coding-agent-sandbox-audit-mitm
-  coding-agent-sandbox-trivy-cache
+# --- What belongs to the sandbox --------------------------------------------
+# Resolved from the SAME variables the compose files use, defaulting to the fixed names so an
+# existing operator sees no change. Fixed names alone meant this script could only ever act on the
+# DEFAULT installation, so its removal half could not be exercised on a machine that also held a
+# real one — the resources it removes include the operator's login. That is the same hazard
+# `docker-compose.yml` records for `down -v` (issue #123).
+CONTAINERS=(
+  "${SANDBOX_CONTAINER_NAME:-claude-sandbox}"
+  "${SANDBOX_MITM_CONTAINER_NAME:-claude-sandbox-mitm}"
 )
-# coding-agent-sandbox_default = the compose network; claude-safe-net = created on first use by the
-# optional `claude-safe` shell helper (a `docker run` on its own user-defined network).
-NETWORKS=(coding-agent-sandbox_default claude-safe-net)
+VOLUMES=(
+  "${SANDBOX_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"
+  "${SANDBOX_CODEX_VOLUME_NAME:-coding-agent-sandbox-codex}"
+  "${SANDBOX_GH_VOLUME_NAME:-coding-agent-sandbox-gh}"
+  "${SANDBOX_WORKSPACE_VOLUME_NAME:-coding-agent-sandbox-workspace}"
+  "${SANDBOX_WORK_VOLUME_NAME:-coding-agent-sandbox-work}"
+  "${SANDBOX_PERSONAL_VOLUME_NAME:-coding-agent-sandbox-personal}"
+  "${SANDBOX_WS_VOLUME_NAME:-coding-agent-sandbox-ws}"
+  "${SANDBOX_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit}"
+  "${SANDBOX_MITM_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit-mitm}"
+  "${SANDBOX_TRIVY_CACHE_VOLUME_NAME:-coding-agent-sandbox-trivy-cache}"
+)
+# The compose network is <project>_default; claude-safe-net is created on first use by the optional
+# `claude-safe` shell helper (a `docker run` on its own user-defined network).
+NETWORKS=(
+  "${COMPOSE_PROJECT_NAME:-coding-agent-sandbox}_default"
+  "claude-safe-net"
+)
+# The image tags are NOT parameterised in the compose files, so every installation on a host shares
+# them. An addressed run therefore keeps them: removing a shared image is exactly the "touched a
+# resource that was not mine" failure this addressability exists to make impossible.
+IMAGES=(coding-agent-sandbox:latest coding-agent-sandbox-mitm:latest)
+
+# --- Which installation is being removed? ------------------------------------
+# Any override means "not the default installation". A PARTIAL override is the dangerous case: it
+# resolves some names to a disposable stack and the rest to the operator's, so a single run would
+# remove both. Refuse rather than guess — the same fail-closed rule scripts/stack-guard.sh applies.
+SANDBOX_VARS=(
+  SANDBOX_CONTAINER_NAME SANDBOX_MITM_CONTAINER_NAME
+  SANDBOX_CONFIG_VOLUME_NAME SANDBOX_CODEX_VOLUME_NAME SANDBOX_GH_VOLUME_NAME
+  SANDBOX_WORKSPACE_VOLUME_NAME SANDBOX_WORK_VOLUME_NAME SANDBOX_PERSONAL_VOLUME_NAME
+  SANDBOX_WS_VOLUME_NAME SANDBOX_AUDIT_VOLUME_NAME SANDBOX_MITM_AUDIT_VOLUME_NAME
+  SANDBOX_TRIVY_CACHE_VOLUME_NAME COMPOSE_PROJECT_NAME
+)
+ADDRESSED=0
+set_vars=(); unset_vars=()
+for v in "${SANDBOX_VARS[@]}"; do
+    if [ -n "${!v:-}" ]; then set_vars+=("$v"); else unset_vars+=("$v"); fi
+done
+if [ "${#set_vars[@]}" -gt 0 ]; then
+    ADDRESSED=1
+    if [ "${#unset_vars[@]}" -gt 0 ]; then
+        echo "REFUSING: this run addresses a named installation, but these are unset:" >&2
+        printf '  %s\n' "${unset_vars[@]}" >&2
+        echo "Each unset name falls back to the DEFAULT — the operator's — so one run would remove" >&2
+        echo "resources from two installations. Set all of them, or none of them." >&2
+        exit 1
+    fi
+fi
 
 # --- Flags -------------------------------------------------------------------
 ASSUME_YES=0
@@ -57,7 +98,13 @@ usage() {
     cat <<'EOF'
 uninstall.sh — remove everything this sandbox created on the host.
 
-Removes ONLY sandbox-owned Docker resources (fixed names) + this repo directory.
+Removes ONLY sandbox-owned Docker resources + this repo directory.
+
+Names come from the same SANDBOX_* variables the compose files use. Set ALL of them
+(and COMPOSE_PROJECT_NAME) to remove one named installation instead of the default;
+a partial override is refused, because the unset names fall back to the default
+installation's. An addressed run keeps the shared image tags, the host Docker engine
+and this directory, which belong to the host rather than to that installation.
 NEVER touches your host personal/work trees (PERSONAL_DIR / WORK_DIR) or your ~/.docker login.
 
 Usage:
@@ -92,12 +139,30 @@ while [ "$#" -gt 0 ]; do
 done
 
 say()  { printf '%s\n' "$@"; }
+# An addressed run removes ONE named installation and nothing else. The shared, fixed-name
+# resources — the image tags, the host Docker engine, and this repo directory — belong to the host
+# rather than to that installation, so they are never in scope for it (issue #123).
+if [ "$ADDRESSED" -eq 1 ]; then
+    KEEP_IMAGES=1
+    REMOVE_DOCKER_ENGINE=0
+    FORCE_ENGINE=0
+    KEEP_DIR=1
+    # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
+    # every installation on the host, so an addressed run leaves it alone too.
+    NETWORKS=("${COMPOSE_PROJECT_NAME}_default")
+fi
+
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # --- Preview -----------------------------------------------------------------
 say "coding-agent-sandbox uninstall"
 say "=============================="
 say ""
+if [ "$ADDRESSED" -eq 1 ]; then
+    say "Addressing the named installation '${COMPOSE_PROJECT_NAME}' — not the default one."
+    say "  (images, the host Docker engine and this directory are shared, so they are left alone)"
+    say ""
+fi
 if [ "$SKIP_DOCKER" -eq 0 ]; then
     say "Docker resources to remove:"
     say "  containers: ${CONTAINERS[*]}"

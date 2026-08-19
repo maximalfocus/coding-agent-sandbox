@@ -1,7 +1,7 @@
 ﻿# uninstall-windows.ps1 - the Windows counterpart to uninstall.sh (and to setup-windows.ps1):
 # removes everything this sandbox created on the host, so you can start from a clean slate.
 #
-# Removes ONLY sandbox-owned resources (all have fixed, project-name-independent names) plus this
+# Removes ONLY sandbox-owned resources (names resolved from the compose SANDBOX_* variables) plus this
 # repo directory. It NEVER touches your host personal/work trees (PERSONAL_DIR / WORK_DIR), your
 # Docker login, your SSH keys, or any WSL distro.
 #
@@ -42,28 +42,72 @@ Set-Location -LiteralPath $RepoDir
 # repo so it survives the repo deletion. Engine removal is gated on it (see below).
 $EngineMarker = Join-Path $env:USERPROFILE ".coding-agent-sandbox\installed-docker-desktop"
 
-# --- What belongs to the sandbox (fixed names from both compose files) --------
-$Containers = @("claude-sandbox", "claude-sandbox-mitm")
-$Images     = @("coding-agent-sandbox:latest", "coding-agent-sandbox-mitm:latest")
-$Volumes    = @(
-    "coding-agent-sandbox-config",
-    "coding-agent-sandbox-codex",
-    "coding-agent-sandbox-gh",
-    "coding-agent-sandbox-audit",
-    "coding-agent-sandbox-audit-mitm",
-    "coding-agent-sandbox-workspace",
-    "coding-agent-sandbox-work",
-    "coding-agent-sandbox-personal"
+# --- What belongs to the sandbox ---------------------------------------------
+# Resolved from the SAME variables the compose files use, defaulting to the fixed names so an
+# existing operator sees no change. Fixed names alone meant this script could only ever act on the
+# DEFAULT installation, so its removal half could not be exercised on a machine that also held a
+# real one - the resources it removes include the operator's login (issue #123). Kept in step with
+# uninstall.sh, which consumes the same variable names.
+function Get-SandboxName([string]$Name, [string]$Default) {
+    $v = [Environment]::GetEnvironmentVariable($Name)
+    if ([string]::IsNullOrWhiteSpace($v)) { return $Default }
+    return $v
+}
+$Containers = @(
+    (Get-SandboxName 'SANDBOX_CONTAINER_NAME'      'claude-sandbox'),
+    (Get-SandboxName 'SANDBOX_MITM_CONTAINER_NAME' 'claude-sandbox-mitm')
 )
-# coding-agent-sandbox_default = the compose network; claude-safe-net = created on first use by the
-# optional `claude-safe` shell helper (a `docker run` on its own user-defined network).
-$Networks = @("coding-agent-sandbox_default", "claude-safe-net")
+$Volumes    = @(
+    (Get-SandboxName 'SANDBOX_CONFIG_VOLUME_NAME'       'coding-agent-sandbox-config'),
+    (Get-SandboxName 'SANDBOX_CODEX_VOLUME_NAME'        'coding-agent-sandbox-codex'),
+    (Get-SandboxName 'SANDBOX_GH_VOLUME_NAME'           'coding-agent-sandbox-gh'),
+    (Get-SandboxName 'SANDBOX_AUDIT_VOLUME_NAME'        'coding-agent-sandbox-audit'),
+    (Get-SandboxName 'SANDBOX_MITM_AUDIT_VOLUME_NAME'   'coding-agent-sandbox-audit-mitm'),
+    (Get-SandboxName 'SANDBOX_WORKSPACE_VOLUME_NAME'    'coding-agent-sandbox-workspace'),
+    (Get-SandboxName 'SANDBOX_WORK_VOLUME_NAME'         'coding-agent-sandbox-work'),
+    (Get-SandboxName 'SANDBOX_PERSONAL_VOLUME_NAME'     'coding-agent-sandbox-personal'),
+    (Get-SandboxName 'SANDBOX_WS_VOLUME_NAME'           'coding-agent-sandbox-ws'),
+    (Get-SandboxName 'SANDBOX_TRIVY_CACHE_VOLUME_NAME'  'coding-agent-sandbox-trivy-cache')
+)
+# The compose network is <project>_default; claude-safe-net is created on first use by the optional
+# `claude-safe` shell helper (a `docker run` on its own user-defined network).
+$Networks = @(((Get-SandboxName 'COMPOSE_PROJECT_NAME' 'coding-agent-sandbox') + "_default"), "claude-safe-net")
+# The image tags are NOT parameterised in the compose files, so every installation on a host shares
+# them. An addressed run keeps them: removing a shared image is exactly the "touched a resource that
+# was not mine" failure this addressability exists to prevent.
+$Images     = @("coding-agent-sandbox:latest", "coding-agent-sandbox-mitm:latest")
+
+# Any override means "not the default installation". A PARTIAL override is the dangerous case: it
+# resolves some names to a disposable stack and the rest to the operator's, so one run would remove
+# both. Refuse rather than guess.
+$SandboxVars = @(
+    'SANDBOX_CONTAINER_NAME', 'SANDBOX_MITM_CONTAINER_NAME',
+    'SANDBOX_CONFIG_VOLUME_NAME', 'SANDBOX_CODEX_VOLUME_NAME', 'SANDBOX_GH_VOLUME_NAME',
+    'SANDBOX_WORKSPACE_VOLUME_NAME', 'SANDBOX_WORK_VOLUME_NAME', 'SANDBOX_PERSONAL_VOLUME_NAME',
+    'SANDBOX_WS_VOLUME_NAME', 'SANDBOX_AUDIT_VOLUME_NAME', 'SANDBOX_MITM_AUDIT_VOLUME_NAME',
+    'SANDBOX_TRIVY_CACHE_VOLUME_NAME', 'COMPOSE_PROJECT_NAME'
+)
+$SetVars   = @($SandboxVars | Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
+$UnsetVars = @($SandboxVars | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
+$Addressed = ($SetVars.Count -gt 0)
+if ($Addressed -and $UnsetVars.Count -gt 0) {
+    Write-Error "REFUSING: this run addresses a named installation, but these are unset:
+  $($UnsetVars -join ' ')
+Each unset name falls back to the DEFAULT - the operator's - so one run would remove resources
+from two installations. Set all of them, or none of them."
+    exit 1
+}
 
 function Show-Usage {
     @"
 uninstall-windows.ps1 - remove everything this sandbox created on the host (Windows).
 
-Removes ONLY sandbox-owned Docker resources (fixed names) + this repo directory.
+Removes ONLY sandbox-owned Docker resources + this repo directory.
+
+Names come from the same SANDBOX_* variables the compose files use. Set ALL of them
+(and COMPOSE_PROJECT_NAME) to remove one named installation instead of the default;
+a partial override is refused, because the unset names fall back to the default
+installation's.
 NEVER touches your host personal/work trees, your Docker login, your SSH keys, or any WSL distro.
 
 Usage:
@@ -89,6 +133,21 @@ $DoRemoveEngine = -not $KeepDockerEngine
 $ForceEngine = [bool]$RemoveDockerEngine
 if ($RemoveDockerEngine) { $DoRemoveEngine = $true }
 
+# An addressed run removes ONE named installation and nothing else. The shared, fixed-name resources
+# -- the image tags, the host Docker engine, and this repo directory -- belong to the host rather
+# than to that installation, so they are never in scope for it. Kept in step with uninstall.sh
+# (issue #123); without this an addressed Windows run would still delete the repo and could
+# uninstall Docker Desktop out from under the operator's real installation.
+if ($Addressed) {
+    $KeepImages = $true
+    $KeepDir = $true
+    $DoRemoveEngine = $false
+    $ForceEngine = $false
+    # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
+    # every installation on the host, so an addressed run leaves it alone too.
+    $Networks = @((Get-SandboxName 'COMPOSE_PROJECT_NAME' 'coding-agent-sandbox') + "_default")
+}
+
 function Test-Command([string]$Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
@@ -112,6 +171,11 @@ function Test-DockerRunning {
 }
 
 # --- Preview ------------------------------------------------------------------
+if ($Addressed) {
+    Write-Host "Addressing the named installation '$(Get-SandboxName 'COMPOSE_PROJECT_NAME' 'coding-agent-sandbox')' - not the default one."
+    Write-Host "  (images, the host Docker engine and this directory are shared, so they are left alone)"
+    Write-Host ""
+}
 Write-Host "coding-agent-sandbox uninstall (Windows)"
 Write-Host "========================================"
 Write-Host ""
