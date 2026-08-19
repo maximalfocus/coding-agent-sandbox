@@ -27,8 +27,23 @@ if ($inspectRc -ne 0) {
 $report = New-TemporaryFile
 $rc = 0
 if (Get-Command trivy -ErrorAction SilentlyContinue) {
-    & trivy @common $Image *> $report.FullName
-    $rc = $LASTEXITCODE
+    # A scanner reports progress and INFO on **stderr** even on a completely successful run, and under
+    # `$ErrorActionPreference = "Stop"` Windows PowerShell 5.1 turns native stderr into a TERMINATING
+    # NativeCommandError -- redirection does not prevent it. That aborted an *advisory* scan, and with
+    # it run.ps1 and setup-windows.ps1, on a fresh Windows + Docker Desktop host (issue #119). Relaxing
+    # the preference for the duration of each scanner call is what makes stderr ordinary output again;
+    # the exit code, which is the scanner's actual verdict, is then read normally and STRICT still gates
+    # on it. Each call stays written inline rather than behind a helper so scripts/native-probe-gate.ps1
+    # can still see it (#120), which is why the pattern repeats.
+    $rc = 1
+    $prevEap = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & trivy @common $Image *> $report.FullName
+        $rc = $LASTEXITCODE
+    }
+    catch { $rc = 1 }
+    finally { $ErrorActionPreference = $prevEap }
 }
 else {
     Write-Host "  (no local 'trivy' - using $trivyImage via docker)"
@@ -37,20 +52,31 @@ else {
     try {
         $tar = Join-Path $tarDir "image.tar"
         # Guarded: the enclosing try has only a finally, which reruns cleanup and RETHROWS, so this
-        # was never protected despite sitting inside a try (#120).
+        # was never protected despite sitting inside a try (#120). The preference is relaxed for the
+        # same reason as the scanner call below -- `docker save` prints progress to stderr (#119).
         $saveRc = 1
-        try { docker save $Image -o $tar; $saveRc = $LASTEXITCODE } catch { $saveRc = 1 }
+        $prevEap = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            docker save $Image -o $tar
+            $saveRc = $LASTEXITCODE
+        }
+        catch { $saveRc = 1 }
+        finally { $ErrorActionPreference = $prevEap }
         if ($saveRc -ne 0) { throw "docker save failed for '$Image'." }
         $mount = ($tarDir -replace '\\', '/')
-        # Guarded for the same reason as the save above. Note this reports a throw as failure, which
-        # keeps today's outcome (a blocked start) while replacing the stack trace with the message
-        # below; making an ADVISORY scan survive the scanner's ordinary stderr is issue #119.
+        # The scanner container: the site that actually broke the documented Windows journey (#119).
+        # Its `INFO [vulndb] Need to update DB` on a healthy run was enough to abort the caller.
         $rc = 1
+        $prevEap = $ErrorActionPreference
         try {
+            $ErrorActionPreference = 'Continue'
             docker run --rm -v "${mount}:/work:ro" -v coding-agent-sandbox-trivy-cache:/root/.cache/trivy `
                 $trivyImage @common --input /work/image.tar *> $report.FullName
             $rc = $LASTEXITCODE
-        } catch { $rc = 1 }
+        }
+        catch { $rc = 1 }
+        finally { $ErrorActionPreference = $prevEap }
     }
     finally {
         Remove-Item -Recurse -Force -LiteralPath $tarDir -ErrorAction SilentlyContinue

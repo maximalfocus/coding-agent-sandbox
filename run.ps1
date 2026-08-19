@@ -126,9 +126,19 @@ else {
     Remove-Item Env:\TRIVY_SUMMARY -ErrorAction SilentlyContinue
     if ($scanRc -ne 0) {
         Write-Host ""
-        Write-Host "STRICT scan failed (see above). Set `$env:SKIP_TRIVY=1 to start anyway, or reduce"
-        Write-Host "the surface by bumping the base-image digest in the Dockerfile and rebuilding."
-        exit 1
+        if ($env:TRIVY_STRICT) {
+            # STRICT mode: scan.ps1 exits non-zero on findings AND on operational errors - gate the start.
+            Write-Host "STRICT scan failed (see above). Set `$env:SKIP_TRIVY=1 to start anyway, or reduce"
+            Write-Host "the surface by bumping the base-image digest in the Dockerfile and rebuilding."
+            exit 1
+        }
+        else {
+            # Advisory mode: findings never set a non-zero code (scan.ps1 runs with --exit-code 0), so a
+            # failure here is OPERATIONAL (no Trivy, Docker Hub pull/rate-limit/TLS/offline). Don't let
+            # that block a first-run setup - warn and continue. run.sh has always done this; run.ps1
+            # blocked instead, and even said "STRICT scan failed" when the scan was advisory (#119).
+            Write-Host "  (advisory scan could not complete - continuing anyway; set `$env:SKIP_TRIVY=1 to skip it)"
+        }
     }
 }
 
