@@ -164,7 +164,9 @@ for half in uninstall.sh uninstall-windows.ps1; do
     grep -qiE 'KeepImages|KEEP_IMAGES' <<<"$block" || fail "$half does not keep the shared images on an addressed run"
     grep -qiE 'KeepDir|KEEP_DIR'       <<<"$block" || fail "$half does not keep the repo directory on an addressed run"
     grep -qiE 'Engine'                 <<<"$block" || fail "$half does not spare the host Docker engine on an addressed run"
+    grep -qiE '_default' <<<"$block" \
+        || fail "$half does not narrow the network list on an addressed run — it would remove the shared claude-safe-net"
 done
-ok "both halves scope an addressed run away from the shared image tags, engine and directory"
+ok "both halves scope an addressed run away from the shared images, engine, directory and network"
 
 printf '\nAll %d checks passed.\n' "$PASSED"

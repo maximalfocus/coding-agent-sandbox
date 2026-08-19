@@ -143,6 +143,9 @@ if ($Addressed) {
     $KeepDir = $true
     $DoRemoveEngine = $false
     $ForceEngine = $false
+    # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
+    # every installation on the host, so an addressed run leaves it alone too.
+    $Networks = @((Get-SandboxName 'COMPOSE_PROJECT_NAME' 'coding-agent-sandbox') + "_default")
 }
 
 function Test-Command([string]$Name) {

@@ -83,7 +83,6 @@ if [ "${#set_vars[@]}" -gt 0 ]; then
         echo "resources from two installations. Set all of them, or none of them." >&2
         exit 1
     fi
-    NETWORKS=("${COMPOSE_PROJECT_NAME}_default")
 fi
 
 # --- Flags -------------------------------------------------------------------
@@ -148,6 +147,9 @@ if [ "$ADDRESSED" -eq 1 ]; then
     REMOVE_DOCKER_ENGINE=0
     FORCE_ENGINE=0
     KEEP_DIR=1
+    # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
+    # every installation on the host, so an addressed run leaves it alone too.
+    NETWORKS=("${COMPOSE_PROJECT_NAME}_default")
 fi
 
 have() { command -v "$1" >/dev/null 2>&1; }
