@@ -53,22 +53,46 @@ function Get-SandboxName([string]$Name, [string]$Default) {
     if ([string]::IsNullOrWhiteSpace($v)) { return $Default }
     return $v
 }
+# First non-empty of the named variables, else the trailing literal default. Several volumes are
+# declared by two compose files under two different variable names for the SAME default, so both
+# have to be honoured or an addressed run would fall back to the operator's (issue #125).
+function Select-SandboxName {
+    param([string[]]$Names, [string]$Default)
+    foreach ($n in $Names) {
+        $v = [Environment]::GetEnvironmentVariable($n)
+        if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+    }
+    return $Default
+}
 $Containers = @(
-    (Get-SandboxName 'SANDBOX_CONTAINER_NAME'      'claude-sandbox'),
-    (Get-SandboxName 'SANDBOX_MITM_CONTAINER_NAME' 'claude-sandbox-mitm')
+    (Select-SandboxName @('SANDBOX_CONTAINER_NAME')        'claude-sandbox'),
+    (Select-SandboxName @('SANDBOX_MITM_CONTAINER_NAME')   'claude-sandbox-mitm'),
+    (Select-SandboxName @('SIDECAR_EGRESS_CONTAINER_NAME') 'claude-sandbox-egress'),
+    (Select-SandboxName @('SIDECAR_AGENT_CONTAINER_NAME')  'claude-sandbox-node'),
+    (Select-SandboxName @('NESTED_DOCKER_CONTAINER_NAME')  'claude-sandbox-dind')
 )
+# Every volume any tracked compose file declares. The three credential ones below were absent until
+# issue #125: an uninstall left a real Claude token, a DeepSeek API key and the intercept CA's
+# private key on the host while reporting it had removed everything the sandbox created.
 $Volumes    = @(
-    (Get-SandboxName 'SANDBOX_CONFIG_VOLUME_NAME'       'coding-agent-sandbox-config'),
-    (Get-SandboxName 'SANDBOX_CODEX_VOLUME_NAME'        'coding-agent-sandbox-codex'),
-    (Get-SandboxName 'SANDBOX_GH_VOLUME_NAME'           'coding-agent-sandbox-gh'),
-    (Get-SandboxName 'SANDBOX_AUDIT_VOLUME_NAME'        'coding-agent-sandbox-audit'),
-    (Get-SandboxName 'SANDBOX_MITM_AUDIT_VOLUME_NAME'   'coding-agent-sandbox-audit-mitm'),
-    (Get-SandboxName 'SANDBOX_WORKSPACE_VOLUME_NAME'    'coding-agent-sandbox-workspace'),
-    (Get-SandboxName 'SANDBOX_WORK_VOLUME_NAME'         'coding-agent-sandbox-work'),
-    (Get-SandboxName 'SANDBOX_PERSONAL_VOLUME_NAME'     'coding-agent-sandbox-personal'),
-    (Get-SandboxName 'SANDBOX_WS_VOLUME_NAME'           'coding-agent-sandbox-ws'),
-    (Get-SandboxName 'SANDBOX_TRIVY_CACHE_VOLUME_NAME'  'coding-agent-sandbox-trivy-cache')
+    (Select-SandboxName @('SANDBOX_CONFIG_VOLUME_NAME','SIDECAR_CONFIG_VOLUME_NAME')             'coding-agent-sandbox-config'),
+    (Select-SandboxName @('SANDBOX_CODEX_VOLUME_NAME')                                           'coding-agent-sandbox-codex'),
+    (Select-SandboxName @('SANDBOX_GH_VOLUME_NAME')                                              'coding-agent-sandbox-gh'),
+    (Select-SandboxName @('SANDBOX_AUDIT_VOLUME_NAME')                                           'coding-agent-sandbox-audit'),
+    (Select-SandboxName @('SANDBOX_MITM_AUDIT_VOLUME_NAME','SIDECAR_AUDIT_VOLUME_NAME')          'coding-agent-sandbox-audit-mitm'),
+    (Select-SandboxName @('SANDBOX_WORKSPACE_VOLUME_NAME')                                       'coding-agent-sandbox-workspace'),
+    (Select-SandboxName @('SANDBOX_WORK_VOLUME_NAME')                                            'coding-agent-sandbox-work'),
+    (Select-SandboxName @('SANDBOX_PERSONAL_VOLUME_NAME')                                        'coding-agent-sandbox-personal'),
+    (Select-SandboxName @('SANDBOX_TRIVY_CACHE_VOLUME_NAME')                                     'coding-agent-sandbox-trivy-cache'),
+    (Select-SandboxName @('SANDBOX_MITM_SECRET_VOLUME_NAME','SIDECAR_CLAUDE_SECRET_VOLUME_NAME') 'coding-agent-sandbox-secret'),
+    (Select-SandboxName @('DEEPSEEK_SECRET_VOLUME_NAME')                                         'coding-agent-sandbox-deepseek-secret'),
+    (Select-SandboxName @('SIDECAR_CA_VOLUME_NAME')                                              'coding-agent-sandbox-mitm-ca'),
+    (Select-SandboxName @('SANDBOX_AWS_VOLUME_NAME')                                             'coding-agent-sandbox-aws'),
+    (Select-SandboxName @('NESTED_DOCKER_STORAGE_VOLUME_NAME')                                   'coding-agent-sandbox-nested-docker')
 )
+# Pre-WORK_DIR naming. No compose file declares it any more, so it exists only on hosts that ran an
+# old version - which by definition is the DEFAULT installation. An addressed run never sweeps it.
+$LegacyVolumes = @('coding-agent-sandbox-ws')
 # The compose network is <project>_default; claude-safe-net is created on first use by the optional
 # `claude-safe` shell helper (a `docker run` on its own user-defined network).
 $Networks = @(((Get-SandboxName 'COMPOSE_PROJECT_NAME' 'coding-agent-sandbox') + "_default"), "claude-safe-net")
@@ -82,10 +106,12 @@ $Images     = @("coding-agent-sandbox:latest", "coding-agent-sandbox-mitm:latest
 # both. Refuse rather than guess.
 $SandboxVars = @(
     'SANDBOX_CONTAINER_NAME', 'SANDBOX_MITM_CONTAINER_NAME',
+    'SIDECAR_EGRESS_CONTAINER_NAME', 'SIDECAR_AGENT_CONTAINER_NAME', 'NESTED_DOCKER_CONTAINER_NAME',
     'SANDBOX_CONFIG_VOLUME_NAME', 'SANDBOX_CODEX_VOLUME_NAME', 'SANDBOX_GH_VOLUME_NAME',
     'SANDBOX_WORKSPACE_VOLUME_NAME', 'SANDBOX_WORK_VOLUME_NAME', 'SANDBOX_PERSONAL_VOLUME_NAME',
-    'SANDBOX_WS_VOLUME_NAME', 'SANDBOX_AUDIT_VOLUME_NAME', 'SANDBOX_MITM_AUDIT_VOLUME_NAME',
-    'SANDBOX_TRIVY_CACHE_VOLUME_NAME', 'COMPOSE_PROJECT_NAME'
+    'SANDBOX_AUDIT_VOLUME_NAME', 'SANDBOX_MITM_AUDIT_VOLUME_NAME', 'SANDBOX_TRIVY_CACHE_VOLUME_NAME',
+    'SANDBOX_MITM_SECRET_VOLUME_NAME', 'DEEPSEEK_SECRET_VOLUME_NAME', 'SIDECAR_CA_VOLUME_NAME',
+    'SANDBOX_AWS_VOLUME_NAME', 'NESTED_DOCKER_STORAGE_VOLUME_NAME', 'COMPOSE_PROJECT_NAME'
 )
 $SetVars   = @($SandboxVars | Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
 $UnsetVars = @($SandboxVars | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
@@ -146,7 +172,9 @@ if ($Addressed) {
     # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
     # every installation on the host, so an addressed run leaves it alone too.
     $Networks = @((Get-SandboxName 'COMPOSE_PROJECT_NAME' 'coding-agent-sandbox') + "_default")
+    $LegacyVolumes = @()
 }
+$Volumes = @($Volumes + $LegacyVolumes)
 
 function Test-Command([string]$Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)

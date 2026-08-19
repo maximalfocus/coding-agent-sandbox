@@ -26,35 +26,40 @@ P=unaddr$$
 TMP=$(mktemp -d)
 REPO="$TMP/repo"
 
-# Every name this run owns. The uninstaller refuses a PARTIAL override, so these travel together.
+# Every name this run owns. The list is DERIVED from uninstall.sh's own SANDBOX_VARS rather than
+# restated here: when #125 added the credential volumes to that list, a hand-copied version here
+# silently became a partial override and the run started tripping its own refusal.
+sandbox_vars() {
+    sed -n '/^SANDBOX_VARS=(/,/^)/p' "$ROOT/uninstall.sh" | tr ' ' '\n' | grep -E '^[A-Z][A-Z0-9_]+$'
+}
 addr_env() {
-    export COMPOSE_PROJECT_NAME="$P"
-    export SANDBOX_CONTAINER_NAME="$P-sandbox"       SANDBOX_MITM_CONTAINER_NAME="$P-mitm"
-    export SANDBOX_CONFIG_VOLUME_NAME="$P-config"    SANDBOX_CODEX_VOLUME_NAME="$P-codex"
-    export SANDBOX_GH_VOLUME_NAME="$P-gh"            SANDBOX_WORKSPACE_VOLUME_NAME="$P-workspace"
-    export SANDBOX_WORK_VOLUME_NAME="$P-work"        SANDBOX_PERSONAL_VOLUME_NAME="$P-personal"
-    export SANDBOX_WS_VOLUME_NAME="$P-ws"            SANDBOX_AUDIT_VOLUME_NAME="$P-audit"
-    export SANDBOX_MITM_AUDIT_VOLUME_NAME="$P-audit-mitm"
-    export SANDBOX_TRIVY_CACHE_VOLUME_NAME="$P-trivy-cache"
+    local v
+    for v in $(sandbox_vars); do
+        if [ "$v" = COMPOSE_PROJECT_NAME ]; then
+            export COMPOSE_PROJECT_NAME="$P"
+        else
+            export "$v=$P-$(printf '%s' "$v" | tr '[:upper:]_' '[:lower:]-')"
+        fi
+    done
 }
-addr_unset() {
-    unset COMPOSE_PROJECT_NAME SANDBOX_CONTAINER_NAME SANDBOX_MITM_CONTAINER_NAME \
-          SANDBOX_CONFIG_VOLUME_NAME SANDBOX_CODEX_VOLUME_NAME SANDBOX_GH_VOLUME_NAME \
-          SANDBOX_WORKSPACE_VOLUME_NAME SANDBOX_WORK_VOLUME_NAME SANDBOX_PERSONAL_VOLUME_NAME \
-          SANDBOX_WS_VOLUME_NAME SANDBOX_AUDIT_VOLUME_NAME SANDBOX_MITM_AUDIT_VOLUME_NAME \
-          SANDBOX_TRIVY_CACHE_VOLUME_NAME
-}
+addr_unset() { local v; for v in $(sandbox_vars); do unset "$v"; done; }
+CFG_VOL="$P-$(printf '%s' SANDBOX_CONFIG_VOLUME_NAME | tr '[:upper:]_' '[:lower:]-')"
 
 cleanup() {
     ( addr_env; cd "$REPO" 2>/dev/null && docker compose down -v >/dev/null 2>&1 )
-    docker rm -f "$P-sandbox" >/dev/null 2>&1
-    for v in config codex gh workspace work personal ws audit audit-mitm trivy-cache; do
-        docker volume rm "$P-$v" >/dev/null 2>&1
+    docker rm -f "$P-sandbox-container-name" >/dev/null 2>&1
+    for v in $(sandbox_vars); do
+        [ "$v" = COMPOSE_PROJECT_NAME ] && continue
+        docker volume rm "$P-$(printf '%s' "$v" | tr '[:upper:]_' '[:lower:]-')" >/dev/null 2>&1
     done
     docker network rm "${P}_default" >/dev/null 2>&1
     rm -rf "$TMP"
 }
 trap cleanup EXIT
+
+nvars=$(sandbox_vars | wc -l | tr -d ' ')
+[ "${nvars:-0}" -ge 13 ] || fail "only $nvars SANDBOX_VARS were derived — the parse has stopped matching"
+ok "$nvars addressable names derived from uninstall.sh's own list"
 
 before_v=$(docker volume ls --format '{{.Name}}' | sort)
 before_c=$(docker ps -a --format '{{.Names}}' | sort)
@@ -76,8 +81,8 @@ ENVEOF
 
 ( addr_env; cd "$REPO" && docker compose up -d --no-build >/dev/null 2>&1 ) \
     || fail "could not bring up the disposable installation"
-docker inspect "$P-sandbox" >/dev/null 2>&1 || fail "the disposable container was not created"
-docker volume inspect "$P-config" >/dev/null 2>&1 || fail "the disposable login volume was not created"
+docker inspect "$P-sandbox-container-name" >/dev/null 2>&1 || fail "the disposable container was not created"
+docker volume inspect "$CFG_VOL" >/dev/null 2>&1 || fail "the disposable login volume was not created"
 ok "a disposable installation came up under the SANDBOX_* variables"
 
 # --- the check must be able to fail: a PARTIAL override must be refused -----
@@ -85,7 +90,7 @@ partial_out=$( addr_env; unset SANDBOX_CONFIG_VOLUME_NAME; cd "$REPO" && ./unins
 partial_rc=$?
 [ "$partial_rc" -ne 0 ] || fail "a partial override was accepted — it would have removed the operator's login volume"
 grep -q 'REFUSING' <<<"$partial_out" || fail "a partial override failed without saying why: $partial_out"
-docker volume inspect "$P-config" >/dev/null 2>&1 || fail "the refused run removed something anyway"
+docker volume inspect "$CFG_VOL" >/dev/null 2>&1 || fail "the refused run removed something anyway"
 ok "a PARTIAL override is refused, and the refusal removes nothing"
 
 # --- addressing is load-bearing, proven WITHOUT removing anything ------------
@@ -93,15 +98,16 @@ ok "a PARTIAL override is refused, and the refusal removes nothing"
 # uninstaller against the DEFAULT names with -y and delete the operator's login. That hazard is the
 # entire reason this issue exists, so the proof is done on the PLAN instead, which removes nothing.
 plan_addr=$( addr_env; cd "$REPO" && printf 'n\n' | ./uninstall.sh 2>&1 )
-grep -q "$P-config" <<<"$plan_addr" || fail "the addressed plan does not target the disposable login volume"
+grep -q "$CFG_VOL" <<<"$plan_addr" || fail "the addressed plan does not target the disposable login volume"
 grep -q 'coding-agent-sandbox-config' <<<"$plan_addr" && fail "the addressed plan still targets the OPERATOR's login volume"
 ok "an addressed plan names the disposable volumes and never the operator's"
 
 # The same assertion against a copy whose config volume name is hardcoded again: it must fail, or it
 # was never testing anything. Only the plan is printed, so nothing is removed either way.
 cp -R "$REPO" "$TMP/regress"
-sed -i.bak 's|"${SANDBOX_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"|coding-agent-sandbox-config|' "$TMP/regress/uninstall.sh"
-grep -q '^  coding-agent-sandbox-config$' "$TMP/regress/uninstall.sh" || fail "the regression mutation did not apply"
+sed -i.bak -E 's|"\$\(pick [^)]*coding-agent-sandbox-config\)"|coding-agent-sandbox-config|' "$TMP/regress/uninstall.sh"
+grep -qE '^[[:space:]]*coding-agent-sandbox-config[[:space:]]*$' "$TMP/regress/uninstall.sh" \
+    || fail "the regression mutation did not apply"
 plan_bad=$( addr_env; cd "$TMP/regress" && printf 'n\n' | ./uninstall.sh 2>&1 )
 grep -q 'coding-agent-sandbox-config' <<<"$plan_bad" \
     || fail "the check cannot detect a hardcoded name — it would pass a regression"
@@ -111,9 +117,12 @@ ok "the check DETECTS a re-hardcoded name (proven able to fail, without removing
 ( addr_env; cd "$REPO" && ./uninstall.sh -y >"$TMP/uninstall.log" 2>&1 ) \
     || { sed 's/^/    /' "$TMP/uninstall.log"; fail "the addressed uninstall exited non-zero"; }
 
-docker inspect "$P-sandbox" >/dev/null 2>&1 && fail "the disposable container survived the uninstall"
-for v in config codex gh workspace work personal audit; do
-    docker volume inspect "$P-$v" >/dev/null 2>&1 && fail "disposable volume $P-$v survived the uninstall"
+docker inspect "$P-sandbox-container-name" >/dev/null 2>&1 && fail "the disposable container survived the uninstall"
+for v in $(sandbox_vars); do
+    [ "$v" = COMPOSE_PROJECT_NAME ] && continue
+    case "$v" in *VOLUME_NAME) ;; *) continue;; esac
+    n="$P-$(printf '%s' "$v" | tr '[:upper:]_' '[:lower:]-')"
+    docker volume inspect "$n" >/dev/null 2>&1 && fail "disposable volume $n survived the uninstall"
 done
 ok "the addressed uninstall removed the disposable container and every disposable volume"
 
