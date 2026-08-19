@@ -73,8 +73,9 @@ $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 try {
     $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
     if ([string]::IsNullOrEmpty($plain)) { throw "No key supplied" }
-    $plain | & docker @compose
-    $result = $LASTEXITCODE
+    # Guarded: the enclosing try has only a finally (it zeroes the key), which rethrows rather than
+    # handling, so a throw here escaped before $result was ever set (#120).
+    try { $plain | & docker @compose; $result = $LASTEXITCODE } catch { $result = 1 }
 } finally {
     if ($null -ne $pointer) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
     $plain = $null

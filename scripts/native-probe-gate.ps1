@@ -1,4 +1,4 @@
-# Finds native-command invocations whose failure the script intends to HANDLE, and requires each to
+﻿# Finds native-command invocations whose failure the script intends to HANDLE, and requires each to
 # be inside a try (issue #117, extending #111).
 #
 # Under `$ErrorActionPreference = "Stop"` PowerShell turns a native command's stderr into a
@@ -19,6 +19,9 @@
 # A "probe" is a native invocation whose result the script reads: assigned to a variable, or followed
 # by a `$LASTEXITCODE` test. An invocation whose failure should simply propagate is an ACTION and is
 # left alone.
+#
+# "Guarded" means inside the BODY of a try that has a `catch`. `try { } finally { }` is not a guard:
+# it runs the finally and rethrows (issue #120).
 # `pwsh -File` does not array-bind trailing arguments, so the file list is discovered here rather
 # than passed in — a partially-bound list would silently shrink the scan to one file.
 $Paths = @(Get-ChildItem -Path . -Recurse -Filter *.ps1 | ForEach-Object { $_.FullName } | Sort-Object)
@@ -49,11 +52,20 @@ foreach ($path in $Paths) {
         while ($p) {
             if ($p -is [System.Management.Automation.Language.AssignmentStatementAst]) { $assigned = $true; break }
             if ($p -is [System.Management.Automation.Language.StatementBlockAst]) { break }
+            if ($p -is [System.Management.Automation.Language.NamedBlockAst]) { break }
             $p = $p.Parent
         }
+        # A statement list hangs off a StatementBlockAst (an if/try/loop body) OR a NamedBlockAst
+        # (script top level AND function bodies). Looking only for the former meant the walk ran off
+        # the top of the tree and $inspected stayed false for every probe not written inside a block
+        # -- which is where run.ps1's `docker info`/`build`/`up -d` and scan.ps1's `image inspect`
+        # all live, so the "or followed by a $LASTEXITCODE test" half of the rule matched nothing.
         $inspected = $false
         $stmt = $c
-        while ($stmt -and -not ($stmt.Parent -is [System.Management.Automation.Language.StatementBlockAst])) { $stmt = $stmt.Parent }
+        while ($stmt -and -not (($stmt.Parent -is [System.Management.Automation.Language.StatementBlockAst]) -or
+                                ($stmt.Parent -is [System.Management.Automation.Language.NamedBlockAst]))) {
+            $stmt = $stmt.Parent
+        }
         if ($stmt -and $stmt.Parent) {
             $sts = @($stmt.Parent.Statements)
             $idx = [Array]::IndexOf($sts, $stmt)
@@ -64,11 +76,21 @@ foreach ($path in $Paths) {
         if (-not ($assigned -or $inspected)) { continue }   # an action: failure may propagate
 
         $checked++
-        # Guarded?
+        # Guarded? Only a try that actually HAS a catch handles a terminating error: `try/finally`
+        # runs the finally and rethrows, so scan.ps1's scanner call was reported as guarded while a
+        # NativeCommandError still propagated and aborted the run. The invocation must also sit in
+        # the try's own BODY -- a call written inside the catch or finally is not protected by the
+        # try it belongs to.
         $inTry = $false
+        $prev = $c
         $q = $c.Parent
         while ($q) {
-            if ($q -is [System.Management.Automation.Language.TryStatementAst]) { $inTry = $true; break }
+            if ($q -is [System.Management.Automation.Language.TryStatementAst]) {
+                if ($q.CatchClauses.Count -gt 0 -and [object]::ReferenceEquals($prev, $q.Body)) {
+                    $inTry = $true; break
+                }
+            }
+            $prev = $q
             $q = $q.Parent
         }
         if (-not $inTry) {

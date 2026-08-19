@@ -151,8 +151,11 @@ function Ensure-WslReady {
     }
 
     Write-Step "Enabling WSL2"
-    & wsl --install --no-distribution
-    if ($LASTEXITCODE -eq 0) {
+    # Guarded: this reads the exit code and has its own fallback message below, which makes it a
+    # probe rather than an action -- and an unguarded throw here skipped that message (#120).
+    $wslRc = 1
+    try { & wsl --install --no-distribution; $wslRc = $LASTEXITCODE } catch { $wslRc = 1 }
+    if ($wslRc -eq 0) {
         Set-InstallMarker "installed-wsl2"
         Write-Host "WSL2 setup was started. Restart Windows if prompted, then run this script again."
         exit 0

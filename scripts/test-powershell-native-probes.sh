@@ -68,6 +68,68 @@ out=$(docker run --rm -v "$ROOT/scripts/native-probe-gate.ps1:/g.ps1:ro" -v "$TM
 grep -q 'UNGUARDED' <<<"$out" && fail "a guarded probe was flagged: $out"
 ok "a guarded probe is accepted"
 
+# --- issue #120: the two blind spots that let scan.ps1 ship unguarded -------
+# The count assertion above cannot catch these on its own: it stayed non-zero on the ASSIGNED form
+# alone while the "or followed by a $LASTEXITCODE test" half of the rule matched nothing at all.
+gate_on() {  # name, script body -> the gate's output, with that file as the only .ps1 present
+    rm -f "$TMP/probe"/*.ps1
+    printf '%s' "$2" > "$TMP/probe/$1.ps1"
+    docker run --rm -v "$ROOT/scripts/native-probe-gate.ps1:/g.ps1:ro" -v "$TMP/probe:/w:ro" -w /w \
+        --entrypoint /usr/bin/pwsh "$PWSH_IMAGE" -NoProfile -File /g.ps1 2>&1
+}
+
+# A statement list hangs off a NamedBlockAst at script top level and in a function body, not a
+# StatementBlockAst — so looking only for the latter missed every probe not written inside a block.
+out=$(gate_on toplevel '$ErrorActionPreference = "Stop"
+docker compose ps
+if ($LASTEXITCODE -ne 0) { "not running" }
+')
+grep -q 'UNGUARDED' <<<"$out" || fail "a top-level probe whose \$LASTEXITCODE is tested was not detected: $out"
+ok "a \$LASTEXITCODE probe at script TOP LEVEL is detected (run.ps1's build/up shape)"
+
+out=$(gate_on infunction '$ErrorActionPreference = "Stop"
+function Start-It {
+    docker compose up -d
+    if ($LASTEXITCODE -ne 0) { "start failed" }
+}
+')
+grep -q 'UNGUARDED' <<<"$out" || fail "a probe inside a function whose \$LASTEXITCODE is tested was not detected: $out"
+ok "a \$LASTEXITCODE probe inside a FUNCTION BODY is detected"
+
+# try/finally does not handle a terminating error: it runs the finally and rethrows. Accepting it
+# as a guard is what let scan.ps1's scanner call read as protected while it aborted the run (#119).
+out=$(gate_on tryfinally '$ErrorActionPreference = "Stop"
+try {
+    $r = docker compose ps
+    if ($r) { "up" }
+}
+finally { "cleanup" }
+')
+grep -q 'UNGUARDED' <<<"$out" || fail "a try with no catch was accepted as a guard: $out"
+ok "a try with NO catch is not accepted as a guard"
+
+# The try protects its own body, not the cleanup that runs while unwinding.
+out=$(gate_on infinally '$ErrorActionPreference = "Stop"
+try { "work" }
+catch { "handled" }
+finally {
+    $r = docker compose ps
+    if ($r) { "up" }
+}
+')
+grep -q 'UNGUARDED' <<<"$out" || fail "a probe inside a finally block was treated as guarded by its own try: $out"
+ok "a probe in a FINALLY block is not guarded by the try it belongs to"
+
+# And the corrected detector must still accept a real guard rather than flagging everything.
+out=$(gate_on realguard '$ErrorActionPreference = "Stop"
+$rc = 1
+try { docker compose up -d; $rc = $LASTEXITCODE } catch { $rc = 1 }
+if ($rc -ne 0) { "start failed" }
+')
+grep -q 'UNGUARDED' <<<"$out" && fail "a genuinely guarded \$LASTEXITCODE probe was flagged: $out"
+ok "a \$LASTEXITCODE probe wrapped in try/catch is accepted"
+rm -f "$TMP/probe"/*.ps1
+
 # A native command inside a single-quoted shell string must NOT be mistaken for an invocation.
 printf '$ErrorActionPreference = "Stop"\n$r = $null\ntry { $r = docker compose exec -T x sh -c %s } catch { $r = $null }\n' "'git pull || docker ps'" > "$TMP/probe/bad.ps1"
 out=$(docker run --rm -v "$ROOT/scripts/native-probe-gate.ps1:/g.ps1:ro" -v "$TMP/probe:/w:ro" -w /w \
