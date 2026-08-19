@@ -18,8 +18,11 @@ if (-not $running) {
 }
 
 # GitHub egress must be on, or device-auth polling is refused by the proxy.
-docker compose exec -T $svc grep -qi "github" /etc/tinyproxy/filter 2>$null
-if ($LASTEXITCODE -ne 0) {
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting and the branch below never runs (#111, #117, #120).
+$egressRc = 1
+try { docker compose exec -T $svc grep -qi "github" /etc/tinyproxy/filter 2>$null; $egressRc = $LASTEXITCODE } catch { $egressRc = 1 }
+if ($egressRc -ne 0) {
     Write-Host "GitHub egress is not enabled. Set ALLOW_GITHUB=true in .env, run start-sandbox.cmd,"
     Write-Host "then run this again."
     exit 1

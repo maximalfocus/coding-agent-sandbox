@@ -23,8 +23,11 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-docker info *> $null
-if ($LASTEXITCODE -ne 0) {
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting and the branch below never runs (#111, #117, #120).
+$dockerRc = 1
+try { docker info *> $null; $dockerRc = $LASTEXITCODE } catch { $dockerRc = 1 }
+if ($dockerRc -ne 0) {
     Write-Host "Docker isn't running. Start Docker Desktop (WSL2 backend) and try again."
     exit 1
 }
@@ -107,8 +110,11 @@ if (-not [string]::IsNullOrWhiteSpace($wkRaw)) {
 # Build, then gate on a supply-chain scan BEFORE starting, so a known-vulnerable image never
 # runs. Set $env:SKIP_TRIVY=1 to bypass (e.g. offline with no scanner DB cached).
 Write-Host "Building image..."
-docker compose @composeFiles build
-if ($LASTEXITCODE -ne 0) { Write-Host "Build failed."; exit 1 }
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting and the branch below never runs (#111, #117, #120).
+$buildRc = 1
+try { docker compose @composeFiles build; $buildRc = $LASTEXITCODE } catch { $buildRc = 1 }
+if ($buildRc -ne 0) { Write-Host "Build failed."; exit 1 }
 
 if ($env:SKIP_TRIVY) {
     Write-Host "  (SKIP_TRIVY set — skipping image vulnerability scan)"
@@ -126,8 +132,11 @@ else {
     }
 }
 
-docker compose @composeFiles up -d
-if ($LASTEXITCODE -ne 0) { Write-Host "Start failed."; exit 1 }
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting and the branch below never runs (#111, #117, #120).
+$upRc = 1
+try { docker compose @composeFiles up -d; $upRc = $LASTEXITCODE } catch { $upRc = 1 }
+if ($upRc -ne 0) { Write-Host "Start failed."; exit 1 }
 
 $port = (Select-String -Path .env -Pattern '^TTYD_PORT=').Line -replace '^TTYD_PORT=', ''
 if ([string]::IsNullOrWhiteSpace($port)) { $port = "7681" }

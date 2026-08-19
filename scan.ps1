@@ -15,8 +15,11 @@ $common = @("image", "--severity", $sev, "--ignore-unfixed", "--no-progress", "-
 $mode = if ($gate -eq 1) { "STRICT - blocks on findings" } else { "advisory - report only (set TRIVY_STRICT=1 to block)" }
 Write-Host "Scanning $Image for $sev (fixed only; $mode)..."
 
-docker image inspect $Image *> $null
-if ($LASTEXITCODE -ne 0) {
+# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
+# an unguarded probe throws instead of reporting and the branch below never runs (#111, #117, #120).
+$inspectRc = 1
+try { docker image inspect $Image *> $null; $inspectRc = $LASTEXITCODE } catch { $inspectRc = 1 }
+if ($inspectRc -ne 0) {
     Write-Host "Image '$Image' not found locally. Build it first (start-sandbox.cmd or 'docker compose build')."
     exit 1
 }
@@ -33,12 +36,21 @@ else {
     New-Item -ItemType Directory -Path $tarDir | Out-Null
     try {
         $tar = Join-Path $tarDir "image.tar"
-        docker save $Image -o $tar
-        if ($LASTEXITCODE -ne 0) { throw "docker save failed for '$Image'." }
+        # Guarded: the enclosing try has only a finally, which reruns cleanup and RETHROWS, so this
+        # was never protected despite sitting inside a try (#120).
+        $saveRc = 1
+        try { docker save $Image -o $tar; $saveRc = $LASTEXITCODE } catch { $saveRc = 1 }
+        if ($saveRc -ne 0) { throw "docker save failed for '$Image'." }
         $mount = ($tarDir -replace '\\', '/')
-        docker run --rm -v "${mount}:/work:ro" -v coding-agent-sandbox-trivy-cache:/root/.cache/trivy `
-            $trivyImage @common --input /work/image.tar *> $report.FullName
-        $rc = $LASTEXITCODE
+        # Guarded for the same reason as the save above. Note this reports a throw as failure, which
+        # keeps today's outcome (a blocked start) while replacing the stack trace with the message
+        # below; making an ADVISORY scan survive the scanner's ordinary stderr is issue #119.
+        $rc = 1
+        try {
+            docker run --rm -v "${mount}:/work:ro" -v coding-agent-sandbox-trivy-cache:/root/.cache/trivy `
+                $trivyImage @common --input /work/image.tar *> $report.FullName
+            $rc = $LASTEXITCODE
+        } catch { $rc = 1 }
     }
     finally {
         Remove-Item -Recurse -Force -LiteralPath $tarDir -ErrorAction SilentlyContinue
