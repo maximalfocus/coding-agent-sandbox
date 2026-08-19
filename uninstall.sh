@@ -31,22 +31,48 @@ ENGINE_MARKER="$HOME/.coding-agent-sandbox/installed-orbstack"
 # DEFAULT installation, so its removal half could not be exercised on a machine that also held a
 # real one — the resources it removes include the operator's login. That is the same hazard
 # `docker-compose.yml` records for `down -v` (issue #123).
+# First non-empty of the named variables, else the trailing literal default. Several volumes are
+# declared by two compose files under two different variable names for the SAME default, so both
+# have to be honoured or an addressed run would fall back to the operator's (issue #125).
+pick() {
+    local default="${!#}" n
+    for n in "$@"; do
+        [ "$n" = "$default" ] && break
+        [ -n "${!n:-}" ] && { printf '%s' "${!n}"; return; }
+    done
+    printf '%s' "$default"
+}
+
 CONTAINERS=(
-  "${SANDBOX_CONTAINER_NAME:-claude-sandbox}"
-  "${SANDBOX_MITM_CONTAINER_NAME:-claude-sandbox-mitm}"
+  "$(pick SANDBOX_CONTAINER_NAME        claude-sandbox)"
+  "$(pick SANDBOX_MITM_CONTAINER_NAME   claude-sandbox-mitm)"
+  "$(pick SIDECAR_EGRESS_CONTAINER_NAME claude-sandbox-egress)"
+  "$(pick SIDECAR_AGENT_CONTAINER_NAME  claude-sandbox-node)"
+  "$(pick NESTED_DOCKER_CONTAINER_NAME  claude-sandbox-dind)"
 )
+# Every volume any tracked compose file declares. The three credential ones below were absent until
+# issue #125: an uninstall left a real Claude token, a DeepSeek API key and the intercept CA's
+# private key on the host while reporting that it had removed everything the sandbox created.
+# scripts/test-uninstall-inventory.sh holds this set against the compose files.
 VOLUMES=(
-  "${SANDBOX_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"
-  "${SANDBOX_CODEX_VOLUME_NAME:-coding-agent-sandbox-codex}"
-  "${SANDBOX_GH_VOLUME_NAME:-coding-agent-sandbox-gh}"
-  "${SANDBOX_WORKSPACE_VOLUME_NAME:-coding-agent-sandbox-workspace}"
-  "${SANDBOX_WORK_VOLUME_NAME:-coding-agent-sandbox-work}"
-  "${SANDBOX_PERSONAL_VOLUME_NAME:-coding-agent-sandbox-personal}"
-  "${SANDBOX_WS_VOLUME_NAME:-coding-agent-sandbox-ws}"
-  "${SANDBOX_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit}"
-  "${SANDBOX_MITM_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit-mitm}"
-  "${SANDBOX_TRIVY_CACHE_VOLUME_NAME:-coding-agent-sandbox-trivy-cache}"
+  "$(pick SANDBOX_CONFIG_VOLUME_NAME SIDECAR_CONFIG_VOLUME_NAME       coding-agent-sandbox-config)"
+  "$(pick SANDBOX_CODEX_VOLUME_NAME                                   coding-agent-sandbox-codex)"
+  "$(pick SANDBOX_GH_VOLUME_NAME                                      coding-agent-sandbox-gh)"
+  "$(pick SANDBOX_WORKSPACE_VOLUME_NAME                               coding-agent-sandbox-workspace)"
+  "$(pick SANDBOX_WORK_VOLUME_NAME                                    coding-agent-sandbox-work)"
+  "$(pick SANDBOX_PERSONAL_VOLUME_NAME                                coding-agent-sandbox-personal)"
+  "$(pick SANDBOX_AUDIT_VOLUME_NAME                                   coding-agent-sandbox-audit)"
+  "$(pick SANDBOX_MITM_AUDIT_VOLUME_NAME SIDECAR_AUDIT_VOLUME_NAME    coding-agent-sandbox-audit-mitm)"
+  "$(pick SANDBOX_TRIVY_CACHE_VOLUME_NAME                             coding-agent-sandbox-trivy-cache)"
+  "$(pick SANDBOX_MITM_SECRET_VOLUME_NAME SIDECAR_CLAUDE_SECRET_VOLUME_NAME coding-agent-sandbox-secret)"
+  "$(pick DEEPSEEK_SECRET_VOLUME_NAME                                 coding-agent-sandbox-deepseek-secret)"
+  "$(pick SIDECAR_CA_VOLUME_NAME                                      coding-agent-sandbox-mitm-ca)"
+  "$(pick SANDBOX_AWS_VOLUME_NAME                                     coding-agent-sandbox-aws)"
+  "$(pick NESTED_DOCKER_STORAGE_VOLUME_NAME                           coding-agent-sandbox-nested-docker)"
 )
+# Pre-WORK_DIR naming. No compose file declares it any more, so it exists only on hosts that ran an
+# old version — which by definition is the DEFAULT installation. An addressed run never sweeps it.
+LEGACY_VOLUMES=(coding-agent-sandbox-ws)
 # The compose network is <project>_default; claude-safe-net is created on first use by the optional
 # `claude-safe` shell helper (a `docker run` on its own user-defined network).
 NETWORKS=(
@@ -64,10 +90,12 @@ IMAGES=(coding-agent-sandbox:latest coding-agent-sandbox-mitm:latest)
 # remove both. Refuse rather than guess — the same fail-closed rule scripts/stack-guard.sh applies.
 SANDBOX_VARS=(
   SANDBOX_CONTAINER_NAME SANDBOX_MITM_CONTAINER_NAME
+  SIDECAR_EGRESS_CONTAINER_NAME SIDECAR_AGENT_CONTAINER_NAME NESTED_DOCKER_CONTAINER_NAME
   SANDBOX_CONFIG_VOLUME_NAME SANDBOX_CODEX_VOLUME_NAME SANDBOX_GH_VOLUME_NAME
   SANDBOX_WORKSPACE_VOLUME_NAME SANDBOX_WORK_VOLUME_NAME SANDBOX_PERSONAL_VOLUME_NAME
-  SANDBOX_WS_VOLUME_NAME SANDBOX_AUDIT_VOLUME_NAME SANDBOX_MITM_AUDIT_VOLUME_NAME
-  SANDBOX_TRIVY_CACHE_VOLUME_NAME COMPOSE_PROJECT_NAME
+  SANDBOX_AUDIT_VOLUME_NAME SANDBOX_MITM_AUDIT_VOLUME_NAME SANDBOX_TRIVY_CACHE_VOLUME_NAME
+  SANDBOX_MITM_SECRET_VOLUME_NAME DEEPSEEK_SECRET_VOLUME_NAME SIDECAR_CA_VOLUME_NAME
+  SANDBOX_AWS_VOLUME_NAME NESTED_DOCKER_STORAGE_VOLUME_NAME COMPOSE_PROJECT_NAME
 )
 ADDRESSED=0
 set_vars=(); unset_vars=()
@@ -150,6 +178,12 @@ if [ "$ADDRESSED" -eq 1 ]; then
     # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
     # every installation on the host, so an addressed run leaves it alone too.
     NETWORKS=("${COMPOSE_PROJECT_NAME}_default")
+    LEGACY_VOLUMES=()
+fi
+# Guarded because macOS ships bash 3.2, where expanding an EMPTY array under `set -u` is an
+# "unbound variable" error — which an addressed run hits, since it clears the legacy sweep.
+if [ "${#LEGACY_VOLUMES[@]}" -gt 0 ]; then
+    VOLUMES=("${VOLUMES[@]}" "${LEGACY_VOLUMES[@]}")
 fi
 
 have() { command -v "$1" >/dev/null 2>&1; }
