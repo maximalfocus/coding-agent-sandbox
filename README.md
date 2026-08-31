@@ -504,9 +504,11 @@ visible and editable on the host **and** self-evolve/commit/push works in the sa
 macOS and Windows (`scripts/skills/skills-setup.cmd`). Pushing needs a GitHub credential
 (`./scripts/auth/gh-login.sh`, or a `GITHUB_TOKEN` with write access).
 
-> **First-run reminder.** Until the manual bits are done (e.g. a GitHub credential for `*-evolve`),
-> the sandbox shows a self-clearing `~/.sandbox-todo` checklist in every terminal; it disappears once
-> the conditions are met. Linking is **non-destructive** — it tracks only the symlinks it creates (a
+> **Skills never appear in the first-run checklist.** The self-clearing `~/.sandbox-todo` note shown
+> in every terminal lists only setup you still have to do on the host — today just the GitHub
+> credential — and disappears once that is set. Unconfigured or unlinked skills are not unfinished
+> setup, so they contribute nothing to it; clone or link problems are reported on stderr at boot
+> instead. Linking is **non-destructive** — it tracks only the symlinks it creates (a
 > `.managed-by-sandbox` manifest) and never overwrites copied skills from `sync-skills.sh` or your own
 > directories; on a skill-name collision the first repo (sorted) wins and the rest are reported.
 
