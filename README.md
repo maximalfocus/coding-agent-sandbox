@@ -148,8 +148,11 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
 - Herdr is the primary terminal environment. Its server persists the workspace session when the
   browser disconnects; reopen the URL to attach a new Herdr client.
 - Clipboard works in both directions: paste from the host normally; select or double-click text in
-  Herdr to copy it back through OSC 52. ttyd includes a fallback for browsers that deny the async
-  Clipboard API request.
+  Herdr to copy it back through OSC 52. In the browser, ttyd includes a fallback for browsers that
+  deny the async Clipboard API request. From a local terminal, `./shell.sh` applies the copy when it
+  follows the selection gesture you just made — see
+  [the local-terminal section](#use-a-local-terminal-instead-of-the-browser) for the policy and how
+  to change it.
 - Stop: `docker compose down`. Logs: `docker compose logs -f`. Rebuild after edits: `./run.sh`.
 - Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network and this repo
   directory, and — only if this sandbox installed it — the Docker engine, leaving your host
@@ -214,14 +217,38 @@ chmod +x shell.sh                 # first time
 ./shell.sh --shell                # escape hatch: a fresh Bash shell in /workspace
 ```
 
-`shell.sh` strips OSC 52 before output reaches the host terminal. Herdr represents its own selection
-events and application-generated clipboard writes with the same bytes, so forwarding either would
-let an untrusted pane overwrite the host clipboard. Copy with the host terminal's native gesture
-instead (for example, select then press Cmd-C in Apple Terminal; some terminals require holding
-Shift while selecting). Paste remains ordinary terminal input.
-The launcher requires host-side Python 3 so it can enforce this boundary fail-closed.
+#### Copying out of a local terminal
 
-Direct commands (bypass the launcher's OSC 52 filter and inherit the host terminal's clipboard
+`shell.sh` never forwards an OSC 52 sequence to your terminal. Herdr represents its own selection
+events and a pane's application-generated clipboard writes with the same bytes, so forwarding either
+would let an untrusted pane overwrite your clipboard. Instead the launcher decides using something
+the output stream doesn't carry — what you just did at your own keyboard:
+
+| `SANDBOX_CLIPBOARD` | Behaviour |
+|---|---|
+| `gesture` *(default)* | A clipboard write that arrives just after a mouse-button release you made is applied — this is ordinary select-to-copy. Any other write is held and announced, and applied only if you press **Ctrl-]** within ten seconds. |
+| `confirm` | Nothing is applied automatically. Every write, selections included, waits for Ctrl-]. |
+| `off` | Every clipboard write is discarded. |
+
+An unrecognized or empty value resolves to `gesture` rather than to anything more permissive. An
+OSC 52 *read* query is discarded in every mode — answering it would hand the container whatever is
+already on your clipboard. Paste remains ordinary terminal input and is unaffected.
+
+```bash
+SANDBOX_CLIPBOARD=confirm ./shell.sh     # confirm every clipboard write
+```
+
+Two related knobs: `SANDBOX_CLIPBOARD_WINDOW` (seconds a gesture stays valid, default `3`) and
+`SANDBOX_CLIPBOARD_OFFER_TTL` (seconds a held write waits for Ctrl-], default `10`). Set
+`SANDBOX_CLIPBOARD_QUIET=1` to suppress the status-line notices. The launcher requires host-side
+Python 3 so it can enforce this boundary fail-closed, and writes to the clipboard through `pbcopy`,
+`wl-copy`, or `xclip` depending on the host.
+
+If you would rather not rely on this at all, your terminal's own selection still works: hold Option
+(iTerm2) or Fn (Apple Terminal) to bypass Herdr's mouse reporting, then Cmd-C. That copies the
+screen region rather than Herdr's selection, so wrapped lines and pane gutters come with it.
+
+Direct commands (bypass the launcher's OSC 52 gate and inherit the host terminal's clipboard
 policy):
 
 ```bash

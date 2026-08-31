@@ -18,8 +18,14 @@ else
 fi
 
 # Herdr forwards pane-generated OSC 52 with the same bytes it uses for selections, so output alone
-# cannot establish a trusted source. Filter every OSC 52 sequence before it reaches the host
-# terminal; use the terminal's native selection/copy gesture for trusted clipboard writes.
+# cannot establish a trusted source. The gate supplies the missing signal from the HOST side: a
+# clipboard write is applied only when it follows a mouse-button release you just made (mode
+# `gesture`, the default) or when you confirm it with Ctrl-]. Unattended output still cannot touch
+# your clipboard, and OSC 52 read-back queries are always dropped.
+#
+#   SANDBOX_CLIPBOARD=gesture   select-to-copy works; anything else asks (default)
+#   SANDBOX_CLIPBOARD=confirm   every write asks, including selections
+#   SANDBOX_CLIPBOARD=off       discard every OSC 52 sequence
 if ! command -v python3 >/dev/null 2>&1; then
     echo "python3 is required to enforce the local-terminal clipboard boundary" >&2
     exit 1

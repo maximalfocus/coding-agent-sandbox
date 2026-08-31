@@ -38,12 +38,19 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   installs firewall rules runs as root.
 - **Localhost-only terminal.** The ttyd web terminal is published to `127.0.0.1` only and is
   password-protected, so it isn't reachable from your LAN.
-- **POSIX local-terminal clipboard boundary.** `shell.sh` filters every OSC 52 sequence before
-  Herdr or a plain sandbox shell can write to the host terminal. Herdr's trusted selections and
-  pane-generated clipboard writes are indistinguishable at that boundary, so automatic OSC 52 copy
-  is disabled; use the host terminal's native selection/copy gesture. Running the documented raw
-  `docker compose exec` command bypasses this filter and inherits the terminal's own clipboard
-  policy.
+- **POSIX local-terminal clipboard boundary.** `shell.sh` intercepts every OSC 52 sequence before
+  Herdr or a plain sandbox shell can reach the host terminal — no OSC 52 byte is ever forwarded.
+  Herdr represents its trusted selections and a pane's own clipboard writes with the same bytes, so
+  the *output* stream cannot establish which one it is looking at. The gate therefore decides on
+  evidence the output stream does not carry: what the operator did at the **host** keyboard. A
+  clipboard write is applied only when it follows a mouse-button release the host just sent
+  (`SANDBOX_CLIPBOARD=gesture`, the default), or when the operator confirms a held write with
+  Ctrl-]. Unattended container output reaches the clipboard in neither case. An OSC 52 *read* query
+  is discarded in every mode, so the container cannot learn what is already on the host clipboard.
+  `SANDBOX_CLIPBOARD=confirm` requires confirmation for every write; `off` discards all of them; an
+  unrecognized value resolves to the default rather than to anything more permissive. Running the
+  documented raw `docker compose exec` command bypasses this gate entirely and inherits the
+  terminal's own clipboard policy.
 
 ## What this does NOT protect against — read this
 
