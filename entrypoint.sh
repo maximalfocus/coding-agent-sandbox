@@ -322,14 +322,17 @@ elif [ -n "${GITHUB_TOKEN:-}" ]; then
     fi
 fi
 
-# --- Skills: clone (best-effort) + link on every boot, then compute the first-run reminder --------
+# --- Skills: clone (best-effort) + link on every boot ---------------------------------------------
 # Skills load from $CLAUDE_CONFIG_DIR/skills. The link step is credential-free (it just symlinks
 # repos already present in /workspace/personal), so skills auto-load on every boot and survive
 # claude-config volume resets — no manual skills-setup.sh needed. Everything here is wrapped to be
 # NON-FATAL: the entrypoint runs under `set -euo pipefail` and has a history of startup restart-loops
 # (commit 04805e8), so a skills hiccup must never stop the container from booting.
-SKILLS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
-clone_failed=
+#
+# Skills are an OPTIONAL capability and deliberately contribute NOTHING to the first-run checklist
+# below: an operator who never asked for them has no setup left to finish, and an item they cannot
+# act on is what teaches them to skim past the one item that matters. Problems here are reported on
+# stderr at boot, where a transient failure belongs.
 personal_writable=1
 [ -w /workspace/personal ] 2>/dev/null || personal_writable=
 # Optional boot-time clone of any SKILL_REPOS not yet on disk — only when we have a usable credential
@@ -343,8 +346,7 @@ if [ -n "${SKILL_REPOS:-}" ] && [ -n "${GIT_CREDS_OK:-}" ] && [ "${ALLOW_GITHUB:
         [ -d "$_dir/.git" ] && continue
         echo "  cloning skill repo $_name ..."
         if ! GIT_TERMINAL_PROMPT=0 timeout 180 git clone "$_url" "$_dir" >/dev/null 2>&1; then
-            echo "  (clone of $_name failed — recorded for the setup reminder)" >&2
-            clone_failed=1
+            echo "  (clone of $_name failed — non-fatal; run ./scripts/skills/skills-setup.sh once GitHub access works)" >&2
         fi
     done
 fi
@@ -354,30 +356,20 @@ if command -v sandbox-link-skills >/dev/null 2>&1; then
 fi
 # Build ~/.sandbox-todo from ACTUAL unmet state. The shell hint (/etc/profile.d/zz-sandbox-todo.sh)
 # prints it in every interactive shell until it's gone; recomputed each boot ($HOME is ephemeral).
-_linked=0
-[ -r "$SKILLS_DIR/.sandbox-skills-status" ] && \
-    _linked="$(awk -F= '$1=="linked"{print $2}' "$SKILLS_DIR/.sandbox-skills-status" 2>/dev/null)"
+#
+# It carries ONLY setup the operator must still complete on the host for the sandbox to work as
+# documented. That is the GitHub credential and nothing else: everything else the sandbox needs is
+# already in the image or the compose stack, and an optional capability is not unfinished setup.
+# The markers below delimit the block that scripts/test-first-run-checklist.sh extracts and runs.
+# >>> sandbox-todo >>>
 _todo="$HOME/.sandbox-todo"; _items=""
 if [ -z "${GIT_CREDS_OK:-}" ]; then
     _items="${_items}
-  [ ] GitHub credentials not set — needed for skill *-evolve push/pull and to auto-clone skill repos.
+  [ ] GitHub credentials not set — git clone/pull/push over HTTPS will fail, and pushes to
+      .github/workflows/* need a workflow-scoped token.
       Fix once (persists): on the HOST run  ./scripts/auth/gh-login.sh   (workflow-scoped, recommended)
       or set GITHUB_TOKEN=... in .env and restart the sandbox."
 fi
-if [ -z "${SKILL_REPOS:-}" ] && [ "${_linked:-0}" = "0" ]; then
-    _items="${_items}
-  [ ] No skills configured — set SKILL_REPOS=\"https://github.com/you/cdd-skills.git ...\" in .env
-      and restart (or run ./scripts/skills/skills-setup.sh with the sandbox running)."
-elif [ "${_linked:-0}" = "0" ] && [ -n "${SKILL_REPOS:-}" ]; then
-    _items="${_items}
-  [ ] No skills linked yet — the SKILL_REPOS aren't cloned under /workspace/personal.
-      Run  ./scripts/skills/skills-setup.sh  (needs GitHub credentials)."
-fi
-[ -n "$clone_failed" ] && _items="${_items}
-  [ ] Some skill repos failed to clone at boot (no GitHub access yet).
-      After setting credentials, run  ./scripts/skills/skills-setup.sh."
-[ -z "$personal_writable" ] && _items="${_items}
-  [ ] /workspace/personal is not writable — skill clones/links can't be created. Check PERSONAL_DIR."
 if [ -n "$_items" ]; then
     {
         echo "⚙️  Sandbox setup — finish these once (this note clears itself when done):"
@@ -386,6 +378,7 @@ if [ -n "$_items" ]; then
 else
     rm -f "$_todo" 2>/dev/null || true
 fi
+# <<< sandbox-todo <<<
 
 # A command was passed (e.g. `claude`, `bash -l`) -> run it. This is how the local-terminal
 # `docker exec` / claude-safe `docker run` paths work.
