@@ -453,6 +453,32 @@ It enables network access, not write permission: bundled CLIs are pinned and ins
 the image, so upgrade those by bumping the `Dockerfile` version/checksum and rebuilding. Use runtime
 package downloads only when you deliberately accept that supply-chain capability.
 
+### Updating the agent CLIs (from the host)
+
+Claude Code, Codex, OpenCode and Pi are pinned as `Dockerfile` build args and their runtime
+self-update is disabled, so the CLI you started with is the CLI you finish with. To move those pins,
+run this **on the host** — never by enabling `ALLOW_TOOL_UPGRADES` and updating inside the sandbox,
+which would swap a reviewable build-time pin for unreviewed runtime drift:
+
+```bash
+./scripts/update-agent-clis.sh              # report pinned vs published; changes nothing
+./scripts/update-agent-clis.sh --apply      # move every pin
+./scripts/update-agent-clis.sh --apply codex opencode
+./scripts/update-agent-clis.sh --apply claude=2.1.240
+git diff Dockerfile && ./run.sh             # review, then rebuild
+```
+
+The registry lookup happens on your machine, over your own network, so no sandbox egress grant is
+needed and `ALLOW_TOOL_UPGRADES` stays off. It writes nothing without `--apply` and never rebuilds
+for you. An explicit `name=version` is checked against the registry first, and a lookup it cannot
+complete is a refusal rather than a silent "already up to date" — so a network problem can never
+leave you with a half-updated `Dockerfile`.
+
+It moves only the four agent-CLI pins. Herdr and ttyd are pinned by release **and** per-architecture
+`sha256`, so bumping those means re-deriving checksums by hand — deliberately out of scope.
+
+On Windows: `.\scripts\update-agent-clis.ps1`, same flags (`-Apply`).
+
 ### Pushing repos with GitHub Actions workflows (the `workflow` scope)
 
 A plain `GITHUB_TOKEN` (classic `repo` or fine-grained Contents) pushes everything **except**
@@ -849,9 +875,10 @@ coding-agent-sandbox/
 │   │    allow-domain.*      hot-add host(s) to the running allowlist
 │   │    watch-egress.*      alert on / auto-assess refused hosts (--auto, --llm, --wait)
 │   │    install-egress-watcher.sh  macOS LaunchAgent: keep watch-egress running (autostart)
-│   └─ skills/               bring your skills into the sandbox
-│        skills-setup.*      clone your skill repos into /workspace/personal (live, evolvable)
-│        sync-skills.sh      copy host skills in (read-only use)
+│   ├─ skills/               bring your skills into the sandbox
+│   │    skills-setup.*      clone your skill repos into /workspace/personal (live, evolvable)
+│   │    sync-skills.sh      copy host skills in (read-only use)
+│   └─ update-agent-clis.*   move the four agent-CLI build pins, from the host (report by default)
 │
 └─ Config & docs
     .env.example      every knob, with defaults (copy to .env)
