@@ -380,6 +380,24 @@ else
 fi
 # <<< sandbox-todo <<<
 
+# --- Herdr state: keep the layout, drop the runtime artifacts (issue #141) -------------------------
+# ~/.config/herdr is a named volume so an operator's workspace and pane layout survives the routine
+# `./run.sh` recreation, the way every login already does. The sockets and the server log live in the
+# SAME directory, so persistence would otherwise carry a dead socket from a destroyed container into
+# a fresh one and Herdr would try to reach a server that no longer exists.
+#
+# Nothing in this container is running yet, so anything here is from a previous one and is stale by
+# construction. This runs before BOTH exit paths below — the passed-command path and the web terminal
+# — because either can be the first to start a Herdr server.
+#
+# What is NOT preserved, and is documented rather than implied: running pane processes. They die with
+# their container; only the layout returns.
+_herdr_state="${HOME:-/home/node}/.config/herdr"
+if [ -d "$_herdr_state" ]; then
+    rm -f "$_herdr_state"/*.sock "$_herdr_state"/herdr-server.log "$_herdr_state"/herdr-client.log \
+        2>/dev/null || true
+fi
+
 # A command was passed (e.g. `claude`, `bash -l`) -> run it. This is how the local-terminal
 # `docker exec` / claude-safe `docker run` paths work.
 if [ "$#" -gt 0 ]; then

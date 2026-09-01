@@ -113,6 +113,11 @@ services:
     volumes:
       - "${WORKSPACE_DIR:-./workspace}:/workspace"
       - "claude-config:/home/node/.claude"          # shared with the sidecar (login + placeholder)
+      # Persists Herdr's workspace and pane LAYOUT across a container recreation, so a routine
+      # ./run.sh does not silently reset the terminal while every login survives. Runtime
+      # artifacts (sockets, server log) are cleared by entrypoint.sh rather than carried across;
+      # running pane processes are NOT preserved. See README.md.
+      - "claude-herdr:/home/node/.config/herdr"
       - "claude-mitm-ca:/etc/mitmproxy-ca:ro"        # read-only view of the CA
       # Experimental entrypoint, bind-mounted into the stock base image (no Dockerfile change).
       - "./mitm/agent-entrypoint.sh:/usr/local/bin/agent-entrypoint.sh:ro"
@@ -140,6 +145,8 @@ networks:
 volumes:
   claude-config:
     name: "${SIDECAR_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"
+  claude-herdr:
+    name: "${SIDECAR_HERDR_VOLUME_NAME:-coding-agent-sandbox-herdr}"
   claude-secret:
     name: "${SIDECAR_CLAUDE_SECRET_VOLUME_NAME:-coding-agent-sandbox-secret}"
   deepseek-secret:
