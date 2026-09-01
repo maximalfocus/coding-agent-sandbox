@@ -493,8 +493,12 @@ refusal — a version bumped with a stale checksum would fail every later build.
 > having, is that no later build can be served different bytes without failing. The tool says this in
 > its own output, and it is why adopting a pin stays a step you review before rebuilding.
 
-Only `--apply` downloads anything; the report is a few HTTP HEADs. `ttyd` has the same shape and is
-deliberately excluded — it is not an agent tool.
+Only `--apply` downloads anything; the report is a few HTTP HEADs. `ttyd` is deliberately excluded
+because it is not an agent tool. Its downloaded server pin and locally modified browser client have
+their own executable record: `./scripts/check-ttyd-client-drift.sh` reports source, release,
+dependency, and advisory drift without writing, while
+`./scripts/verify-ttyd-client-reproducibility.sh` performs two clean builds and requires exact
+agreement with the committed bytes. See [`ttyd/README.md`](ttyd/README.md).
 
 On Windows: `.\scripts\update-agent-clis.ps1`, same flags (`-Apply`).
 

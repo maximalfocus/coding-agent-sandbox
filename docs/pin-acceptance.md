@@ -66,9 +66,10 @@ downstream of the sequence arriving; it cannot drive a mouse. **This check has n
 `0.8.2`.**
 
 **ttyd and its vendored client** carry `operator:browser-clipboard` — select-and-paste in the
-browser terminal. `ttyd/index.html` is a hand-patched build of the upstream web client, and its
-rebuild recipe currently exists only as prose in [`../ttyd/README.md`](../ttyd/README.md), so a
-checksum is the only thing standing behind those bytes.
+browser terminal. The behavior remains operator-only, but the artifact is also covered by
+`verify-ttyd-client-reproducibility.sh`: two independent builds from the source, lock, patch, and
+toolchain record in [`../ttyd/reproducibility.env`](../ttyd/reproducibility.env) must match the
+committed bytes. `check-ttyd-client-drift.sh` separately reports live upstream and advisory drift.
 
 **Claude Code** carries `operator:live-refresh` — a live token refresh through the sidecar. The pin
 is coupled: `mitm/filter_addon.py`'s refresh `User-Agent` must move with it, and the value was
@@ -109,7 +110,7 @@ docker-compose.version | Docker Compose apt package | Dockerfile | ARG DOCKER_CO
 ttyd.version | Browser terminal server | Dockerfile | ARG TTYD_VERSION=1.7.7 | operator:browser-clipboard | operator | only a person at a browser can show select-and-paste
 ttyd.sha256.amd64 | ttyd amd64 artifact | Dockerfile | ARG TTYD_SHA256_AMD64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55 | host:verify-image-architectures.sh | host | needs a real build on amd64 hardware
 ttyd.sha256.arm64 | ttyd arm64 artifact | Dockerfile | ARG TTYD_SHA256_ARM64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165 | host:verify-image-architectures.sh | host | needs a real build on arm64 hardware
-ttyd.client-bundle | Vendored xterm.js web client | Dockerfile | 85baf6f288791e6012feec6257a8dd3665a449891692e7142debffbe24f99003 | operator:browser-clipboard | operator | hand-patched build whose recipe is prose only
+ttyd.client-bundle | Vendored xterm.js web client | Dockerfile | 85baf6f288791e6012feec6257a8dd3665a449891692e7142debffbe24f99003 | verify-ttyd-client-reproducibility.sh,operator:browser-clipboard | mixed | two clean builds cover bytes; browser select-and-paste remains operator-only
 npm.version | npm | Dockerfile | ARG NPM_VERSION=11.18.0 | verify-npm-bundle.sh | repo | -
 claude-code.version | Claude Code CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.252 | verify-npm-bundle.sh,check-provider-contracts.sh,operator:live-refresh | mixed | refresh User-Agent in mitm/filter_addon.py must move with it
 codex.version | Codex CLI | Dockerfile | ARG CODEX_VERSION=0.140.0 | verify-npm-bundle.sh,verify-codex-sandbox.sh | repo | also anchors a recorded feasibility verdict
