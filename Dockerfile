@@ -124,8 +124,9 @@ RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
 # ttyd 1.7.7's embedded xterm.js ignores OSC 52, so Herdr cannot copy selected text back to the
 # host clipboard. This custom index is ttyd's ClipboardAddon-enabled web client built
 # from immutable upstream commit 647d55ad865f5ad85ad89ba5e1b28d9b6ac8fd55, plus the compatibility
-# patch documented in ttyd/README.md. Serve it through 1.7.7's --index option; the released server
-# binary remains architecture/checksum-pinned above.
+# patch and executable two-build recipe recorded in ttyd/reproducibility.env and ttyd/README.md.
+# Serve it through 1.7.7's --index option; the released server binary remains
+# architecture/checksum-pinned above.
 COPY ttyd/index.html /usr/local/share/ttyd/index.html
 RUN echo "85baf6f288791e6012feec6257a8dd3665a449891692e7142debffbe24f99003  /usr/local/share/ttyd/index.html" \
     | sha256sum -c -
