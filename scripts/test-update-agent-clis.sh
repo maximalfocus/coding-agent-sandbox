@@ -263,4 +263,66 @@ for arg in CLAUDE_CODE_VERSION CODEX_VERSION OPENCODE_VERSION PI_VERSION \
 done
 ok
 
+# 10. Every pin the tool can write is mapped in docs/pin-acceptance.md. An unmapped one is the
+#     failure this coupling exists to prevent, so it must be a refusal rather than a warning.
+for arg in CLAUDE_CODE_VERSION CODEX_VERSION OPENCODE_VERSION PI_VERSION \
+           HERDR_VERSION HERDR_SHA256_AMD64 HERDR_SHA256_ARM64; do
+    "$ROOT/scripts/check-pin-acceptance.sh" --arg "$arg" >/dev/null 2>&1 \
+        || fail "$arg has no row in docs/pin-acceptance.md, so the updater would refuse to move it"
+done
+ok
+
+# 11. An unmapped pin stops the write and leaves the file byte-identical. The inventory is stripped
+#     rather than the Dockerfile, because that is the real shape: a pin exists and nobody recorded
+#     what it carries.
+df=$(fixture unmapped.Dockerfile)
+before=$(cat "$df")
+stripped="$TMP_DIR/pin-acceptance-no-herdr.md"
+grep -v '^herdr\.version |' "$ROOT/docs/pin-acceptance.md" > "$stripped"
+export PIN_ACCEPTANCE_DOC="$stripped"
+run "$df" --apply herdr && fail 'the updater moved an unmapped pin'
+unset PIN_ACCEPTANCE_DOC
+[ "$before" = "$(cat "$df")" ] || fail 'a refused pin move still wrote to the Dockerfile'
+grep -q 'no row in docs/pin-acceptance.md' "$TMP_DIR/out" \
+    || fail "the refusal did not name the missing inventory row: $(cat "$TMP_DIR/out")"
+grep -q 'Nothing was written' "$TMP_DIR/out" || fail 'the refusal did not say nothing was written'
+ok
+
+# 12. A mapped pin reports what the move invalidates BEFORE writing, and marks the checks no
+#     automated run can produce. A bump whose cost is only discoverable afterwards is the bug.
+df=$(fixture cost-report.Dockerfile)
+run "$df" --apply herdr || fail "apply herdr exited non-zero: $(cat "$TMP_DIR/out")"
+grep -q 'invalidates the verification below' "$TMP_DIR/out" \
+    || fail 'the updater did not report what the pin move invalidates'
+grep -q 'operator:herdr-selection-copy' "$TMP_DIR/out" \
+    || fail 'the updater did not name the operator-only selection check'
+grep -q 'NO AUTOMATED RUN PRODUCES THIS' "$TMP_DIR/out" \
+    || fail 'an operator-only check was not marked as such'
+grep -q 'host:verify-image-architectures.sh' "$TMP_DIR/out" \
+    || fail "the checksum ARGs' host-class check was not reported alongside the version"
+ok
+
+# 13. The cost report precedes the write in the output, not after it - a reviewer reads top-down.
+cost_line=$(grep -n 'invalidates the verification below' "$TMP_DIR/out" | head -1 | cut -d: -f1)
+wrote_line=$(grep -n "^Updated $df:" "$TMP_DIR/out" | head -1 | cut -d: -f1)
+[ -n "$cost_line" ] && [ -n "$wrote_line" ] && [ "$cost_line" -lt "$wrote_line" ] \
+    || fail 'the cost report did not precede the write'
+ok
+
+# 14. Parity: the Windows twin is a supported pin-changing path too, so the refusal must exist on
+#     both or it is bypassable on one platform. Structural rather than behavioural - a real
+#     PowerShell run needs a Windows host, per docs/verification-hosts.md.
+PS1="$ROOT/scripts/update-agent-clis.ps1"
+grep -q 'pin-acceptance.md' "$PS1" \
+    || fail 'the Windows twin does not consult the pin inventory, so it could move an unmapped pin'
+grep -q 'no row in docs/pin-acceptance.md' "$PS1" \
+    || fail 'the Windows twin has no refusal message for an unmapped pin'
+grep -q 'Nothing was written' "$PS1" \
+    || fail 'the Windows twin does not state that a refusal wrote nothing'
+grep -q 'NO AUTOMATED RUN PRODUCES THIS' "$PS1" \
+    || fail 'the Windows twin does not mark operator-only checks'
+grep -q 'needs another host class' "$PS1" \
+    || fail 'the Windows twin does not mark host-class checks'
+ok
+
 printf 'PASS: the host-side pin updater moves the pins it owns and fails closed (%d checks)\n' "$PASSED"

@@ -798,6 +798,30 @@ each pinned value lives, what breaks if it changes, and how to re-pin it are in
 > no longer recognised by the provider. The check reports it as `DRIFTED`. Everything else in the
 > sandbox is unaffected.
 
+## What a version bump costs
+
+Every version, digest, source commit, and checksum this image bakes in is a pin, and moving one is a
+rebuild **and** a revalidation. The second half is the part that goes missing: the pin moves, every
+automated check stays green, and some verification that rested on the old component's runtime
+behaviour quietly stops being true of the shipped image.
+
+So each pin records what rests on it, and the same check reports both directions — a pin baked into
+the `Dockerfile` with no row, and a row whose pin has moved on:
+
+```bash
+scripts/check-pin-acceptance.sh          # PASS / DRIFTED / UNEVALUATED per pin
+scripts/check-pin-acceptance.sh --json
+```
+
+`scripts/update-agent-clis.sh` consults the same inventory before it writes. An unmapped pin is
+**refused** rather than moved, and a mapped one prints the verification the move invalidates —
+marking the checks no automated run can produce, so you see the cost with the diff instead of
+discovering it later. The Windows twin does the same.
+
+`UNEVALUATED` means the pin is intact but its verification needs an operator, or a host class this
+machine is not; it is deliberately **not** reported as a pass. The inventory, and which pins carry
+an operator-only check, are in [`docs/pin-acceptance.md`](docs/pin-acceptance.md).
+
 ## Audit trail & resource limits
 
 Every host the proxy was asked to reach (allowed *and* refused) is logged to a persisted volume:
