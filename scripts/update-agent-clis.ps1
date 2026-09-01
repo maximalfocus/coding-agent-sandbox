@@ -43,8 +43,12 @@ try {
         @{ Name = "claude";   Arg = "CLAUDE_CODE_VERSION"; Package = "@anthropic-ai/claude-code" },
         @{ Name = "codex";    Arg = "CODEX_VERSION";       Package = "@openai/codex" },
         @{ Name = "opencode"; Arg = "OPENCODE_VERSION";    Package = "opencode-ai" },
-        @{ Name = "pi";       Arg = "PI_VERSION";          Package = "@earendil-works/pi-coding-agent" }
+        @{ Name = "pi";       Arg = "PI_VERSION";          Package = "@earendil-works/pi-coding-agent" },
+        @{ Name = "herdr";    Arg = "HERDR_VERSION";       Package = "github:herdrdev/herdr" }
     )
+    # The canonical Herdr repository. 'ogulcancelik/herdr' resolves here only through GitHub's
+    # rename redirect, which this project does not control.
+    $HerdrRepo = "herdrdev/herdr"
 
     $selected = @()
     $pins = @{}
@@ -81,8 +85,22 @@ try {
         return ""
     }
 
-    function Get-PublishedVersion([string]$package) {
+    function Get-PublishedVersion([string]$name, [string]$package) {
         try {
+            if ($name -eq "herdr") {
+                # Resolve through the releases/latest redirect rather than the API: no token, and no
+                # unauthenticated rate limit to trip over. The final URL ends in /tag/vX.Y.Z.
+                $answer = Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 `
+                    -Uri ("https://github.com/{0}/releases/latest" -f $HerdrRepo)
+                $final = [string]$answer.BaseResponse.ResponseUri.AbsoluteUri
+                $marker = "/tag/"
+                if ($final.Contains($marker)) {
+                    $tag = $final.Substring($final.IndexOf($marker) + $marker.Length)
+                    if ($tag.StartsWith("v")) { $tag = $tag.Substring(1) }
+                    return $tag
+                }
+                return ""
+            }
             $encoded = $package.Replace("/", "%2f")
             $answer = Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 `
                 -Uri ("https://registry.npmjs.org/{0}/latest" -f $encoded)
@@ -92,8 +110,13 @@ try {
         }
     }
 
-    function Test-VersionExists([string]$package, [string]$version) {
+    function Test-VersionExists([string]$name, [string]$package, [string]$version) {
         try {
+            if ($name -eq "herdr") {
+                Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 -Method Head `
+                    -Uri ("https://github.com/{0}/releases/tag/v{1}" -f $HerdrRepo, $version) | Out-Null
+                return $true
+            }
             $encoded = $package.Replace("/", "%2f")
             Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 `
                 -Uri ("https://registry.npmjs.org/{0}/{1}" -f $encoded, $version) | Out-Null
@@ -101,6 +124,31 @@ try {
         } catch {
             return $false
         }
+    }
+
+    # sha256 DERIVED from the artifact actually downloaded. Never accepts a checksum from an
+    # argument: a pin you were handed proves nothing.
+    function Get-HerdrChecksum([string]$version, [string]$arch) {
+        $target = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+        try {
+            Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 `
+                -Uri ("https://github.com/{0}/releases/download/v{1}/herdr-linux-{2}" -f $HerdrRepo, $version, $arch) `
+                -OutFile $target
+        } catch {
+            Write-Error ("could not download herdr {0} for {1} - nothing was written" -f $version, $arch)
+            exit 1
+        }
+        # A truncated transfer or an error page must not be hashed and recorded as a pin. The real
+        # binaries are about 20MB; anything tiny is not one.
+        $size = (Get-Item -LiteralPath $target).Length
+        if ($size -lt 1000000) {
+            Remove-Item -LiteralPath $target -Force
+            Write-Error ("herdr {0} {1} download was only {2} bytes - refusing to pin it" -f $version, $arch, $size)
+            exit 1
+        }
+        $hash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLower()
+        Remove-Item -LiteralPath $target -Force
+        return $hash
     }
 
     "{0,-10} {1,-32} {2,-12} {3,-12}" -f "CLI", "PACKAGE", "PINNED", "TARGET" | Write-Host
@@ -118,14 +166,14 @@ try {
         if ($pins.ContainsKey($entry.Name)) {
             $target = $pins[$entry.Name]
             $note = "requested"
-            if (-not (Test-VersionExists $entry.Package $target)) {
+            if (-not (Test-VersionExists $entry.Name $entry.Package $target)) {
                 "{0,-10} {1,-32} {2,-12} {3,-12} NOT IN REGISTRY" -f `
                     $entry.Name, $entry.Package, $current, $target | Write-Host
                 $failures += $entry.Name
                 continue
             }
         } else {
-            $target = Get-PublishedVersion $entry.Package
+            $target = Get-PublishedVersion $entry.Name $entry.Package
             if ($target.Length -eq 0) {
                 "{0,-10} {1,-32} {2,-12} {3,-12} LOOKUP FAILED" -f `
                     $entry.Name, $entry.Package, $current, "?" | Write-Host
@@ -161,6 +209,28 @@ try {
         Write-Host "Report only - $Dockerfile is unchanged. Re-run with -Apply to move these pins."
         exit 0
     }
+
+    # Derive checksums BEFORE touching anything. A version bumped with a stale checksum would fail
+    # every later build, so the download has to succeed first or nothing is written at all. This is
+    # also why the report never downloads: only an -Apply that actually moves herdr pays for it.
+    $extra = @()
+    foreach ($change in $changes) {
+        if ($change.Arg -ne "HERDR_VERSION") { continue }
+        Write-Host ""
+        Write-Host ("Downloading herdr {0} to derive its checksums (both architectures, one release)..." -f $change.Version)
+        $amd64 = Get-HerdrChecksum $change.Version "x86_64"
+        $arm64 = Get-HerdrChecksum $change.Version "aarch64"
+        $extra += @{ Arg = "HERDR_SHA256_AMD64"; Version = $amd64 }
+        $extra += @{ Arg = "HERDR_SHA256_ARM64"; Version = $arm64 }
+        Write-Host ("  x86_64  {0}" -f $amd64)
+        Write-Host ("  aarch64 {0}" -f $arm64)
+        Write-Host ""
+        Write-Host "  These checksums were derived from the bytes just downloaded. They attest WHAT WAS"
+        Write-Host "  FETCHED NOW, not upstream intent - there is no published signature to check them"
+        Write-Host "  against. What the pin buys is that no later build can be served different bytes"
+        Write-Host "  without failing. Review before you rebuild."
+    }
+    foreach ($item in $extra) { $changes += $item }
 
     # Rewrite only the exact 'ARG NAME=' lines resolved above. Every other pin in the file - the base
     # image digest, ttyd, npm, Herdr, Bun, Playwright, the AWS CLI and the Docker clients - is left
