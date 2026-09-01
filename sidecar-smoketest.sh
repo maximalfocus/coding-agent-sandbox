@@ -21,6 +21,7 @@
 # operator's real credentials. Set these too — they are the ones that protect a login (issue #93):
 #
 #   SIDECAR_CONFIG_VOLUME_NAME          the agent's ~/.claude — THE LOGIN
+#   SIDECAR_HERDR_VOLUME_NAME           the agent's Herdr workspace layout
 #   SIDECAR_CLAUDE_SECRET_VOLUME_NAME   the sidecar's token vault
 #   DEEPSEEK_SECRET_VOLUME_NAME         the DeepSeek API key
 #   SIDECAR_AUDIT_VOLUME_NAME           the proxy audit log
@@ -31,6 +32,7 @@
 #   SIDECAR_COMPOSE_PROJECT=idd93 SIDECAR_AGENT_CONTAINER_NAME=idd93-agent \
 #     SIDECAR_EGRESS_CONTAINER_NAME=idd93-egress \
 #     SIDECAR_CONFIG_VOLUME_NAME=idd93-config \
+#     SIDECAR_HERDR_VOLUME_NAME=idd93-herdr \
 #     SIDECAR_CLAUDE_SECRET_VOLUME_NAME=idd93-secret \
 #     DEEPSEEK_SECRET_VOLUME_NAME=idd93-deepseek-secret \
 #     SIDECAR_AUDIT_VOLUME_NAME=idd93-audit-mitm \

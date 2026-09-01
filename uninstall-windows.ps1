@@ -78,6 +78,7 @@ $Volumes    = @(
     (Select-SandboxName @('SANDBOX_CONFIG_VOLUME_NAME','SIDECAR_CONFIG_VOLUME_NAME')             'coding-agent-sandbox-config'),
     (Select-SandboxName @('SANDBOX_CODEX_VOLUME_NAME')                                           'coding-agent-sandbox-codex'),
     (Select-SandboxName @('SANDBOX_GH_VOLUME_NAME')                                              'coding-agent-sandbox-gh'),
+    (Select-SandboxName @('SANDBOX_HERDR_VOLUME_NAME','SIDECAR_HERDR_VOLUME_NAME')               'coding-agent-sandbox-herdr'),
     (Select-SandboxName @('SANDBOX_AUDIT_VOLUME_NAME')                                           'coding-agent-sandbox-audit'),
     (Select-SandboxName @('SANDBOX_MITM_AUDIT_VOLUME_NAME','SIDECAR_AUDIT_VOLUME_NAME')          'coding-agent-sandbox-audit-mitm'),
     (Select-SandboxName @('SANDBOX_WORKSPACE_VOLUME_NAME')                                       'coding-agent-sandbox-workspace'),

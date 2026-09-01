@@ -102,6 +102,11 @@ services:
       # Persists the GitHub CLI login (~/.config/gh) across restarts — gh's token carries the
       # `workflow` scope, so pushes incl. .github/workflows/* work. One-time ./scripts/auth/gh-login.sh.
       - "claude-gh:/home/node/.config/gh"
+      # Persists Herdr's workspace and pane LAYOUT across a container recreation, so a routine
+      # ./run.sh does not silently reset the terminal while every login survives. Runtime
+      # artifacts (sockets, server log) are cleared by entrypoint.sh rather than carried across;
+      # running pane processes are NOT preserved. See README.md.
+      - "claude-herdr:/home/node/.config/herdr"
       # Audit trail: every host the proxy was asked to reach (allowed + refused).
       - "claude-audit:/var/log/tinyproxy"
     restart: unless-stopped
@@ -122,6 +127,8 @@ volumes:
     name: "${SANDBOX_CODEX_VOLUME_NAME:-coding-agent-sandbox-codex}"
   claude-gh:
     name: "${SANDBOX_GH_VOLUME_NAME:-coding-agent-sandbox-gh}"
+  claude-herdr:
+    name: "${SANDBOX_HERDR_VOLUME_NAME:-coding-agent-sandbox-herdr}"
   claude-audit:
     name: "${SANDBOX_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit}"
   # Inert fallbacks so an unset WORKSPACE_DIR/WORK_DIR/PERSONAL_DIR binds an isolated volume,

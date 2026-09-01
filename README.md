@@ -147,6 +147,13 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
   `/workspace`, which **is** your `WORKSPACE_DIR` on the host. Changes appear on your real files.
 - Herdr is the primary terminal environment. Its server persists the workspace session when the
   browser disconnects; reopen the URL to attach a new Herdr client.
+- **What survives a rebuild.** Your Herdr workspace and pane *layout* is on a named volume, so it
+  comes back after `./run.sh` recreates the container — the same footing as your logins. What does
+  **not** come back is anything that was *running*: **running pane processes die with the
+  container**, and their scrollback goes with them. You get your panes back, not your sessions.
+  Screen contents are deliberately not persisted — a terminal buffer is exactly where a secret gets
+  echoed — and the sockets from the destroyed container are cleared at startup rather than carried
+  across.
 - Clipboard works in both directions: paste from the host normally; select or double-click text in
   Herdr to copy it back through OSC 52. In the browser, ttyd includes a fallback for browsers that
   deny the async Clipboard API request. From a local terminal, `./shell.sh` applies the copy when it

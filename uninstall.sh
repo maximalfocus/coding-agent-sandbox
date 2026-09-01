@@ -58,6 +58,7 @@ VOLUMES=(
   "$(pick SANDBOX_CONFIG_VOLUME_NAME SIDECAR_CONFIG_VOLUME_NAME       coding-agent-sandbox-config)"
   "$(pick SANDBOX_CODEX_VOLUME_NAME                                   coding-agent-sandbox-codex)"
   "$(pick SANDBOX_GH_VOLUME_NAME                                      coding-agent-sandbox-gh)"
+  "$(pick SANDBOX_HERDR_VOLUME_NAME SIDECAR_HERDR_VOLUME_NAME        coding-agent-sandbox-herdr)"
   "$(pick SANDBOX_WORKSPACE_VOLUME_NAME                               coding-agent-sandbox-workspace)"
   "$(pick SANDBOX_WORK_VOLUME_NAME                                    coding-agent-sandbox-work)"
   "$(pick SANDBOX_PERSONAL_VOLUME_NAME                                coding-agent-sandbox-personal)"

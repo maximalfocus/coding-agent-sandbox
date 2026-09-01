@@ -57,6 +57,11 @@ services:
       - "${WORKSPACE_DIR:-./workspace}:/workspace"
       # Shares the same login volume as the default stack — log in once, use either.
       - "claude-config:/home/node/.claude"
+      # Persists Herdr's workspace and pane LAYOUT across a container recreation, so a routine
+      # ./run.sh does not silently reset the terminal while every login survives. Runtime
+      # artifacts (sockets, server log) are cleared by entrypoint.sh rather than carried across;
+      # running pane processes are NOT preserved. See README.md.
+      - "claude-herdr:/home/node/.config/herdr"
       # Persisted mitm decision log (audit trail): surfaced by `./audit.sh --mitm`.
       - "claude-audit-mitm:/var/log/mitm"
       # Tinyproxy-only credential vault (mode 0700, agent-unreadable) for token isolation.
@@ -66,6 +71,8 @@ services:
 volumes:
   claude-config:
     name: "${SANDBOX_CONFIG_VOLUME_NAME:-coding-agent-sandbox-config}"
+  claude-herdr:
+    name: "${SANDBOX_HERDR_VOLUME_NAME:-coding-agent-sandbox-herdr}"
   claude-audit-mitm:
     name: "${SANDBOX_MITM_AUDIT_VOLUME_NAME:-coding-agent-sandbox-audit-mitm}"
   claude-secret:
