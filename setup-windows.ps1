@@ -24,8 +24,8 @@ function Test-Command([string]$Name) {
 }
 
 # Provenance marker: record what THIS setup installed, so uninstall-windows.ps1 only removes an
-# engine/feature this sandbox added (never a pre-existing one). Lives outside the repo so it
-# survives the repo's deletion during uninstall.
+# engine/feature this sandbox added (never a pre-existing one). Lives outside the repo so
+# provenance is independent of the checkout.
 function Set-InstallMarker([string]$Name) {
     $markerDir = Join-Path $env:USERPROFILE ".coding-agent-sandbox"
     if (-not (Test-Path -LiteralPath $markerDir)) {

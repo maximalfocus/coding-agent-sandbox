@@ -1,28 +1,22 @@
 ﻿# uninstall-windows.ps1 - the Windows counterpart to uninstall.sh (and to setup-windows.ps1):
-# removes everything this sandbox created on the host, so you can start from a clean slate.
+# removes everything this sandbox created on the host while preserving this repository checkout.
 #
-# Removes ONLY sandbox-owned resources (names resolved from the compose SANDBOX_* variables) plus this
-# repo directory. It NEVER touches your host personal/work trees (PERSONAL_DIR / WORK_DIR), your
-# Docker login, your SSH keys, or any WSL distro.
+# Removes ONLY sandbox-owned resources (names resolved from the compose SANDBOX_* variables). It
+# NEVER touches this repository checkout, your host personal/work trees (PERSONAL_DIR / WORK_DIR),
+# your Docker login, your SSH keys, or any WSL distro.
 #
-#   powershell -ExecutionPolicy Bypass -File .\uninstall-windows.ps1            # prompts, full wipe
+#   powershell -ExecutionPolicy Bypass -File .\uninstall-windows.ps1      # prompts, runtime wipe
 #   ...\uninstall-windows.ps1 -Yes                  # no prompt
 #   ...\uninstall-windows.ps1 -KeepDockerEngine     # keep Docker Desktop installed
-#   ...\uninstall-windows.ps1 -KeepDir              # docker teardown only, keep this directory
-#   ...\uninstall-windows.ps1 -SkipDocker           # only remove the directory
+#   ...\uninstall-windows.ps1 -SkipDocker           # skip Docker teardown
 #
 # Engine removal is gated on a provenance marker that setup-windows.ps1 writes IFF it installed
 # Docker Desktop itself - so a pre-existing Docker is never uninstalled unless you pass
-# -RemoveDockerEngine. The repo-directory removal is the last step and is handed to a tiny remover
-# that runs from %TEMP% after this process exits, so deleting this script mid-run is safe.
-#
-# To reinstall:
-#   git clone https://github.com/maximalfocus/coding-agent-sandbox.git
-#   cd coding-agent-sandbox; .\setup-windows.cmd
+# -RemoveDockerEngine. Deleting this checkout, if wanted, is a separate operator action after
+# uninstall completes.
 # ---------------------------------------------------------------------------
 param(
     [switch]$Yes,
-    [switch]$KeepDir,
     [switch]$KeepImages,
     [switch]$KeepDockerEngine,
     [switch]$RemoveDockerEngine,
@@ -33,13 +27,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# This script lives at the repo root, so the repo dir is just where it sits. Capture it BEFORE any
-# Set-Location, because the final step changes directory away from here to delete it.
+# This script lives at the repo root, so the repo dir is just where it sits.
 $RepoDir = $PSScriptRoot
 Set-Location -LiteralPath $RepoDir
 
 # Provenance marker: setup-windows.ps1 writes this iff IT installed Docker Desktop. Lives outside the
-# repo so it survives the repo deletion. Engine removal is gated on it (see below).
+# repo so provenance is independent of the checkout. Engine removal is gated on it (see below).
 $EngineMarker = Join-Path $env:USERPROFILE ".coding-agent-sandbox\installed-docker-desktop"
 
 # --- What belongs to the sandbox ---------------------------------------------
@@ -129,7 +122,7 @@ function Show-Usage {
     @"
 uninstall-windows.ps1 - remove everything this sandbox created on the host (Windows).
 
-Removes ONLY sandbox-owned Docker resources + this repo directory.
+Removes ONLY sandbox-owned Docker resources. This repository checkout is always preserved.
 
 Names come from the same SANDBOX_* variables the compose files use. Set ALL of them
 (and COMPOSE_PROJECT_NAME) to remove one named installation instead of the default;
@@ -142,13 +135,12 @@ Usage:
 
 Flags:
   -Yes                  Don't prompt for confirmation.
-  -KeepDir              Tear down Docker resources but keep this directory.
   -KeepImages           Keep the built images (faster re-test; skips a rebuild).
   -KeepDockerEngine     Never touch Docker Desktop.
   -RemoveDockerEngine   Force-uninstall Docker Desktop even if this sandbox didn't install it
                         (default only removes an engine it installed itself).
   -PruneDangling        Also 'docker image prune -f' (removes ALL dangling layers, host-wide).
-  -SkipDocker           Do nothing to Docker at all; only remove the directory.
+  -SkipDocker           Do nothing to Docker at all.
   -Help                 Show this help.
 "@ | Write-Host
 }
@@ -161,13 +153,12 @@ $ForceEngine = [bool]$RemoveDockerEngine
 if ($RemoveDockerEngine) { $DoRemoveEngine = $true }
 
 # An addressed run removes ONE named installation and nothing else. The shared, fixed-name resources
-# -- the image tags, the host Docker engine, and this repo directory -- belong to the host rather
+# -- the image tags, the host Docker engine, and this repository checkout -- belong to the host rather
 # than to that installation, so they are never in scope for it. Kept in step with uninstall.sh
-# (issue #123); without this an addressed Windows run would still delete the repo and could
-# uninstall Docker Desktop out from under the operator's real installation.
+# (issue #123); without this an addressed Windows run could still uninstall Docker Desktop out from
+# under the operator's real installation.
 if ($Addressed) {
     $KeepImages = $true
-    $KeepDir = $true
     $DoRemoveEngine = $false
     $ForceEngine = $false
     # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
@@ -220,8 +211,7 @@ if (-not $SkipDocker) {
 else {
     Write-Host "Docker: skipped (-SkipDocker)."
 }
-if ($KeepDir) { Write-Host "Directory:  kept (-KeepDir)." }
-else          { Write-Host "Directory:  $RepoDir   (this whole repo)" }
+Write-Host "Directory:  kept - repository checkout is host state (delete it separately if wanted)."
 
 if ($SkipDocker -or (-not $DoRemoveEngine)) {
     Write-Host "Docker engine: kept."
@@ -372,58 +362,6 @@ if ((-not $SkipDocker) -and $DoRemoveEngine) {
         Write-Host "==> Docker engine: leaving it installed - it pre-existed this sandbox (no marker at"
         Write-Host "    $EngineMarker). Re-run with -RemoveDockerEngine to uninstall it anyway."
     }
-}
-
-# --- Directory removal (LAST - this script self-destructs) --------------------
-# A directory can't be deleted while it's a running process's current directory, and PowerShell holds
-# a handle on the executing .ps1. So we hand removal to a tiny remover that runs from %TEMP%, waits
-# for THIS process to exit, then deletes the repo. Mirrors uninstall.sh's temp-remover trick.
-if (-not $KeepDir) {
-    # Sanity guard so a corrupted RepoDir can't nuke the profile or a drive root.
-    $homeResolved = (Resolve-Path -LiteralPath $env:USERPROFILE).Path.TrimEnd('\')
-    $repoNorm = $RepoDir.TrimEnd('\')
-    $root = [System.IO.Path]::GetPathRoot($RepoDir).TrimEnd('\')
-    if ([string]::IsNullOrWhiteSpace($repoNorm) -or $repoNorm -ieq $homeResolved -or $repoNorm -ieq $root) {
-        Write-Host ""
-        Write-Host "! Refusing to delete '$RepoDir' - leaving the directory in place."
-        exit 1
-    }
-
-    Write-Host ""
-    Write-Host "==> Removing directory $RepoDir"
-
-    $remover = Join-Path $env:TEMP ("cas-uninstall-" + [System.IO.Path]::GetRandomFileName() + ".ps1")
-    $removerBody = @'
-param([string]$Target, [int]$ParentPid)
-try { Wait-Process -Id $ParentPid -Timeout 60 -ErrorAction SilentlyContinue } catch { }
-$removed = $false
-for ($i = 0; $i -lt 12; $i++) {
-    Remove-Item -LiteralPath $Target -Recurse -Force -ErrorAction SilentlyContinue
-    if (-not (Test-Path -LiteralPath $Target)) { $removed = $true; break }
-    Start-Sleep -Seconds 1
-}
-if ($removed) {
-    Write-Host "    removed $Target"
-    Write-Host ""
-    Write-Host "Done. Windows is clean. To reinstall:"
-    Write-Host "  git clone https://github.com/maximalfocus/coding-agent-sandbox.git `"$Target`""
-    Write-Host "  cd `"$Target`"; .\setup-windows.cmd"
-}
-else {
-    Write-Host "    WARNING: could not fully remove $Target - close any shell, editor, or Explorer window"
-    Write-Host "    open there, then run:  rmdir /s /q `"$Target`""
-}
-Write-Host ""
-Read-Host "Press Enter to close"
-Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-'@
-    Set-Content -LiteralPath $remover -Value $removerBody -Encoding UTF8
-
-    Set-Location -LiteralPath $env:TEMP   # leave the dir we are about to delete
-    Start-Process -FilePath "powershell" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $remover, "-Target", $RepoDir, "-ParentPid", $PID)
-    Write-Host "    handed off to a cleanup window - it will confirm when the directory is gone."
-    exit 0
 }
 
 Write-Host ""

@@ -102,11 +102,11 @@ for how the trust is wired into the image (build-time + runtime).
 ## Uninstall (WSL)
 
 `./uninstall.sh` removes the sandbox's Docker resources (containers, images, volumes, network) and
-this repo directory. Its **engine** removal is macOS/Homebrew-only, so on WSL it leaves the host
-otherwise untouched — finish by hand as far as you want to go:
+preserves this repo directory. Its **engine** removal is macOS/Homebrew-only, so on WSL it leaves the
+host otherwise untouched — finish by hand as far as you want to go:
 
 ```bash
-./uninstall.sh                 # sandbox containers/images/volumes + this repo dir
+./uninstall.sh                 # sandbox containers/images/volumes; repo checkout is kept
 sudo apt-get purge -y docker.io docker-compose-v2 docker-buildx   # optional: remove the engine
 ```
 

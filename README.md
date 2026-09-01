@@ -161,15 +161,15 @@ Login is saved to a Docker volume, so it **persists across restarts** — you on
   [the local-terminal section](#use-a-local-terminal-instead-of-the-browser) for the policy and how
   to change it.
 - Stop: `docker compose down`. Logs: `docker compose logs -f`. Rebuild after edits: `./run.sh`.
-- Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network and this repo
-  directory, and — only if this sandbox installed it — the Docker engine, leaving your host
-  personal/work trees (`PERSONAL_DIR` / `WORK_DIR`) and `~/.docker` login untouched. Pass
-  `--remove-docker-engine` to also remove a pre-existing engine, `--keep-docker-engine` to keep it,
-  or `--keep-dir` to keep the repo. Reinstall with `git clone … && ./setup.sh`.
-  - On **Windows**, use `uninstall.cmd` (same teardown; flags `-Yes`, `-KeepDir`, `-KeepImages`,
+- Uninstall: `./uninstall.sh` removes all sandbox containers/images/volumes/network and — only if
+  this sandbox installed it — the Docker engine, leaving this repository checkout, your host
+  personal/work trees (`PERSONAL_DIR` / `WORK_DIR`), and `~/.docker` login untouched. Pass
+  `--remove-docker-engine` to also remove a pre-existing engine or `--keep-docker-engine` to keep it.
+  Delete the checkout separately if you no longer want it.
+  - On **Windows**, use `uninstall.cmd` (same teardown; flags `-Yes`, `-KeepImages`,
     `-KeepDockerEngine`, `-RemoveDockerEngine`, `-SkipDocker`). It removes Docker Desktop only if
     `setup-windows.ps1 -InstallPrereqs` installed it, and **never** unregisters a WSL distro — that
-    would also destroy your SSH keys and logins. Reinstall with `git clone … && .\setup-windows.cmd`.
+    would also destroy your SSH keys and logins. The checkout remains in place there too.
 
 ## Workspace: `personal` vs `work` (and keep this repo outside both)
 

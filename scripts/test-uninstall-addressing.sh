@@ -149,13 +149,15 @@ grep -q "Addressing the named installation '$P'" "$TMP/uninstall.log" \
     || fail "the uninstall did not say which installation it was acting on"
 ok "the run names the installation it acted on rather than leaving it to be inferred"
 
-# --- the default path must be unchanged for an existing operator ------------
+# --- the default path targets the default resources but preserves the checkout ------------
 addr_unset
 plan=$( cd "$REPO" && printf 'n\n' | ./uninstall.sh 2>&1 )
 grep -q 'coding-agent-sandbox-config' <<<"$plan" || fail "the default plan no longer targets the default login volume"
 grep -q 'Aborted' <<<"$plan" || fail "declining no longer aborts"
 grep -q 'Addressing the named installation' <<<"$plan" && fail "an un-overridden run claimed to be addressed"
-ok "with no overrides the plan and the decline path are unchanged"
+grep -q 'Directory:.*kept' <<<"$plan" || fail "the default plan does not preserve the checkout"
+grep -q 'this whole repo\|Removing directory' <<<"$plan" && fail "the default plan still claims it deletes the checkout"
+ok "with no overrides the default resources are targeted and the checkout is preserved"
 
 # --- the two halves must stay in step ---------------------------------------
 for v in SANDBOX_CONTAINER_NAME SANDBOX_CONFIG_VOLUME_NAME SANDBOX_TRIVY_CACHE_VOLUME_NAME COMPOSE_PROJECT_NAME; do
@@ -166,16 +168,15 @@ ok "uninstall.sh and uninstall-windows.ps1 consume the same variable names"
 
 # An addressed run must not take the shared resources with it, on EITHER half. On Windows this was
 # the easier half to get wrong: the refusal can be added without the scoping, leaving an addressed
-# run still deleting the repo directory and uninstalling Docker Desktop.
+# run still uninstalling Docker Desktop.
 for half in uninstall.sh uninstall-windows.ps1; do
     block=$(grep -A12 -iE 'addressed run removes ONE named installation' "$half")
     [ -n "$block" ] || fail "$half has no addressed-run scoping block"
     grep -qiE 'KeepImages|KEEP_IMAGES' <<<"$block" || fail "$half does not keep the shared images on an addressed run"
-    grep -qiE 'KeepDir|KEEP_DIR'       <<<"$block" || fail "$half does not keep the repo directory on an addressed run"
     grep -qiE 'Engine'                 <<<"$block" || fail "$half does not spare the host Docker engine on an addressed run"
     grep -qiE '_default' <<<"$block" \
         || fail "$half does not narrow the network list on an addressed run — it would remove the shared claude-safe-net"
 done
-ok "both halves scope an addressed run away from the shared images, engine, directory and network"
+ok "both halves scope an addressed run away from the shared images, engine and network"
 
 printf '\nAll %d checks passed.\n' "$PASSED"
