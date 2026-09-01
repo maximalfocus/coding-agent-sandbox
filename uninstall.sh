@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 # uninstall.sh — the counterpart to setup.sh: removes everything this sandbox
-# created on the host, so you can start from a clean slate (or fully remove it).
+# created on the host, while preserving this repository checkout.
 #
 # Removes ONLY sandbox-owned resources (all have fixed, project-name-independent
-# names) plus this repo directory. It NEVER touches your host personal/work trees
-# (PERSONAL_DIR / WORK_DIR) or your ~/.docker login.
+# names). It NEVER touches this repository checkout, your host personal/work trees
+# (PERSONAL_DIR / WORK_DIR), or your ~/.docker login.
 #
-#   ./uninstall.sh                    # prompts, then full wipe (incl. Docker engine)
+#   ./uninstall.sh                    # prompts, then runtime wipe (incl. eligible Docker engine)
 #   ./uninstall.sh -y                 # no prompt
 #   ./uninstall.sh --keep-docker-engine   # keep OrbStack/Docker Desktop installed
-#   ./uninstall.sh --keep-dir         # docker teardown only, keep this directory
 #
-# Self-deleting: the repo-directory removal is the last step and re-execs a tiny
-# remover from a temp dir, so deleting this script mid-run is safe. To reinstall:
-#   git clone git@github.com:maximalfocus/coding-agent-sandbox.git && ./setup.sh
+# Deleting this checkout, if wanted, is a separate operator action after uninstall completes.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -21,7 +18,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 # Provenance marker: setup.sh writes this iff IT installed OrbStack. Lives outside the repo so it
-# survives the repo deletion. Engine removal is gated on it (see below) — we don't uninstall a
+# remains independent of the checkout. Engine removal is gated on it (see below) — we don't uninstall a
 # Docker engine that pre-existed this sandbox unless --remove-docker-engine forces it.
 ENGINE_MARKER="$HOME/.coding-agent-sandbox/installed-orbstack"
 
@@ -116,7 +113,6 @@ fi
 
 # --- Flags -------------------------------------------------------------------
 ASSUME_YES=0
-KEEP_DIR=0
 KEEP_IMAGES=0
 PRUNE_DANGLING=0
 REMOVE_DOCKER_ENGINE=1   # default: remove the engine, but ONLY if this sandbox installed it (marker)
@@ -127,13 +123,13 @@ usage() {
     cat <<'EOF'
 uninstall.sh — remove everything this sandbox created on the host.
 
-Removes ONLY sandbox-owned Docker resources + this repo directory.
+Removes ONLY sandbox-owned Docker resources. This repository checkout is always preserved.
 
 Names come from the same SANDBOX_* variables the compose files use. Set ALL of them
 (and COMPOSE_PROJECT_NAME) to remove one named installation instead of the default;
 a partial override is refused, because the unset names fall back to the default
 installation's. An addressed run keeps the shared image tags, the host Docker engine
-and this directory, which belong to the host rather than to that installation.
+and this repository checkout, which belong to the host rather than to that installation.
 NEVER touches your host personal/work trees (PERSONAL_DIR / WORK_DIR) or your ~/.docker login.
 
 Usage:
@@ -141,13 +137,12 @@ Usage:
 
 Flags:
   -y, --yes               Don't prompt for confirmation.
-      --keep-dir          Tear down Docker resources but keep this directory.
       --keep-images       Keep the built images (faster re-test; skips a rebuild).
       --keep-docker-engine    Never touch OrbStack / Docker Desktop.
       --remove-docker-engine  Force-uninstall OrbStack / Docker Desktop even if this sandbox didn't
                               install it (default only removes an engine it installed itself).
       --prune-dangling    Also `docker image prune -f` (removes ALL dangling layers, host-wide).
-      --skip-docker       Do nothing to Docker at all (no resources, no engine); only remove the dir.
+      --skip-docker       Do nothing to Docker at all (no resources, no engine).
   -h, --help              Show this help.
 EOF
 }
@@ -155,7 +150,6 @@ EOF
 while [ "$#" -gt 0 ]; do
     case "$1" in
         -y|--yes)               ASSUME_YES=1 ;;
-        --keep-dir)             KEEP_DIR=1 ;;
         --keep-images)          KEEP_IMAGES=1 ;;
         --keep-docker-engine)   REMOVE_DOCKER_ENGINE=0 ;;
         --remove-docker-engine) REMOVE_DOCKER_ENGINE=1; FORCE_ENGINE=1 ;;
@@ -169,13 +163,12 @@ done
 
 say()  { printf '%s\n' "$@"; }
 # An addressed run removes ONE named installation and nothing else. The shared, fixed-name
-# resources — the image tags, the host Docker engine, and this repo directory — belong to the host
+# resources — the image tags, the host Docker engine, and this repository checkout — belong to the host
 # rather than to that installation, so they are never in scope for it (issue #123).
 if [ "$ADDRESSED" -eq 1 ]; then
     KEEP_IMAGES=1
     REMOVE_DOCKER_ENGINE=0
     FORCE_ENGINE=0
-    KEEP_DIR=1
     # claude-safe-net is created on first use by the optional `claude-safe` helper and is shared by
     # every installation on the host, so an addressed run leaves it alone too.
     NETWORKS=("${COMPOSE_PROJECT_NAME}_default")
@@ -207,11 +200,7 @@ if [ "$SKIP_DOCKER" -eq 0 ]; then
 else
     say "Docker: skipped (--skip-docker)."
 fi
-if [ "$KEEP_DIR" -eq 1 ]; then
-    say "Directory:  kept (--keep-dir)."
-else
-    say "Directory:  $REPO_DIR   (this whole repo)"
-fi
+say "Directory:  kept — repository checkout is host state (delete it separately if wanted)."
 if [ "$SKIP_DOCKER" -eq 1 ] || [ "$REMOVE_DOCKER_ENGINE" -eq 0 ]; then
     say "Docker engine: kept."
 elif [ "$FORCE_ENGINE" -eq 1 ]; then
@@ -324,39 +313,6 @@ for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
         say "      rc files — delete that function by hand if you no longer want it."
     fi
 done
-
-# --- Directory removal (LAST — this script self-destructs) -------------------
-# rm -rf'ing the dir we're running from is unsafe while bash may still read this
-# file, so hand the removal to a tiny remover that runs from a temp dir.
-if [ "$KEEP_DIR" -eq 0 ]; then
-    # Sanity guard so a corrupted REPO_DIR can't nuke home or root.
-    home_abs="$(cd "$HOME" && pwd -P)"
-    if [ "$REPO_DIR" = "/" ] || [ "$REPO_DIR" = "$home_abs" ] || [ -z "$REPO_DIR" ]; then
-        say ""; say "! Refusing to delete '$REPO_DIR' — leaving the directory in place."
-        exit 1
-    fi
-    say ""
-    say "==> Removing directory $REPO_DIR"
-    remover="$(mktemp "${TMPDIR:-/tmp}/cas-uninstall.XXXXXX")"
-    cat > "$remover" <<EOF
-#!/bin/sh
-rm -rf "$REPO_DIR" 2>/dev/null
-if [ -e "$REPO_DIR" ]; then
-    echo "    WARNING: could not fully remove $REPO_DIR — check permissions/locks and delete it manually." >&2
-    rm -f "$remover"
-    exit 1
-fi
-echo "    removed $REPO_DIR"
-echo ""
-echo "Done. The Mac is clean. To reinstall:"
-echo "  git clone https://github.com/maximalfocus/coding-agent-sandbox.git \"$REPO_DIR\""
-echo "  cd \"$REPO_DIR\" && ./setup.sh"
-rm -f "$remover"
-EOF
-    chmod +x "$remover"
-    cd /                      # leave the dir we're about to delete
-    exec "$remover"           # replace this process; the repo (incl. this file) is now safe to remove
-fi
 
 say ""
 say "Done."
