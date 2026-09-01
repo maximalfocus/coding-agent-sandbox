@@ -150,7 +150,8 @@ arm=$(sed -n 's/^ARG HERDR_SHA256_ARM64=//p' "$df")
 echo "$amd" | grep -Eq '^[0-9a-f]{64}$' || fail "amd64 checksum is not a sha256: '$amd'"
 echo "$arm" | grep -Eq '^[0-9a-f]{64}$' || fail "arm64 checksum is not a sha256: '$arm'"
 [ "$amd" != "$arm" ] || fail 'both architectures got the same checksum - they were not hashed separately'
-grep -q '^ARG CLAUDE_CODE_VERSION=2' "$df" || fail 'herdr apply moved an npm pin it was not given'
+claude_now=$(sed -n 's/^ARG CLAUDE_CODE_VERSION=//p' "$ROOT/Dockerfile")
+grep -q "^ARG CLAUDE_CODE_VERSION=${claude_now}\$" "$df" || fail 'herdr apply moved an npm pin it was not given'
 [ "$(wc -l < "$df")" = "$(wc -l < "$ROOT/Dockerfile")" ] || fail 'herdr apply changed the line count'
 grep -qi 'not upstream intent' "$TMP_DIR/out"     || fail 'the derived checksums were printed without saying what they do and do not attest'
 ok
@@ -189,7 +190,8 @@ ok
 df=$(fixture npmonly.Dockerfile)
 STUB_HERDR_ARTIFACT_VALUE="missing"
 run "$df" --apply claude codex opencode pi || fail "npm-only apply failed: $(cat "$TMP_DIR/out")"
-grep -q '^ARG HERDR_VERSION=0.7.5$' "$df" || fail 'an npm-only apply moved the herdr pin'
+herdr_now=$(sed -n 's/^ARG HERDR_VERSION=//p' "$ROOT/Dockerfile")
+grep -q "^ARG HERDR_VERSION=${herdr_now}\$" "$df" || fail 'an npm-only apply moved the herdr pin'
 STUB_HERDR_ARTIFACT_VALUE="ok"
 ok
 
@@ -197,7 +199,7 @@ ok
 df=$(fixture subset.Dockerfile)
 run "$df" --apply codex || fail "subset apply exited non-zero: $(cat "$TMP_DIR/out")"
 grep -q '^ARG CODEX_VERSION=8.8.8$' "$df" || fail 'subset apply did not move the named pin'
-grep -q '^ARG CLAUDE_CODE_VERSION=2' "$df" || fail 'subset apply moved a pin it was not given'
+grep -q "^ARG CLAUDE_CODE_VERSION=${claude_now}\$" "$df" || fail 'subset apply moved a pin it was not given'
 ok
 
 # 4. An explicit version the registry does not serve is refused, and nothing is written.

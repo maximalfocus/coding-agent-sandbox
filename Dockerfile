@@ -140,7 +140,7 @@ RUN npm install -g "npm@${NPM_VERSION}" \
 # is DISABLED below (DISABLE_AUTOUPDATER) so the running CLI stays exactly this version — no
 # unreviewed binary drift mid-session. To update Claude, bump the arg and rebuild.
 # (The base image, npm, and ttyd are also pinned; apt packages come from moving Debian repos.)
-ARG CLAUDE_CODE_VERSION=2.1.233
+ARG CLAUDE_CODE_VERSION=2.1.252
 RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && npm ls -g --depth=0 "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" >/dev/null
@@ -152,8 +152,8 @@ RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 
 # Additional agent frontends, pinned at build time like Claude and Codex. OpenCode's npm package
 # selects the matching native binary; Pi needs no lifecycle scripts for a normal global install.
-ARG OPENCODE_VERSION=1.18.4
-ARG PI_VERSION=0.81.1
+ARG OPENCODE_VERSION=1.18.25
+ARG PI_VERSION=0.84.4
 RUN npm install -g --allow-scripts=opencode-ai "opencode-ai@${OPENCODE_VERSION}" \
     && npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"
 
@@ -163,9 +163,9 @@ RUN npm install -g --allow-scripts=opencode-ai "opencode-ai@${OPENCODE_VERSION}"
 # but only through GitHub's rename redirect, which this project does not control — so name the
 # canonical owner. Move these three lines together with scripts/update-agent-clis.sh --apply herdr;
 # a version bumped without its checksums fails every later build.
-ARG HERDR_VERSION=0.7.5
-ARG HERDR_SHA256_AMD64=3dc83288073e4c2d3c679a30e7be97bcca9141c6fd17dbbb9219142e95c59253
-ARG HERDR_SHA256_ARM64=32e763a1499a6b694b1d708e4f062b743be1da9f34fcfa4d212d6db6fe09a8b9
+ARG HERDR_VERSION=0.8.2
+ARG HERDR_SHA256_AMD64=976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4
+ARG HERDR_SHA256_ARM64=f55610658e1c2e0d2aaef730b4b2ab885f7f8ba00285ab372bfb14f2e3d5b40d
 RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
       amd64) HERDR_ARCH=x86_64;  HERDR_SHA="$HERDR_SHA256_AMD64" ;; \
       arm64) HERDR_ARCH=aarch64; HERDR_SHA="$HERDR_SHA256_ARM64" ;; \
