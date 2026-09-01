@@ -215,8 +215,10 @@ behind a TLS-inspecting proxy — `./setup-wsl.sh`; see [`docs/wsl-warp.md`](doc
 
 ## Use a local terminal instead of the browser
 
-The browser/ttyd is just one entry point — the sandbox is the container. To code from your normal
-terminal with the **same isolation** (egress proxy, `/workspace` scope, your login), exec in:
+The browser/ttyd is just one entry point — the sandbox is the container. The terminal type, colour,
+geometry, and key sequences carried by each browser/local path are measured in
+[`docs/terminal-capabilities.md`](docs/terminal-capabilities.md). To code from your normal terminal
+with the **same isolation** (egress proxy, `/workspace` scope, your login), exec in:
 
 ```bash
 chmod +x shell.sh                 # first time
