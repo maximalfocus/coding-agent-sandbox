@@ -204,6 +204,88 @@ try {
         exit 0
     }
 
+    # --- what does moving these pins cost? --------------------------------------------------
+    # A pin move is a rebuild AND a revalidation. docs/pin-acceptance.md records which verification
+    # rests on each component's runtime behaviour; an unmapped pin is refused here rather than moved
+    # silently. The POSIX twin resolves this through check-pin-acceptance.sh; that is a shell script,
+    # so this reads the same inventory block directly. Only the LOOKUP is duplicated - every
+    # validation rule (field count, rerun agreement, none-requires-a-note) stays in the checker,
+    # which the repository check set runs on every change regardless of platform.
+    $inventoryPath = Join-Path (Split-Path -Parent $Dockerfile) "docs/pin-acceptance.md"
+    if (-not (Test-Path $inventoryPath)) {
+        $inventoryPath = Join-Path $PSScriptRoot "../docs/pin-acceptance.md"
+    }
+    if (-not (Test-Path $inventoryPath)) {
+        Write-Error "missing docs/pin-acceptance.md - cannot resolve what these pins carry"
+        exit 1
+    }
+
+    $rows = @()
+    $inBlock = $false
+    foreach ($line in (Get-Content -LiteralPath $inventoryPath)) {
+        if ($line -eq '```pin-acceptance') { $inBlock = $true; continue }
+        if ($inBlock -and $line.StartsWith('```')) { $inBlock = $false; continue }
+        if (-not $inBlock) { continue }
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $f = $trimmed -split '\|'
+        if ($f.Count -ne 7) { continue }
+        $pin = $f[3].Trim()
+        if (-not $pin.StartsWith("ARG ")) { continue }
+        $rows += @{
+            Arg          = ($pin.Substring(4) -split '=')[0]
+            Verification = $f[4].Trim()
+            Rerun        = $f[5].Trim()
+            Note         = $f[6].Trim()
+        }
+    }
+
+    # Every ARG this run could write, including the checksums a herdr move brings with it.
+    $writableArgs = @()
+    foreach ($change in $changes) {
+        $writableArgs += $change.Arg
+        if ($change.Arg -eq "HERDR_VERSION") {
+            $writableArgs += "HERDR_SHA256_AMD64"
+            $writableArgs += "HERDR_SHA256_ARM64"
+        }
+    }
+
+    $unmapped = @()
+    $affected = @()
+    foreach ($arg in $writableArgs) {
+        $row = $null
+        foreach ($candidate in $rows) { if ($candidate.Arg -eq $arg) { $row = $candidate; break } }
+        if ($null -eq $row) { $unmapped += $arg } else { $affected += $row }
+    }
+
+    if ($unmapped.Count -gt 0) {
+        Write-Error ("these pins have no row in docs/pin-acceptance.md: {0}" -f ($unmapped -join ", "))
+        Write-Error "Record what verification rests on each before moving it. Nothing was written."
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "Moving these pins invalidates the verification below. Re-run it after the rebuild:"
+    foreach ($row in $affected) {
+        Write-Host ("  {0}" -f $row.Arg)
+        foreach ($check in ($row.Verification -split ',')) {
+            $check = $check.Trim()
+            if ($check -eq "") { continue }
+            if ($check.StartsWith("operator:")) {
+                Write-Host ("      {0}   <- NO AUTOMATED RUN PRODUCES THIS" -f $check)
+            } elseif ($check.StartsWith("host:")) {
+                Write-Host ("      {0}   <- needs another host class" -f $check)
+            } elseif ($check -eq "none") {
+                Write-Host ("      (nothing rests on this pin: {0})" -f $row.Note)
+            } else {
+                Write-Host ("      {0}" -f $check)
+            }
+        }
+        if ($row.Note -ne "-" -and $row.Rerun -ne "none") {
+            Write-Host ("      note: {0}" -f $row.Note)
+        }
+    }
+
     if (-not $Apply) {
         Write-Host ""
         Write-Host "Report only - $Dockerfile is unchanged. Re-run with -Apply to move these pins."

@@ -213,6 +213,62 @@ if [ -z "$changes" ]; then
     exit 0
 fi
 
+# --- what does moving these pins cost? --------------------------------------------------------------
+# A pin move is a rebuild AND a revalidation. docs/pin-acceptance.md records which verification rests
+# on each component's runtime behaviour; an unmapped pin is refused here rather than moved silently,
+# because the failure that motivated this is exactly a bump whose cost nobody was told about.
+# Resolution goes through check-pin-acceptance.sh so the tool and the check cannot disagree.
+PIN_CHECK="$(dirname "$0")/check-pin-acceptance.sh"
+[ -x "$PIN_CHECK" ] || die "missing $PIN_CHECK — cannot resolve what these pins carry"
+
+# Every ARG this run could write, including the checksums a herdr move brings with it.
+writable_args=
+for change in $changes; do
+    writable_args="$writable_args ${change%%=*}"
+    [ "${change%%=*}" = "HERDR_VERSION" ] && \
+        writable_args="$writable_args HERDR_SHA256_AMD64 HERDR_SHA256_ARM64"
+done
+
+unmapped=
+affected=
+for arg in $writable_args; do
+    if row="$("$PIN_CHECK" --arg "$arg" 2>/dev/null)"; then
+        verification="$(printf '%s' "$row" | cut -f1)"
+        rerun="$(printf '%s' "$row" | cut -f2)"
+        note="$(printf '%s' "$row" | cut -f3)"
+        affected="$affected$arg|$verification|$rerun|$note
+"
+    else
+        unmapped="$unmapped $arg"
+    fi
+done
+
+if [ -n "$unmapped" ]; then
+    echo >&2
+    echo "These pins have no row in docs/pin-acceptance.md:$unmapped" >&2
+    echo "Record what verification rests on each before moving it. Nothing was written." >&2
+    exit 1
+fi
+
+echo
+echo "Moving these pins invalidates the verification below. Re-run it after the rebuild:"
+printf '%s' "$affected" | while IFS='|' read -r arg verification rerun note; do
+    [ -n "$arg" ] || continue
+    echo "  $arg"
+    # printf '%s\n' — without the trailing newline `read` returns non-zero on the final entry and
+    # the loop body never runs for it, so a row's last check would go unreported.
+    printf '%s\n' "$verification" | tr ',' '\n' | while IFS= read -r check; do
+        [ -n "$check" ] || continue
+        case "$check" in
+            operator:*) echo "      $check   <- NO AUTOMATED RUN PRODUCES THIS" ;;
+            host:*)     echo "      $check   <- needs another host class" ;;
+            none)       echo "      (nothing rests on this pin: $note)" ;;
+            *)          echo "      $check" ;;
+        esac
+    done
+    [ "$note" = "-" ] || [ "$rerun" = "none" ] || echo "      note: $note"
+done
+
 if [ -z "$APPLY" ]; then
     echo
     echo "Report only — $DOCKERFILE is unchanged. Re-run with --apply to move these pins."
