@@ -206,15 +206,15 @@ claude.oauth-grant-shape | Claude | grant shape | mitm/claim-token,mitm/filter_a
 claude.credential-file-schema | Claude | credential schema | mitm/claim-token,mitm/filter_addon.py | claudeAiOauth | required | -
 claude.injection-destination | Claude | injection destination | mitm/filter_addon.py | _matches(host, "api.anthropic.com") | required | -
 claude.injection-header | Claude | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {tok}" | required | -
-claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.233 | na | -
-claude.oauth-refresh-user-agent | Claude | client identification | mitm/filter_addon.py | claude-cli/2.1.233 (external, cli) | required | -
+claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.252 | na | -
+claude.oauth-refresh-user-agent | Claude | client identification | mitm/filter_addon.py | claude-cli/2.1.252 (external, cli) | required | -
 deepseek.injection-host | DeepSeek | injection destination | mitm/filter_addon.py | _exact(host, ("api.deepseek.com",)) | required | -
 deepseek.exact-host-grant | DeepSeek | egress grant | mitm/sidecar-entrypoint.sh | export EXACT_ALLOW_HOSTS="api.deepseek.com" | required | -
 deepseek.auth-header | DeepSeek | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {key}" | required | -
 deepseek.key-path | DeepSeek | local secret path | docker-compose.sidecar.yml,mitm/deepseek-key,mitm/filter_addon.py,mitm/sidecar-entrypoint.sh | /var/lib/sandbox/deepseek/api-key | na | -
 pi.deepseek-env-var | Pi | provider selection | docker-compose.sidecar.yml | DEEPSEEK_API_KEY | required | -
 pi.auth-file-schema | Pi | asserted credential schema | - | ~/.pi/agent/auth.json | required | -
-pi.cli-version | Pi | pinned CLI | Dockerfile | ARG PI_VERSION=0.81.1 | na | -
+pi.cli-version | Pi | pinned CLI | Dockerfile | ARG PI_VERSION=0.84.4 | na | -
 codex.cli-version | Codex | pinned CLI | Dockerfile | ARG CODEX_VERSION=0.140.0 | na | -
 codex.verdict-anchor | Codex | verdict version anchor | docs/codex-subscription-broker-feasibility.md | 0.140.0 | na | -
 ```

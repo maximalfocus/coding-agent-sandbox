@@ -99,7 +99,7 @@ REFRESH_SKEW = int(os.environ.get("TOKEN_REFRESH_SKEW", "600"))  # refresh when 
 # because that is what the credential belongs to; a browser string also cleared the block in probing
 # and was deliberately not used.
 REFRESH_USER_AGENT = os.environ.get(
-    "TOKEN_REFRESH_USER_AGENT", "claude-cli/2.1.233 (external, cli)").strip()
+    "TOKEN_REFRESH_USER_AGENT", "claude-cli/2.1.252 (external, cli)").strip()
 
 _audit_warned = False
 
