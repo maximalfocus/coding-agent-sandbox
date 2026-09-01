@@ -15,21 +15,36 @@
 # This is not an auto-updater. It writes nothing without --apply, and it never rebuilds: run
 # ./run.sh yourself once you have reviewed the diff.
 #
-# Deliberately limited to the four npm-published agent CLIs. Herdr and ttyd are pinned by release
-# AND per-architecture sha256; moving those means re-deriving checksums, which is a hand edit.
+# Two kinds of pin are handled. The four npm-published CLIs are version-only. Herdr is pinned by
+# release AND per-architecture sha256, so moving it means downloading each artifact and deriving its
+# checksum from the bytes received.
+#
+# Be clear about what a derived checksum is worth: it attests the bytes fetched AT THAT MOMENT, not
+# upstream intent. It is trust-on-first-use. What it buys - and this is worth having - is that no
+# later build can be served different bytes without failing. It is not an upstream attestation, and
+# that is why adopting a pin stays a separate step you review. The script says so in its own output
+# rather than leaving you to infer it.
+#
+# ttyd is the same shape and is deliberately not included: it is not an agent tool.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DOCKERFILE=Dockerfile
 
 # Parallel lists, not an associative array: macOS ships bash 3.2, which has neither.
-KEYS="claude codex opencode pi"
+KEYS="claude codex opencode pi herdr"
+# Tools whose pin includes per-architecture checksums, so --apply must download the artifacts.
+CHECKSUM_KEYS="herdr"
+# The canonical Herdr repository. 'ogulcancelik/herdr' resolves here only through GitHub's rename
+# redirect; naming the real owner removes a dependency on a redirect this project does not control.
+HERDR_REPO="herdrdev/herdr"
 key_arg() {
     case "$1" in
         claude)   echo CLAUDE_CODE_VERSION ;;
         codex)    echo CODEX_VERSION ;;
         opencode) echo OPENCODE_VERSION ;;
         pi)       echo PI_VERSION ;;
+        herdr)    echo HERDR_VERSION ;;
     esac
 }
 key_pkg() {
@@ -38,7 +53,12 @@ key_pkg() {
         codex)    echo "@openai/codex" ;;
         opencode) echo "opencode-ai" ;;
         pi)       echo "@earendil-works/pi-coding-agent" ;;
+        herdr)    echo "github:$HERDR_REPO" ;;
     esac
+}
+
+is_checksum_key() {
+    case " $CHECKSUM_KEYS " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -86,16 +106,60 @@ pinned_version() {
     sed -n "s/^ARG $1=\\(.*\\)\$/\\1/p" "$DOCKERFILE" | head -1
 }
 
-# published_version PKG -> the registry's current "latest"; empty output means the lookup failed,
+# published_version NAME -> the current published version; empty output means the lookup failed,
 # which is reported as a refusal rather than quietly read as "already up to date".
 published_version() {
-    curl -fsS -m 30 "https://registry.npmjs.org/$1/latest" 2>/dev/null \
+    if [ "$1" = "herdr" ]; then
+        # Resolve through the releases/latest redirect rather than the API: no token, and no
+        # unauthenticated rate limit to trip over. The final URL ends in /tag/vX.Y.Z.
+        _url="$(curl -fsSLI -m 30 -o /dev/null -w '%{url_effective}' \
+                "https://github.com/$HERDR_REPO/releases/latest" 2>/dev/null || true)"
+        case "$_url" in
+            */tag/v*) printf '%s' "${_url##*/tag/v}" ;;
+            */tag/*)  printf '%s' "${_url##*/tag/}" ;;
+        esac
+        return
+    fi
+    curl -fsS -m 30 "https://registry.npmjs.org/$(key_pkg "$1")/latest" 2>/dev/null \
         | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"])' 2>/dev/null || true
 }
 
-# version_exists PKG VERSION -> 0 when the registry serves exactly that version
+# version_exists NAME VERSION -> 0 when that exact version is published
 version_exists() {
-    curl -fsS -m 30 "https://registry.npmjs.org/$1/$2" >/dev/null 2>&1
+    if [ "$1" = "herdr" ]; then
+        curl -fsSI -m 30 -o /dev/null \
+            "https://github.com/$HERDR_REPO/releases/tag/v$2" >/dev/null 2>&1
+        return
+    fi
+    curl -fsS -m 30 "https://registry.npmjs.org/$(key_pkg "$1")/$2" >/dev/null 2>&1
+}
+
+# sha256_of FILE -> the file's sha256, on either a macOS or a Linux host
+sha256_of() {
+    if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+    elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else die "need shasum or sha256sum to derive a checksum"
+    fi
+}
+
+# herdr_checksum VERSION ARCH -> sha256 DERIVED from the artifact actually downloaded.
+# Never accepts a checksum from an argument: a pin you were handed proves nothing.
+herdr_checksum() {
+    _v="$1"; _arch="$2"
+    _out="$(mktemp)"
+    if ! curl -fsSL -m 300 \
+            "https://github.com/$HERDR_REPO/releases/download/v${_v}/herdr-linux-${_arch}" \
+            -o "$_out" 2>/dev/null; then
+        rm -f "$_out"; die "could not download herdr ${_v} for ${_arch} - nothing was written"
+    fi
+    # A truncated transfer or an error page must not be hashed and recorded as a pin. The real
+    # binaries are ~20MB; anything tiny is not one.
+    _size="$(wc -c < "$_out" | tr -d ' ')"
+    if [ "${_size:-0}" -lt 1000000 ]; then
+        rm -f "$_out"; die "herdr ${_v} ${_arch} download was only ${_size} bytes - refusing to pin it"
+    fi
+    sha256_of "$_out"
+    rm -f "$_out"
 }
 
 # explicit_pin NAME -> the version requested for it on the command line, else empty
@@ -116,13 +180,13 @@ for name in $SELECTED; do
 
     wanted="$(explicit_pin "$name")"
     if [ -n "$wanted" ]; then
-        if version_exists "$pkg" "$wanted"; then note="requested"
+        if version_exists "$name" "$wanted"; then note="requested"
         else
             printf '%-10s %-32s %-12s %-12s %s\n' "$name" "$pkg" "$current" "$wanted" "NOT IN REGISTRY"
             failures="$failures $name"; continue
         fi
     else
-        wanted="$(published_version "$pkg")"
+        wanted="$(published_version "$name")"
         if [ -z "$wanted" ]; then
             printf '%-10s %-32s %-12s %-12s %s\n' "$name" "$pkg" "$current" "?" "LOOKUP FAILED"
             failures="$failures $name"; continue
@@ -159,6 +223,28 @@ fi
 # Rewrite only the exact `ARG NAME=` lines resolved above. Every other pin in the file — the base
 # image digest, ttyd, npm, Herdr, Bun, Playwright, the AWS CLI and the Docker clients — is left
 # alone, as are ALLOW_TOOL_UPGRADES and the disabled runtime self-updater.
+# Derive checksums BEFORE touching anything. A version bumped with a stale checksum would fail
+# every later build, so the download has to succeed first or nothing is written at all. This is also
+# why the report never downloads: 40MB of binaries is not a side effect a read-only command should
+# have, and only an --apply that actually moves herdr pays for it.
+for change in $changes; do
+    [ "${change%%=*}" = "HERDR_VERSION" ] || continue
+    _hv="${change#*=}"
+    echo
+    echo "Downloading herdr ${_hv} to derive its checksums (both architectures, one release)..."
+    _amd64="$(herdr_checksum "$_hv" x86_64)"
+    _arm64="$(herdr_checksum "$_hv" aarch64)"
+    changes="$changes HERDR_SHA256_AMD64=$_amd64 HERDR_SHA256_ARM64=$_arm64"
+    echo "  x86_64  $_amd64"
+    echo "  aarch64 $_arm64"
+    cat <<'CAVEAT'
+
+  These checksums were derived from the bytes just downloaded. They attest WHAT WAS FETCHED NOW,
+  not upstream intent - there is no published signature to check them against. What the pin buys is
+  that no later build can be served different bytes without failing. Review before you rebuild.
+CAVEAT
+done
+
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 cp "$DOCKERFILE" "$tmp"

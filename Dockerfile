@@ -159,6 +159,10 @@ RUN npm install -g --allow-scripts=opencode-ai "opencode-ai@${OPENCODE_VERSION}"
 
 # Herdr agent multiplexer — a single static, architecture-matched binary, pinned by release and
 # sha256 so GitHub cannot silently substitute build-time bytes.
+# The project was renamed from ogulcancelik/herdr to herdrdev/herdr. The old path still resolves,
+# but only through GitHub's rename redirect, which this project does not control — so name the
+# canonical owner. Move these three lines together with scripts/update-agent-clis.sh --apply herdr;
+# a version bumped without its checksums fails every later build.
 ARG HERDR_VERSION=0.7.5
 ARG HERDR_SHA256_AMD64=3dc83288073e4c2d3c679a30e7be97bcca9141c6fd17dbbb9219142e95c59253
 ARG HERDR_SHA256_ARM64=32e763a1499a6b694b1d708e4f062b743be1da9f34fcfa4d212d6db6fe09a8b9
@@ -167,7 +171,7 @@ RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
       arm64) HERDR_ARCH=aarch64; HERDR_SHA="$HERDR_SHA256_ARM64" ;; \
       *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL "https://github.com/ogulcancelik/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-${HERDR_ARCH}" \
+    curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-${HERDR_ARCH}" \
       -o /usr/local/bin/herdr; \
     echo "${HERDR_SHA}  /usr/local/bin/herdr" | sha256sum -c -; \
     chmod +x /usr/local/bin/herdr

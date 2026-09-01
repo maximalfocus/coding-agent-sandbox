@@ -474,8 +474,18 @@ for you. An explicit `name=version` is checked against the registry first, and a
 complete is a refusal rather than a silent "already up to date" — so a network problem can never
 leave you with a half-updated `Dockerfile`.
 
-It moves only the four agent-CLI pins. Herdr and ttyd are pinned by release **and** per-architecture
-`sha256`, so bumping those means re-deriving checksums by hand — deliberately out of scope.
+It also moves **Herdr**, which is pinned by release *and* per-architecture `sha256`: `--apply herdr`
+downloads each architecture's binary, derives the checksum from the bytes it received, and writes
+all three `ARG` lines together. Both come from one release, and a failed or truncated download is a
+refusal — a version bumped with a stale checksum would fail every later build.
+
+> **What a derived checksum is worth.** It attests the bytes fetched *at that moment*, not upstream
+> intent — there is no published signature to check them against. What the pin buys, and it is worth
+> having, is that no later build can be served different bytes without failing. The tool says this in
+> its own output, and it is why adopting a pin stays a step you review before rebuilding.
+
+Only `--apply` downloads anything; the report is a few HTTP HEADs. `ttyd` has the same shape and is
+deliberately excluded — it is not an agent tool.
 
 On Windows: `.\scripts\update-agent-clis.ps1`, same flags (`-Apply`).
 
