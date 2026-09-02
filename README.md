@@ -879,6 +879,14 @@ scripts/check-pin-acceptance.sh --json
 marking the checks no automated run can produce, so you see the cost with the diff instead of
 discovering it later. The Windows twin does the same.
 
+**Some pins are the same fact in two files.** The Claude CLI version is also the refresh
+`User-Agent` in `mitm/filter_addon.py`. Those are declared as couplings in the same inventory and
+move **together or not at all**: the updater locates every coupled literal before it writes and
+refuses outright if one is missing, and the check renders each from the pin's current value, so a
+coupled literal left behind and one moved alone both fail. That relationship used to be a note, and
+a note is not a gate — moving the pin while leaving the addon behind once passed every check in the
+repository.
+
 `UNEVALUATED` means the pin is intact but its verification needs an operator, or a host class this
 machine is not; it is deliberately **not** reported as a pass. The inventory, and which pins carry
 an operator-only check, are in [`docs/pin-acceptance.md`](docs/pin-acceptance.md).

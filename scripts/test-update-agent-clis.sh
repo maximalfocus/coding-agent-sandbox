@@ -87,10 +87,17 @@ export STUB_HERDR_REPO="herdrdev/herdr"
 STUB_HERDR_TAG_VALUE="v5.5.5"
 STUB_HERDR_ARTIFACT_VALUE="ok"
 
+# A fixture is a small TREE, not a lone Dockerfile. The updater resolves a pin's coupled literals
+# inside the tree it is pointed at and never outside it, so a fixture missing docs/ or mitm/ would
+# be a shape the product never ships - and, before that rule existed, an --apply against a lone
+# Dockerfile copy reached out and rewrote the real mitm/filter_addon.py.
 fixture() {
-    local target="$TMP_DIR/$1"
-    cp "$ROOT/Dockerfile" "$target"
-    printf '%s' "$target"
+    local dir="$TMP_DIR/$1.d"
+    rm -rf "$dir"; mkdir -p "$dir/docs" "$dir/mitm"
+    cp "$ROOT/Dockerfile" "$dir/Dockerfile"
+    cp "$ROOT/docs/pin-acceptance.md" "$dir/docs/pin-acceptance.md"
+    cp "$ROOT/mitm/filter_addon.py" "$dir/mitm/filter_addon.py"
+    printf '%s' "$dir/Dockerfile"
 }
 
 run() {  # run FIXTURE [args...] -> writes stdout+stderr to $TMP_DIR/out, returns the exit code
@@ -322,6 +329,95 @@ grep -q 'NO AUTOMATED RUN PRODUCES THIS' "$PS1" \
     || fail 'the Windows twin does not mark operator-only checks'
 grep -q 'needs another host class' "$PS1" \
     || fail 'the Windows twin does not mark host-class checks'
+ok
+
+
+# --- couplings: a pin written in two files moves as one, or not at all ---------------------------
+# #137 wrote the Dockerfile pin and left mitm/filter_addon.py's refresh User-Agent behind. The
+# updater is a supported pin-changing path, so it must not be able to produce that state - and after
+# the coupling check exists, a partial apply would leave the tree failing its own gate.
+#
+# --dockerfile selects the tree, so these run against a fixture and cannot touch the real addon.
+COUPLE_TREE=
+setup_couple_tree() { COUPLE_TREE="$(dirname "$(fixture coupled)")"; }
+couple_run() {
+    set +e
+    STUB_LATEST="$ALL_LATEST" STUB_EXISTS="$STUB_EXISTS_VALUE" \
+        STUB_HERDR_TAG="$STUB_HERDR_TAG_VALUE" STUB_HERDR_ARTIFACT="$STUB_HERDR_ARTIFACT_VALUE" \
+        bash "$SCRIPT" --dockerfile "$COUPLE_TREE/Dockerfile" "$@" > "$TMP_DIR/out" 2>&1
+    local code=$?
+    set -e
+    return $code
+}
+claude_pinned=$(sed -n 's/^ARG CLAUDE_CODE_VERSION=//p' "$ROOT/Dockerfile")
+[ -n "$claude_pinned" ] || fail 'no Claude pin in the Dockerfile'
+grep -Fq "claude-cli/$claude_pinned (external, cli)" "$ROOT/mitm/filter_addon.py" \
+    || fail 'the real tree already disagrees with itself; these cases would prove nothing'
+
+# 15. An apply moves the pin AND the literal coupled to it, and says so.
+setup_couple_tree
+couple_run --apply claude || fail "a coupled apply failed: $(cat "$TMP_DIR/out")"
+grep -q '^ARG CLAUDE_CODE_VERSION=9.9.9$' "$COUPLE_TREE/Dockerfile" || fail 'the pin did not move'
+grep -Fq 'claude-cli/9.9.9 (external, cli)' "$COUPLE_TREE/mitm/filter_addon.py" \
+    || fail 'the coupled User-Agent was left behind - this is exactly #137'
+grep -Fq "claude-cli/$claude_pinned (external, cli)" "$COUPLE_TREE/mitm/filter_addon.py" \
+    && fail 'the old coupled literal is still present alongside the new one'
+grep -q 'literals coupled to those pins' "$TMP_DIR/out" || fail 'the coupled edit was not reported'
+ok
+
+# 16. ...and the result passes the coupling check, so a supported path cannot leave the tree
+#     failing its own gate. This is the property that makes the updater and the check one system.
+sed -i.bak 's/^claude-code.version | Claude Code CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=[^ ]*/claude-code.version | Claude Code CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=9.9.9/' \
+    "$COUPLE_TREE/docs/pin-acceptance.md"
+rm -f "$COUPLE_TREE/docs/pin-acceptance.md.bak"
+PIN_ACCEPTANCE_ROOT="$COUPLE_TREE" "$ROOT/scripts/check-pin-acceptance.sh" > "$TMP_DIR/out" 2>&1 \
+    || fail "the tree an apply produced fails the coupling check: $(cat "$TMP_DIR/out")"
+ok
+
+# 17. A coupled literal the run cannot locate is a REFUSAL, not a partial apply. The Dockerfile must
+#     be byte-identical afterwards.
+setup_couple_tree
+python3 - "$COUPLE_TREE/mitm/filter_addon.py" <<'SCRAMBLE'
+import re, sys
+path = sys.argv[1]
+text = open(path, encoding='utf-8').read()
+new = re.sub(r'claude-cli/[0-9][^ ]* \(external, cli\)', 'claude-cli/not-the-pin (external, cli)', text)
+assert new != text
+open(path, 'w', encoding='utf-8').write(new)
+SCRAMBLE
+before=$(cat "$COUPLE_TREE/Dockerfile")
+couple_run --apply claude && fail 'an unlocatable coupled literal was accepted'
+[ "$before" = "$(cat "$COUPLE_TREE/Dockerfile")" ] || fail 'a refused coupled apply still wrote the pin'
+grep -q 'coupled to a literal this run cannot locate' "$TMP_DIR/out" || fail 'the refusal was not explained'
+grep -q 'Nothing was written' "$TMP_DIR/out" || fail 'the refusal did not say nothing was written'
+ok
+
+# 18. A missing coupled FILE is the same refusal, for the same reason.
+setup_couple_tree
+rm -f "$COUPLE_TREE/mitm/filter_addon.py"
+before=$(cat "$COUPLE_TREE/Dockerfile")
+couple_run --apply claude && fail 'a missing coupled file was accepted'
+[ "$before" = "$(cat "$COUPLE_TREE/Dockerfile")" ] || fail 'a refused coupled apply still wrote the pin'
+ok
+
+# 19. A pin with no coupling is unaffected - the mechanism must not become a tax on every pin.
+setup_couple_tree
+couple_run --apply pi || fail "an uncoupled apply failed: $(cat "$TMP_DIR/out")"
+grep -q '^ARG PI_VERSION=6.6.6$' "$COUPLE_TREE/Dockerfile" || fail 'the uncoupled pin did not move'
+cmp -s "$COUPLE_TREE/mitm/filter_addon.py" "$ROOT/mitm/filter_addon.py" \
+    || fail 'an uncoupled pin move touched a coupled file'
+grep -q 'literals coupled to those pins' "$TMP_DIR/out" \
+    && fail 'an uncoupled pin reported coupled edits'
+ok
+
+# 20. Parity: the Windows twin is a supported pin-changing path too, so the coupling must hold there
+#     or it is bypassable on one platform. Structural, per docs/verification-hosts.md.
+grep -q 'pin-coupling' "$PS1" \
+    || fail 'the Windows twin does not read the coupling block, so it could move a pin alone'
+grep -q 'coupled to a literal this run cannot locate' "$PS1" \
+    || fail 'the Windows twin has no refusal message for an unlocatable coupled literal'
+grep -q 'move together or not at all' "$PS1" \
+    || fail 'the Windows twin does not state the move-together contract'
 ok
 
 printf 'PASS: the host-side pin updater moves the pins it owns and fails closed (%d checks)\n' "$PASSED"

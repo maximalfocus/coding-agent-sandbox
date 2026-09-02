@@ -32,9 +32,14 @@ fi
 # It carries only the surfaces the check reads. It is deliberately NOT a git checkout, so the
 # residue scan's non-git path is the one exercised here.
 FIX="$TMP_DIR/tree"
+# mitm/filter_addon.py is here because the roster check consults the pin inventory transitively,
+# and that inventory now declares a coupled literal living in that file. A malformed or
+# unevaluable inventory is exit 2 in every mode, so a fixture missing it would fail for a reason
+# that has nothing to do with the roster.
 SURFACES="Dockerfile entrypoint.sh mitm/entrypoint.sh mitm/sidecar-entrypoint.sh
           docs/agent-roster.md docs/pin-acceptance.md README.md PROBLEM.md
-          scripts/update-agent-clis.sh scripts/update-agent-clis.ps1 scripts/verify-npm-bundle.sh"
+          scripts/update-agent-clis.sh scripts/update-agent-clis.ps1 scripts/verify-npm-bundle.sh
+          mitm/filter_addon.py"
 reset_fixture() {
     rm -rf "$FIX"
     for rel in $SURFACES; do

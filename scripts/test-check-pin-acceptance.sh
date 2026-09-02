@@ -27,10 +27,14 @@ fi
 
 # --- fixture: an isolated tree the mutations can edit --------------------------------------------
 FIX="$TMP_DIR/tree"
-mkdir -p "$FIX/docs"
+mkdir -p "$FIX/docs" "$FIX/mitm"
+# The coupled file belongs in the fixture: the inventory declares a literal that must live in
+# mitm/filter_addon.py, and a declaration whose file is absent is now a fail-closed error rather
+# than a silent skip. A fixture without it would be testing a tree the product never ships.
 reset_fixture() {
     cp "$ROOT/Dockerfile" "$FIX/Dockerfile"
     cp "$DOC" "$FIX/docs/pin-acceptance.md"
+    cp "$ROOT/mitm/filter_addon.py" "$FIX/mitm/filter_addon.py"
 }
 run() {  # run -> stdout+stderr to $TMP_DIR/out, returns the exit code
     set +e
@@ -177,6 +181,89 @@ assert d["pinDrift"] is False
 assert d["passed"] + d["unevaluated"] == len(d["checks"]), d
 assert any(c["pin"] == "herdr.version" and c["status"] == "UNEVALUATED" for c in d["checks"])
 PY
+ok
+
+
+# --- couplings: the same fact in two files -------------------------------------------------------
+# The pin/coupled-literal relationship used to be a `note`, and a note is not a gate. #137 moved the
+# Claude pin and left mitm/filter_addon.py's refresh User-Agent behind; every check passed. These
+# cases are that episode, driven from both sides.
+[ -f "$ROOT/mitm/filter_addon.py" ] || fail 'mitm/filter_addon.py is missing - the coupling cases prove nothing'
+# Rewrite the one coupling row; the block is `|`-separated so sed's delimiter must not be `|`.
+set_coupling() { # set_coupling ROW
+    python3 - "$FIX/docs/pin-acceptance.md" "$1" <<'COUPLE'
+import sys
+path, row = sys.argv[1], sys.argv[2]
+text = open(path, encoding='utf-8').read()
+old = "claude-code.version | mitm/filter_addon.py | claude-cli/{pin} (external, cli)"
+assert text.count(old) == 1, "the coupling row moved; this case no longer tests what it says"
+open(path, 'w', encoding='utf-8').write(text.replace(old, row))
+COUPLE
+}
+
+# The committed tree agrees with itself.
+reset_fixture
+run || fail "the committed tree fails its own coupling check: $(cat "$TMP_DIR/out")"
+grep -q 'coupled literal agrees' "$TMP_DIR/out" || fail 'the coupling was not evaluated at all'
+ok
+
+# Direction 1 - #137 exactly: the pin moves, the coupled literal is left behind.
+reset_fixture
+sed -i.bak 's/^ARG CLAUDE_CODE_VERSION=.*/ARG CLAUDE_CODE_VERSION=9.9.9/' "$FIX/Dockerfile"
+sed -i.bak 's/ARG CLAUDE_CODE_VERSION=[^ ]*/ARG CLAUDE_CODE_VERSION=9.9.9/' "$FIX/docs/pin-acceptance.md"
+rm -f "$FIX/Dockerfile.bak" "$FIX/docs/pin-acceptance.md.bak"
+run && fail 'a coupled literal left behind was accepted'
+grep -q 'DRIFTED' "$TMP_DIR/out" || fail 'the stale coupled literal was not reported as drift'
+grep -q "mitm/filter_addon.py does not carry 'claude-cli/9.9.9 (external, cli)'" "$TMP_DIR/out" \
+    || fail "the drift did not name the file and the literal it expected: $(cat "$TMP_DIR/out")"
+ok
+
+# Direction 2 - the mirror image: the coupled literal moves alone. One assertion catches both,
+# because rendering from the pin's CURRENT value makes either mismatch equally absent.
+reset_fixture
+python3 - "$FIX/mitm/filter_addon.py" <<'BUMP'
+import re, sys
+path = sys.argv[1]
+text = open(path, encoding='utf-8').read()
+new = re.sub(r'claude-cli/[0-9][^ ]* \(external, cli\)', 'claude-cli/9.9.9 (external, cli)', text)
+assert new != text, 'the User-Agent literal moved; this case no longer tests what it says'
+open(path, 'w', encoding='utf-8').write(new)
+BUMP
+run && fail 'a coupled literal moved alone was accepted'
+grep -q 'DRIFTED' "$TMP_DIR/out" || fail 'the lone coupled move was not reported as drift'
+ok
+
+# A declaration that cannot be evaluated is an ERROR (2), never a silent skip: a coupling nobody can
+# check is indistinguishable from one nobody wrote.
+reset_fixture; set_coupling 'claude-code.version | mitm/filter_addon.py'
+run && fail 'a two-field coupling was accepted'
+grep -q '3 |-separated fields' "$TMP_DIR/out" || fail 'the malformed coupling was not explained'
+ok
+reset_fixture; set_coupling 'nosuch.pin | mitm/filter_addon.py | claude-cli/{pin} (external, cli)'
+run && fail 'a coupling naming an unknown pin was accepted'
+grep -q "names pin 'nosuch.pin'" "$TMP_DIR/out" || fail 'the unknown pin was not named'
+ok
+reset_fixture; set_coupling 'claude-code.version | mitm/nope.py | claude-cli/{pin} (external, cli)'
+run && fail 'a coupling naming a missing file was accepted'
+grep -q 'names a file that does not exist' "$TMP_DIR/out" || fail 'the missing file was not named'
+ok
+reset_fixture; set_coupling 'claude-code.version | mitm/filter_addon.py | claude-cli/fixed (external, cli)'
+run && fail 'a coupling with no {pin} was accepted'
+grep -q 'tracks nothing' "$TMP_DIR/out" || fail 'a literal that tracks nothing was not refused'
+ok
+
+# --coupled is what the host updater reads, so it must answer from the SAME parse the check uses.
+reset_fixture
+run --coupled CLAUDE_CODE_VERSION || fail '--coupled failed for a coupled pin'
+grep -q 'mitm/filter_addon.py' "$TMP_DIR/out" || fail '--coupled did not name the coupled file'
+grep -q '{pin}' "$TMP_DIR/out" \
+    || fail '--coupled rendered the literal; the caller needs the template to render both values'
+ok
+run --coupled CODEX_VERSION || fail '--coupled must exit 0 for a pin that simply has no coupling'
+[ ! -s "$TMP_DIR/out" ] || fail "--coupled printed something for an uncoupled pin: $(cat "$TMP_DIR/out")"
+ok
+run --coupled NOT_A_REAL_ARG && fail '--coupled accepted an ARG with no inventory row'
+[ "$?" != "1" ] || fail '--coupled reported a missing row as drift rather than as exit 3'
 ok
 
 printf 'PASS: the pin-acceptance inventory is enforced in both directions (%d checks)\n' "$PASSED"
