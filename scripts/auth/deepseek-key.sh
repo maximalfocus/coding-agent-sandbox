@@ -4,6 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+# shellcheck source=./auth-common.sh
+. "$(dirname "$0")/auth-common.sh"
+row=$(auth_row pi)
+
 usage() {
     echo "Usage: $0 {provision|rotate|status|revoke}" >&2
     exit 2
@@ -57,4 +61,8 @@ fi
 printf '%s' "$key" | "${manager[@]}"
 result=$?
 unset key
+# Same disclosure the sign-in commands owe: say which tier now holds the key. Only on the
+# credential-creating path — `status` prints the manager's own output and `revoke` has just removed
+# the thing a custody statement would describe.
+if [ "$result" -eq 0 ]; then auth_disclose "$row"; fi
 exit "$result"

@@ -2,6 +2,8 @@
 # on stdin to a one-off sidecar container; it is never a Compose environment value or argument.
 $ErrorActionPreference = "Stop"
 Set-Location -Path (Join-Path $PSScriptRoot '../..')
+. (Join-Path $PSScriptRoot 'auth-common.ps1')
+$row = Get-AuthRow 'pi'
 
 if ($args.Count -ne 1 -or $args[0] -notin @("provision", "rotate", "status", "revoke")) {
     Write-Error "Usage: .\scripts\auth\deepseek-key.ps1 {provision|rotate|status|revoke}"
@@ -81,4 +83,8 @@ try {
     $plain = $null
     $secure.Dispose()
 }
+# Same disclosure the sign-in commands owe: say which tier now holds the key. Only on the
+# credential-creating path - `status` prints the manager's own output and `revoke` has just removed
+# the thing a custody statement would describe.
+if ($result -eq 0) { Show-AuthCustody $row }
 exit $result

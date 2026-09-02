@@ -18,17 +18,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-SVC=claude-sandbox
+# shellcheck source=./auth-common.sh
+. "$(dirname "$0")/auth-common.sh"
 
-if ! docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -q .; then
-    echo "Sandbox isn't running. Start it first:  ./run.sh"; exit 1
-fi
+SVC=$AUTH_SERVICE
+row=$(auth_row gh)
 
-# GitHub egress must be on, or the device-auth polling is refused by the proxy.
-docker compose exec -T "$SVC" grep -qi "github" /etc/tinyproxy/filter 2>/dev/null || {
-    echo "GitHub egress is not enabled. Set ALLOW_GITHUB=true in .env, run ./run.sh, then retry."
-    exit 1
-}
+auth_require_stack
+auth_require_gate "$row"
 
 cat <<'EOF'
 
@@ -49,3 +46,5 @@ EOF
 docker compose exec -u node "$SVC" gh auth login --hostname github.com --git-protocol https --scopes workflow
 docker compose exec -u node "$SVC" gh auth setup-git --hostname github.com
 docker compose exec -u node "$SVC" gh auth status
+
+auth_disclose "$row"

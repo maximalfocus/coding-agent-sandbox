@@ -183,6 +183,15 @@ When a pin has to change:
 4. If no supported source exists, stop at a documented result rather than adapting to an unversioned
    one. That is the precedent `SL-13` already set.
 
+## CLI auth surfaces (`SL-04`)
+
+`claude auth login` and `codex login --device-auth` are the subcommands the host-side sign-in
+commands in [`../scripts/auth/`](../scripts/auth/) drive. They are provider-controlled surfaces of a
+pinned CLI, so they belong here for the same reason a token endpoint does: `CAS-R170`'s rule is that
+a dependency existing only as a literal inside a script is not recorded. A vendor that renames or
+removes one breaks the sign-in path, and only a live run can observe that — so both are `required`,
+never reported as confirmed by this check.
+
 The `claude.oauth-client-id` drift has deliberately **not** been repaired here. Choosing a
 replacement registration is a `CAS-R174` decision, and it is a smaller decision now that a check
 exists to prove whether a candidate works.
@@ -208,6 +217,7 @@ claude.injection-destination | Claude | injection destination | mitm/filter_addo
 claude.injection-header | Claude | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {tok}" | required | -
 claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.252 | na | -
 claude.oauth-refresh-user-agent | Claude | client identification | mitm/filter_addon.py | claude-cli/2.1.252 (external, cli) | required | -
+claude.cli-login-command | Claude | CLI auth surface | scripts/auth/claude-login.sh,scripts/auth/claude-login.ps1 | claude auth login | required | -
 deepseek.injection-host | DeepSeek | injection destination | mitm/filter_addon.py | _exact(host, ("api.deepseek.com",)) | required | -
 deepseek.exact-host-grant | DeepSeek | egress grant | mitm/sidecar-entrypoint.sh | export EXACT_ALLOW_HOSTS="api.deepseek.com" | required | -
 deepseek.auth-header | DeepSeek | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {key}" | required | -
@@ -217,4 +227,5 @@ pi.auth-file-schema | Pi | asserted credential schema | - | ~/.pi/agent/auth.jso
 pi.cli-version | Pi | pinned CLI | Dockerfile | ARG PI_VERSION=0.84.4 | na | -
 codex.cli-version | Codex | pinned CLI | Dockerfile | ARG CODEX_VERSION=0.140.0 | na | -
 codex.verdict-anchor | Codex | verdict version anchor | docs/codex-subscription-broker-feasibility.md | 0.140.0 | na | -
+codex.cli-login-command | Codex | CLI auth surface | scripts/auth/codex-login.sh,scripts/auth/codex-login.ps1 | codex login --device-auth | required | -
 ```

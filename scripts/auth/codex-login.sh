@@ -11,17 +11,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-SVC=claude-sandbox
+# shellcheck source=./auth-common.sh
+. "$(dirname "$0")/auth-common.sh"
 
-if ! docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -q .; then
-    echo "Sandbox isn't running. Start it first:  ./run.sh"; exit 1
-fi
+SVC=$AUTH_SERVICE
+row=$(auth_row codex)
 
-# OpenAI egress must be on, or the device-auth polling is refused (403) by the proxy.
-docker compose exec -T "$SVC" grep -q "openai" /etc/tinyproxy/filter 2>/dev/null || {
-    echo "OpenAI egress is not enabled. Set ALLOW_OPENAI=true in .env, run ./run.sh, then retry."
-    exit 1
-}
+auth_require_stack
+auth_require_gate "$row"
 
 cat <<'EOF'
 
@@ -35,5 +32,8 @@ Saved in the persisted codex volume, so you only do this once. Ctrl-C to abort.
 EOF
 
 # Run as `node` so the login lands in /home/node/.codex (the persisted volume) and matches the
-# user that runs `codex` in the web terminal.
-exec docker compose exec -u node "$SVC" codex login --device-auth
+# user that runs `codex` in the web terminal. Not `exec`: the custody disclosure below is part of
+# what this command owes the operator, and an exec'd process never returns to print it.
+docker compose exec -u node "$SVC" codex login --device-auth
+
+auth_disclose "$row"

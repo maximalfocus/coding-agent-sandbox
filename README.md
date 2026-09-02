@@ -125,19 +125,25 @@ sandbox terminal.
 
 ## First-time login (uses your subscription, not an API key)
 
-In the web terminal:
+From the host — the same shape as every other sign-in (see
+[credential custody](docs/credential-custody.md)):
 
 ```bash
-claude          # starts Claude Code
-/login          # choose "Claude account / subscription"
+./scripts/auth/claude-login.sh     # macOS / Linux
+scripts\auth\claude-login.cmd      # Windows
 ```
 
 A URL appears. Open it in your **normal browser**, approve, and **paste the code back** into
 the terminal (the manual paste step is expected — the container can't catch the localhost
 redirect). You're now coding on your subscription.
 
-Login is saved to a Docker volume, so it **persists across restarts** — you only do this once.
+Login is saved to a Docker volume, so it **persists across restarts** — you only do this once. On
+success the command tells you which custody tier now holds the credential; for Claude that is an
+**agent-readable** volume, meaning any process running as the agent user can read it. In the mitm
+and sidecar stacks, `./scripts/auth/claim-token.sh` moves it into the proxy-owned vault afterwards.
 
+> Inside the web terminal, `claude` then `/login` still works and does the same thing.
+>
 > Headless alternative: run `claude setup-token` once to mint a long-lived token and set it as
 > `CLAUDE_CODE_OAUTH_TOKEN` in `.env` (add it to the `environment:` list in `docker-compose.yml`).
 
@@ -858,6 +864,33 @@ agent is absent from a surface it must appear on. Both are an error exit. The ro
 [`docs/agent-roster.md`](docs/agent-roster.md), and the repository's account of its own history is
 exempt by name rather than rewritten to match.
 
+## Where each credential actually lives
+
+Signing an agent in and choosing where its credential lives are two different things, and only the
+first used to be documented. Every credential-requiring bundled tool now has one host-run sign-in
+command in both supported shells, and each one says on success which custody tier holds what it just
+created:
+
+```bash
+./scripts/auth/claude-login.sh     # Claude Code    -> agent-readable volume
+./scripts/auth/codex-login.sh      # Codex          -> agent-readable volume
+./scripts/auth/gh-login.sh         # GitHub CLI     -> agent-readable volume
+./scripts/auth/deepseek-key.sh provision   # Pi/DeepSeek -> sidecar-owned store
+```
+
+Each refuses by name when the sandbox is down or when the capability gate its provider needs is off,
+rather than starting a flow that dies later as a proxy `403`.
+
+**`agent-readable` means what it says**: any process running as the agent user can read that
+credential, a compromised or prompt-injected agent included. For Codex that is the tier in force
+*because* the subscription-isolation work is a standing vendor `NO-GO`, not because nobody looked —
+[`docs/credential-custody.md`](docs/credential-custody.md) states the tier for every bundled agent,
+and `scripts/check-credential-custody.sh` proves each claim against the shipped Compose wiring, so
+the table cannot quietly drift from the configuration.
+
+None of these commands moves a credential between tiers. `./scripts/auth/claim-token.sh` is the one
+that does, and it is deliberately separate.
+
 ## Audit trail & resource limits
 
 Every host the proxy was asked to reach (allowed *and* refused) is logged to a persisted volume:
@@ -939,7 +972,8 @@ coding-agent-sandbox/
 ├─ scripts/                  grouped helpers (each is a thin `docker compose exec` wrapper)
 │   ├─ auth/                 sign-ins
 │   │    gh-login.*          GitHub CLI device sign-in (workflow-scope token for pushing workflows)
-│   │    codex-login.*       Codex device-auth sign-in
+│   │    claude-login.*      Claude subscription sign-in (states its custody tier)
+   │    codex-login.*       Codex device-auth sign-in
 │   │    claim-token.*       move the Anthropic OAuth token into the tinyproxy vault (mitm/sidecar)
 │   ├─ network/              egress allowlist management
 │   │    allow-domain.*      hot-add host(s) to the running allowlist
@@ -955,6 +989,7 @@ coding-agent-sandbox/
     .gitattributes    forces LF on container scripts so a Windows `git clone` can't break the build
     README.md · SECURITY.md · CONTRIBUTING.md · docs/  (docs/architecture/ = diagrams)
     docs/agent-roster.md  the bundled agent CLIs, derived from the image build
+    docs/credential-custody.md  which tier holds each agent's credential
 ```
 
 `.*` = the cross-platform set (`.sh` for macOS/Linux, `.ps1`/`.cmd` for Windows). Helpers run from
