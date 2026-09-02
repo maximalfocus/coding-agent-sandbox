@@ -19,8 +19,7 @@ BASE_DOMAINS=(
     "npmjs.org"              # npm registry + tarballs
     "npmjs.com"
     "herdr.dev"              # Herdr update manifest + documentation
-    "opencode.ai"            # OpenCode first-party API/auth/update endpoints
-    "pi.dev"                  # Pi update checks + model catalogs
+    "pi.dev"                 # Pi update checks + model catalogs
 )
 
 # GitHub is a CAPABILITY GRANT, not just a destination. It's the most powerful host that would
@@ -44,9 +43,9 @@ OPENAI_DOMAINS=(
 
 # Official download/package endpoints used to deliberately upgrade bundled tools and the common
 # development toolchains shipped/supported by this sandbox. This is opt-in because every package
-# registry is also a payload-ingress channel. GitHub-hosted upgrades (Herdr, gh, Bun/OpenCode
-# releases) remain governed by ALLOW_GITHUB; npm-hosted upgrades (Claude, Codex, Pi, OpenCode,
-# Playwright) already use the always-required npm registry.
+# registry is also a payload-ingress channel. GitHub-hosted upgrades (Herdr, gh, Bun releases)
+# remain governed by ALLOW_GITHUB; npm-hosted upgrades (Claude, Codex, Pi, Playwright) already use
+# the always-required npm registry.
 TOOL_UPGRADE_DOMAINS=(
     "awscli.amazonaws.com"   # AWS CLI v2 installers
     "bun.sh"                 # Bun installer metadata (release assets are GitHub-gated)

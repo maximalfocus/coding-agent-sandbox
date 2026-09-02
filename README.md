@@ -322,8 +322,8 @@ egress on port 22 is not opened).
 `githubusercontent.com` are a general bidirectional channel (pull a payload in, push or gist data
 out), so they're governed by their own switch — `ALLOW_GITHUB` (default `true`). For
 analysis-only or untrusted-workspace runs, set `ALLOW_GITHUB=false` in `.env` to drop GitHub while
-keeping the always-on base hosts. Anthropic, npm, and the bundled Herdr/OpenCode/Pi first-party
-hosts (`herdr.dev`, `opencode.ai`, `pi.dev`) are always on. Bare TLDs (`com`) and IP literals are rejected, but **public
+keeping the always-on base hosts. Anthropic, npm, and the bundled Herdr/Pi first-party hosts
+(`herdr.dev`, `pi.dev`) are always on. Bare TLDs (`com`) and IP literals are rejected, but **public
 suffixes are not PSL-checked** — adding `co.uk` or `github.io` would allow *all* their subdomains,
 so add specific registrable domains (`yourco.co.uk`), not the suffix.
 
@@ -433,9 +433,13 @@ missing or unsafe. `EXTRA_ALLOWED_DOMAINS` cannot bypass this dedicated gate. Se
 The image also installs pinned versions of:
 
 - **Herdr** (`herdr`) — agent multiplexer; `herdr.dev` is allowlisted for update metadata/docs.
-- **OpenCode** (`opencode`) — coding agent; `opencode.ai` and its subdomains are allowlisted.
 - **Pi** (`pi`) — coding-agent harness; `pi.dev` and its subdomains are allowlisted. Debian's
   `fd-find` is installed as `fd` so Pi does not need a blocked runtime download.
+
+The full set is stated in [`docs/agent-roster.md`](docs/agent-roster.md) and derived from the image
+build, so an agent that leaves the image also loses its pin, its always-on host, its pin-acceptance
+row, and its entry in the host updater — `./scripts/check-agent-roster.sh` fails if any of those
+survives.
 
 Their first-party hosts are trust grants and are always enabled. Model-provider egress is separate:
 Anthropic is available by default, OpenAI requires `ALLOW_OPENAI=true`, and DeepSeek is available
@@ -447,7 +451,7 @@ generic escape hatch.
 
 Set `ALLOW_TOOL_UPGRADES=true` to permit official download/package endpoints used by AWS CLI,
 Bun/Node, Python/uv, Rust/Cargo, Maven/Gradle, apt, and Playwright. npm-hosted CLI upgrades already
-use the base npm allowlist. Herdr, GitHub CLI, Bun/OpenCode release assets, and other GitHub-hosted
+use the base npm allowlist. Herdr, GitHub CLI, Bun release assets, and other GitHub-hosted
 upgrades also require `ALLOW_GITHUB=true`; the upgrade switch never overrides the GitHub gate.
 
 The switch grants: `awscli.amazonaws.com`, `bun.sh`, `nodejs.org`, `pypi.org`,
@@ -464,15 +468,15 @@ package downloads only when you deliberately accept that supply-chain capability
 
 ### Updating the agent CLIs (from the host)
 
-Claude Code, Codex, OpenCode and Pi are pinned as `Dockerfile` build args and their runtime
-self-update is disabled, so the CLI you started with is the CLI you finish with. To move those pins,
-run this **on the host** — never by enabling `ALLOW_TOOL_UPGRADES` and updating inside the sandbox,
-which would swap a reviewable build-time pin for unreviewed runtime drift:
+Claude Code, Codex and Pi are pinned as `Dockerfile` build args and their runtime self-update is
+disabled, so the CLI you started with is the CLI you finish with. To move those pins, run this **on
+the host** — never by enabling `ALLOW_TOOL_UPGRADES` and updating inside the sandbox, which would
+swap a reviewable build-time pin for unreviewed runtime drift:
 
 ```bash
 ./scripts/update-agent-clis.sh              # report pinned vs published; changes nothing
 ./scripts/update-agent-clis.sh --apply      # move every pin
-./scripts/update-agent-clis.sh --apply codex opencode
+./scripts/update-agent-clis.sh --apply codex pi
 ./scripts/update-agent-clis.sh --apply claude=2.1.240
 git diff Dockerfile && ./run.sh             # review, then rebuild
 ```
@@ -835,6 +839,25 @@ discovering it later. The Windows twin does the same.
 machine is not; it is deliberately **not** reported as a pass. The inventory, and which pins carry
 an operator-only check, are in [`docs/pin-acceptance.md`](docs/pin-acceptance.md).
 
+## What removing a bundled agent costs
+
+A pin is only one of the entries an agent holds. It also has an always-on egress host in three
+stacks, a row in the pin inventory, an entry in both host pin updaters, a line in the bundled-CLI
+verifier, and a paragraph here. Removing the install and stopping there leaves an always-on
+allowlist entry for a tool that is no longer in the image — egress surface with nothing behind it.
+
+So the roster is stated, derived from the image build, and checked:
+
+```bash
+scripts/check-agent-roster.sh          # PASS / MISSING / RESIDUE per surface
+scripts/check-agent-roster.sh --json
+```
+
+`RESIDUE` means a surface still names an agent the roster does not ship; `MISSING` means a shipped
+agent is absent from a surface it must appear on. Both are an error exit. The roster itself is
+[`docs/agent-roster.md`](docs/agent-roster.md), and the repository's account of its own history is
+exempt by name rather than rewritten to match.
+
 ## Audit trail & resource limits
 
 Every host the proxy was asked to reach (allowed *and* refused) is logged to a persisted volume:
@@ -925,12 +948,13 @@ coding-agent-sandbox/
 │   ├─ skills/               bring your skills into the sandbox
 │   │    skills-setup.*      clone your skill repos into /workspace/personal (live, evolvable)
 │   │    sync-skills.sh      copy host skills in (read-only use)
-│   └─ update-agent-clis.*   move the four agent-CLI build pins, from the host (report by default)
+│   └─ update-agent-clis.*   move the agent-CLI build pins, from the host (report by default)
 │
 └─ Config & docs
     .env.example      every knob, with defaults (copy to .env)
     .gitattributes    forces LF on container scripts so a Windows `git clone` can't break the build
     README.md · SECURITY.md · CONTRIBUTING.md · docs/  (docs/architecture/ = diagrams)
+    docs/agent-roster.md  the bundled agent CLIs, derived from the image build
 ```
 
 `.*` = the cross-platform set (`.sh` for macOS/Linux, `.ps1`/`.cmd` for Windows). Helpers run from

@@ -141,6 +141,12 @@ RUN npm install -g "npm@${NPM_VERSION}" \
 # is DISABLED below (DISABLE_AUTOUPDATER) so the running CLI stays exactly this version — no
 # unreviewed binary drift mid-session. To update Claude, bump the arg and rebuild.
 # (The base image, npm, and ttyd are also pinned; apt packages come from moving Debian repos.)
+#
+# The `# agent-cli:` marker below is load-bearing, not decoration: docs/agent-roster.md is the
+# stated roster of bundled agent CLIs, and scripts/check-agent-roster.sh derives that roster from
+# these markers so the build itself — not a hand-kept list — says which agents ship. Adding or
+# removing one here without moving its roster row is a hard failure.
+# agent-cli: claude
 ARG CLAUDE_CODE_VERSION=2.1.252
 RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
@@ -148,15 +154,15 @@ RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
 
 # Codex CLI (OpenAI) for cross-vendor peer review, pinned at BUILD time. Authenticated separately
 # with your ChatGPT/OpenAI subscription via ./scripts/auth/codex-login.sh; egress is gated by ALLOW_OPENAI.
+# agent-cli: codex
 ARG CODEX_VERSION=0.140.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 
-# Additional agent frontends, pinned at build time like Claude and Codex. OpenCode's npm package
-# selects the matching native binary; Pi needs no lifecycle scripts for a normal global install.
-ARG OPENCODE_VERSION=1.18.25
+# Pi coding-agent harness, pinned at build time like Claude and Codex. It needs no lifecycle
+# scripts for a normal global install.
+# agent-cli: pi
 ARG PI_VERSION=0.84.4
-RUN npm install -g --allow-scripts=opencode-ai "opencode-ai@${OPENCODE_VERSION}" \
-    && npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"
+RUN npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"
 
 # Herdr agent multiplexer — a single static, architecture-matched binary, pinned by release and
 # sha256 so GitHub cannot silently substitute build-time bytes.
@@ -164,6 +170,7 @@ RUN npm install -g --allow-scripts=opencode-ai "opencode-ai@${OPENCODE_VERSION}"
 # but only through GitHub's rename redirect, which this project does not control — so name the
 # canonical owner. Move these three lines together with scripts/update-agent-clis.sh --apply herdr;
 # a version bumped without its checksums fails every later build.
+# agent-cli: herdr
 ARG HERDR_VERSION=0.8.2
 ARG HERDR_SHA256_AMD64=976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4
 ARG HERDR_SHA256_ARM64=f55610658e1c2e0d2aaef730b4b2ab885f7f8ba00285ab372bfb14f2e3d5b40d

@@ -15,9 +15,13 @@
 # This is not an auto-updater. It writes nothing without --apply, and it never rebuilds: run
 # ./run.sh yourself once you have reviewed the diff.
 #
-# Two kinds of pin are handled. The four npm-published CLIs are version-only. Herdr is pinned by
+# Two kinds of pin are handled. The three npm-published CLIs are version-only. Herdr is pinned by
 # release AND per-architecture sha256, so moving it means downloading each artifact and deriving its
 # checksum from the bytes received.
+#
+# The names below are the shipped agent roster, and docs/agent-roster.md is where that roster is
+# stated. scripts/check-agent-roster.sh compares the two, so an agent that leaves the image cannot
+# keep an entry here.
 #
 # Be clear about what a derived checksum is worth: it attests the bytes fetched AT THAT MOMENT, not
 # upstream intent. It is trust-on-first-use. What it buys - and this is worth having - is that no
@@ -32,7 +36,7 @@ cd "$(dirname "$0")/.."
 DOCKERFILE=Dockerfile
 
 # Parallel lists, not an associative array: macOS ships bash 3.2, which has neither.
-KEYS="claude codex opencode pi herdr"
+KEYS="claude codex pi herdr"
 # Tools whose pin includes per-architecture checksums, so --apply must download the artifacts.
 CHECKSUM_KEYS="herdr"
 # The canonical Herdr repository. 'ogulcancelik/herdr' resolves here only through GitHub's rename
@@ -42,7 +46,6 @@ key_arg() {
     case "$1" in
         claude)   echo CLAUDE_CODE_VERSION ;;
         codex)    echo CODEX_VERSION ;;
-        opencode) echo OPENCODE_VERSION ;;
         pi)       echo PI_VERSION ;;
         herdr)    echo HERDR_VERSION ;;
     esac
@@ -51,7 +54,6 @@ key_pkg() {
     case "$1" in
         claude)   echo "@anthropic-ai/claude-code" ;;
         codex)    echo "@openai/codex" ;;
-        opencode) echo "opencode-ai" ;;
         pi)       echo "@earendil-works/pi-coding-agent" ;;
         herdr)    echo "github:$HERDR_REPO" ;;
     esac
@@ -67,7 +69,7 @@ usage() {
     cat <<'USAGE'
 usage: update-agent-clis.sh [--apply] [--dockerfile PATH] [NAME|NAME=VERSION ...]
 
-  NAME is one of: claude, codex, opencode, pi. With none given, all four are considered.
+  NAME is one of: claude, codex, pi, herdr. With none given, all four are considered.
   With no --apply the Dockerfile is left byte-identical.
 
   NAME=VERSION pins an exact version instead of the published one. It is checked against the
