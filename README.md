@@ -56,7 +56,8 @@ It does the first-run work for you:
 - builds, scans the image (Trivy), and starts the sandbox
 - opens `http://127.0.0.1:7681` (macOS)
 
-After setup, start it again any time with `./run.sh`.
+After setup, start it again any time with `./run.sh`, and check what is left to configure with
+`./configure.sh` — see [Configuration, in order](#configuration-in-order).
 
 > Setting up by hand, or `setup.sh` isn't an option? See
 > **[docs/MANUAL_SETUP.md](docs/MANUAL_SETUP.md)** — a single linear runbook covering
@@ -122,6 +123,41 @@ Then:
 
 Open **http://127.0.0.1:7681**, log in with `TTYD_USER` / `TTYD_PASS`, and you're in the
 sandbox terminal.
+
+## Configuration, in order
+
+Everything else is optional and can be done in any order — except that it can't, quite: the sign-ins
+need the stack running, the skill clones need a GitHub credential, and a pin change needs a rebuild.
+Rather than remember that, ask:
+
+```bash
+./configure.sh          # macOS / Linux — report every step's OBSERVED state; changes nothing
+configure.cmd           # Windows — the same
+```
+
+```
+satisfied   env            .env present, TTYD_PASS set
+satisfied   stack          the sandbox is running
+decision    pins           a pin differs from its published version; adopting one is your call
+satisfied   claude         Claude Code is signed in
+unmet       codex          Codex is not signed in — ./scripts/auth/codex-login.sh
+decision    pi             ALLOW_DEEPSEEK is off in .env, so Pi cannot sign in
+satisfied   gh             GitHub CLI is signed in
+n/a         skills         SKILL_REPOS is empty in .env; skill repositories are optional
+```
+
+Every state is **observed**, not remembered: the stack is probed, each credential is checked where it
+actually lives, and the pin report runs. `./configure.sh --run` walks the steps in order and performs
+the ones that need no decision; `--step <id>` runs one alone; a step already satisfied does nothing.
+
+**It will never make a choice for you.** A capability gate, a credential, and a pin change are
+`decision` steps: the flow names the decision and stops. Adopting a pin in particular shows the diff
+and leaves the writing to `./scripts/update-agent-clis.sh`, because a pin move is a rebuild *and* a
+revalidation.
+
+It reimplements nothing — each step invokes the same command you would have run — and it agrees with
+the in-sandbox first-run checklist about the GitHub credential, because both are recomputed from the
+same observed state.
 
 ## First-time login (uses your subscription, not an API key)
 
@@ -567,7 +603,9 @@ macOS and Windows (`scripts/skills/skills-setup.cmd`). Pushing needs a GitHub cr
 > in every terminal lists only setup you still have to do on the host — today just the GitHub
 > credential — and disappears once that is set. Unconfigured or unlinked skills are not unfinished
 > setup, so they contribute nothing to it; clone or link problems are reported on stderr at boot
-> instead. Linking is **non-destructive** — it tracks only the symlinks it creates (a
+> instead. `./configure.sh` is the host-side view and does report the skill step, because you asked
+> it; the two never disagree about the GitHub credential, since both are recomputed from the same
+> observed state. Linking is **non-destructive** — it tracks only the symlinks it creates (a
 > `.managed-by-sandbox` manifest) and never overwrites copied skills from `sync-skills.sh` or your own
 > directories; on a skill-name collision the first repo (sorted) wins and the rest are reported.
 
@@ -966,6 +1004,7 @@ coding-agent-sandbox/
 │   shell.sh · shell.ps1                               attach Herdr (or open a plain shell)
 │   scan.sh  · scan.ps1                                Trivy image scan (TRIVY_STRICT=1 to gate)
 │   audit.sh                                           read the egress audit trail
+│   configure.sh · configure.ps1 · configure.cmd        ordered config steps, observed state
 │   uninstall.sh · uninstall.cmd · uninstall-windows.ps1   remove containers/volumes/images
 │   start-sandbox.cmd                                  Windows: start (calls run.ps1)
 │
