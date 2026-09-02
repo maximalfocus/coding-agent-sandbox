@@ -75,18 +75,27 @@ paths below. Path A is simplest; Path B survives a full rebuild.
 
 ### Path A — interactive (simplest)
 
-1. Open **http://127.0.0.1:7681** and log in with `coder` / the `TTYD_PASS` from `.env`.
-2. In the terminal:
-   ```
-   claude
-   /login
-   ```
-   Choose **"Claude account / subscription"**, open the URL it prints in your browser,
-   approve, and paste the code back.
+From the host, the same way every other sign-in works:
+
+```bash
+./scripts/auth/claude-login.sh
+```
+
+Open the URL it prints in your browser, approve, and paste the code back. It runs as the `node`
+user inside the container, which is load-bearing for the reason Path B repeats below.
+
+You can still do it from inside the web terminal instead — open **http://127.0.0.1:7681**, log in
+with `coder` / the `TTYD_PASS` from `.env`, run `claude`, then `/login` — and it writes the same
+credential to the same place.
 
 This writes credentials to the persisted `claude-config` volume, so it survives
 container **restarts** — but a full image rebuild that recreates the volume means
 logging in again. For rebuild-proof login, use Path B.
+
+Either way the credential lands in an **agent-readable** volume: any process running as the agent
+user can read it. The host command says so on success; the full table is in
+[`credential-custody.md`](credential-custody.md), and `scripts/auth/claim-token.sh` is what moves it
+into the proxy-owned vault in the mitm and sidecar stacks.
 
 ### Path B — headless token (persists across rebuilds)
 

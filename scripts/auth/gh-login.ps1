@@ -5,28 +5,12 @@
 # you only do this once, and the entrypoint wires git to use it on every start.
 $ErrorActionPreference = "Stop"
 Set-Location -Path (Join-Path $PSScriptRoot '../..')
+. (Join-Path $PSScriptRoot 'auth-common.ps1')
 
-$svc = "claude-sandbox"
-
-# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
-# an unguarded probe throws instead of reporting (issues #111, #117).
-$running = $null
-try { $running = docker compose ps --status running --format '{{.Name}}' 2>$null } catch { $running = $null }
-if (-not $running) {
-    Write-Host "Sandbox isn't running. Start it first:  start-sandbox.cmd"
-    exit 1
-}
-
-# GitHub egress must be on, or device-auth polling is refused by the proxy.
-# Guarded: native stderr terminates under $ErrorActionPreference='Stop' whatever the redirect, so
-# an unguarded probe throws instead of reporting and the branch below never runs (#111, #117, #120).
-$egressRc = 1
-try { docker compose exec -T $svc grep -qi "github" /etc/tinyproxy/filter 2>$null; $egressRc = $LASTEXITCODE } catch { $egressRc = 1 }
-if ($egressRc -ne 0) {
-    Write-Host "GitHub egress is not enabled. Set ALLOW_GITHUB=true in .env, run start-sandbox.cmd,"
-    Write-Host "then run this again."
-    exit 1
-}
+Assert-AuthDocker 'gh-login.sh'
+$row = Get-AuthRow 'gh'
+Assert-AuthStack
+Assert-AuthGate $row
 
 Write-Host ""
 Write-Host "Starting gh auth login (device flow). When prompted:"
@@ -40,6 +24,8 @@ Write-Host "Saved in the persisted gh-config volume, so you only do this once. C
 Write-Host ""
 
 # Run as node so the login lands in /home/node/.config/gh (persisted) and matches the web-terminal user.
-docker compose exec -u node $svc gh auth login --hostname github.com --git-protocol https --scopes workflow
-docker compose exec -u node $svc gh auth setup-git --hostname github.com
-docker compose exec -u node $svc gh auth status
+Invoke-AuthDocker exec -it -u node claude-sandbox gh auth login --hostname github.com --git-protocol https --scopes workflow
+Invoke-AuthDocker exec -u node claude-sandbox gh auth setup-git --hostname github.com
+Invoke-AuthDocker exec -u node claude-sandbox gh auth status
+
+Show-AuthCustody $row
