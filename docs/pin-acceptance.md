@@ -75,6 +75,8 @@ committed bytes. `check-ttyd-client-drift.sh` separately reports live upstream a
 is coupled: `mitm/filter_addon.py`'s refresh `User-Agent` must move with it, and the value was
 derived empirically in [#102](https://github.com/maximalfocus/coding-agent-sandbox/issues/102)
 against a provider that rejects unfamiliar client fingerprints. It was last exercised at `2.1.233`.
+**This check has not been re-run at `2.1.258`.** The value moved with the pin, as this row requires,
+but only a live refresh through the sidecar can show the provider still accepts it.
 
 **Per-architecture checksums** carry `host:verify-image-architectures.sh`. That script is fully
 automated, but it needs a real build on hardware of each architecture; on one machine it reports the
@@ -112,7 +114,7 @@ ttyd.sha256.amd64 | ttyd amd64 artifact | Dockerfile | ARG TTYD_SHA256_AMD64=8a2
 ttyd.sha256.arm64 | ttyd arm64 artifact | Dockerfile | ARG TTYD_SHA256_ARM64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165 | host:verify-image-architectures.sh | host | needs a real build on arm64 hardware
 ttyd.client-bundle | Vendored xterm.js web client | Dockerfile | 85baf6f288791e6012feec6257a8dd3665a449891692e7142debffbe24f99003 | verify-ttyd-client-reproducibility.sh,operator:browser-clipboard | mixed | two clean builds cover bytes; browser select-and-paste remains operator-only
 npm.version | npm | Dockerfile | ARG NPM_VERSION=11.18.0 | verify-npm-bundle.sh | repo | -
-claude-code.version | Claude Code CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.252 | verify-npm-bundle.sh,check-provider-contracts.sh,operator:live-refresh | mixed | refresh User-Agent in mitm/filter_addon.py must move with it
+claude-code.version | Claude Code CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.258 | verify-npm-bundle.sh,check-provider-contracts.sh,operator:live-refresh | mixed | refresh User-Agent in mitm/filter_addon.py must move with it
 codex.version | Codex CLI | Dockerfile | ARG CODEX_VERSION=0.140.0 | verify-npm-bundle.sh,verify-codex-sandbox.sh | repo | also anchors a recorded feasibility verdict
 pi.version | Pi CLI | Dockerfile | ARG PI_VERSION=0.84.4 | verify-npm-bundle.sh | repo | -
 herdr.version | Terminal multiplexer | Dockerfile | ARG HERDR_VERSION=0.8.2 | test-osc52-boundary.sh,operator:herdr-selection-copy | mixed | operator half not re-run at this pin
