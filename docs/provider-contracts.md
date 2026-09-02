@@ -215,8 +215,8 @@ claude.oauth-grant-shape | Claude | grant shape | mitm/claim-token,mitm/filter_a
 claude.credential-file-schema | Claude | credential schema | mitm/claim-token,mitm/filter_addon.py | claudeAiOauth | required | -
 claude.injection-destination | Claude | injection destination | mitm/filter_addon.py | _matches(host, "api.anthropic.com") | required | -
 claude.injection-header | Claude | header contract | mitm/filter_addon.py | flow.request.headers["authorization"] = f"Bearer {tok}" | required | -
-claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.252 | na | -
-claude.oauth-refresh-user-agent | Claude | client identification | mitm/filter_addon.py | claude-cli/2.1.252 (external, cli) | required | -
+claude.cli-version | Claude | pinned CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.258 | na | -
+claude.oauth-refresh-user-agent | Claude | client identification | mitm/filter_addon.py | claude-cli/2.1.258 (external, cli) | required | -
 claude.cli-login-command | Claude | CLI auth surface | scripts/auth/claude-login.sh,scripts/auth/claude-login.ps1 | claude auth login | required | -
 deepseek.injection-host | DeepSeek | injection destination | mitm/filter_addon.py | _exact(host, ("api.deepseek.com",)) | required | -
 deepseek.exact-host-grant | DeepSeek | egress grant | mitm/sidecar-entrypoint.sh | export EXACT_ALLOW_HOSTS="api.deepseek.com" | required | -

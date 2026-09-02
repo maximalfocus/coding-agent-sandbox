@@ -147,7 +147,7 @@ RUN npm install -g "npm@${NPM_VERSION}" \
 # these markers so the build itself — not a hand-kept list — says which agents ship. Adding or
 # removing one here without moving its roster row is a hard failure.
 # agent-cli: claude
-ARG CLAUDE_CODE_VERSION=2.1.252
+ARG CLAUDE_CODE_VERSION=2.1.258
 RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && npm ls -g --depth=0 "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" >/dev/null
