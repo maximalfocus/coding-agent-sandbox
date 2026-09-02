@@ -38,10 +38,14 @@ leaves behind when it edits the build and stops there.
 
 ### What is *not* checked here
 
-The repository's account of its own history. `PROBLEM.md` records a review that actually ran through
-the OpenCode fallback, and rewriting it to match the current roster would be falsifying a record to
-satisfy a check. The roster governs the shipped product, not the history. Files exempted for that
-reason are listed below, and the exemption is a stated decision rather than a hidden constant.
+The repository's account of its own history, and the check's own negative controls. `PROBLEM.md`
+records a review that actually ran through the OpenCode fallback, and rewriting it to match the
+current roster would be falsifying a record to satisfy a check. `scripts/test-check-agent-roster.sh`
+reintroduces a retired agent one surface at a time, which is the only way to prove the check refuses
+residue at all — a check that cannot be shown to fail is not evidence of anything.
+
+Both exemptions are listed below by exact path with their reason stated, never as a glob or a hidden
+constant, and each is covered by a case proving that removing it makes the same file fail.
 
 ## Machine-readable roster
 
@@ -86,4 +90,5 @@ npmjs.com | the same registry's other domain
 # path | why
 PROBLEM.md | historical record of a review that ran through the OpenCode fallback
 docs/agent-roster.md | this roster, which must be able to name what it withdrew
+scripts/test-check-agent-roster.sh | the check's negative controls, which reintroduce a retired agent one surface at a time to prove the check refuses it
 ```
