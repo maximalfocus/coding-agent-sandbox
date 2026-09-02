@@ -1,4 +1,4 @@
-# Update the pinned agent-CLI versions FROM THE HOST (Windows).
+﻿# Update the pinned agent-CLI versions FROM THE HOST (Windows).
 #
 #   .\scripts\update-agent-clis.ps1                     # report only - changes nothing
 #   .\scripts\update-agent-clis.ps1 -Apply              # move every pin to the published version
@@ -210,12 +210,13 @@ try {
     # so this reads the same inventory block directly. Only the LOOKUP is duplicated - every
     # validation rule (field count, rerun agreement, none-requires-a-note) stays in the checker,
     # which the repository check set runs on every change regardless of platform.
+    # -Dockerfile selects the TREE, and both the inventory and every coupled literal are resolved
+    # inside it, with no fallback to this checkout. A fallback is not a convenience here: while this
+    # was being built, one let an apply against a fixture Dockerfile reach out and rewrite the real
+    # mitm/filter_addon.py. Matches the POSIX twin.
     $inventoryPath = Join-Path (Split-Path -Parent $Dockerfile) "docs/pin-acceptance.md"
     if (-not (Test-Path $inventoryPath)) {
-        $inventoryPath = Join-Path $PSScriptRoot "../docs/pin-acceptance.md"
-    }
-    if (-not (Test-Path $inventoryPath)) {
-        Write-Error "missing docs/pin-acceptance.md - cannot resolve what these pins carry"
+        Write-Error ("no docs/pin-acceptance.md beside {0} - a pin cannot be moved in a tree whose inventory is elsewhere" -f $Dockerfile)
         exit 1
     }
 
@@ -232,7 +233,9 @@ try {
         $pin = $f[3].Trim()
         if (-not $pin.StartsWith("ARG ")) { continue }
         $rows += @{
+            Id           = $f[0].Trim()
             Arg          = ($pin.Substring(4) -split '=')[0]
+            Value        = ($pin.Substring(4) -split '=', 2)[1]
             Verification = $f[4].Trim()
             Rerun        = $f[5].Trim()
             Note         = $f[6].Trim()
@@ -260,6 +263,54 @@ try {
     if ($unmapped.Count -gt 0) {
         Write-Error ("these pins have no row in docs/pin-acceptance.md: {0}" -f ($unmapped -join ", "))
         Write-Error "Record what verification rests on each before moving it. Nothing was written."
+        exit 1
+    }
+
+    # --- couplings: a pin written in two files moves as one, or not at all -------------------
+    # Some pins are the same fact in two places - the Claude CLI version is also the refresh
+    # User-Agent in mitm/filter_addon.py. Writing one and leaving the other is what issue #137 did,
+    # and it now also leaves the tree failing check-pin-acceptance.sh. Every coupled literal is
+    # located BEFORE anything is written, and one that cannot be found is a refusal rather than a
+    # partial apply. The POSIX twin reads these through `check-pin-acceptance.sh --coupled`; this
+    # reads the same block, for the same reason it reads the pin block directly.
+    $tree = Split-Path -Parent (Resolve-Path -LiteralPath $Dockerfile)
+    $couplings = @()
+    $inCoupling = $false
+    foreach ($line in (Get-Content -LiteralPath $inventoryPath)) {
+        if ($line -eq '```pin-coupling') { $inCoupling = $true; continue }
+        if ($inCoupling -and $line.StartsWith('```')) { $inCoupling = $false; continue }
+        if (-not $inCoupling) { continue }
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $f = $trimmed -split '\|'
+        if ($f.Count -ne 3) { continue }
+        $couplings += @{ Pin = $f[0].Trim(); File = $f[1].Trim(); Literal = $f[2].Trim() }
+    }
+
+    $coupledEdits = @()
+    $missingCoupled = @()
+    foreach ($change in $changes) {
+        $row = $null
+        foreach ($candidate in $rows) { if ($candidate.Arg -eq $change.Arg) { $row = $candidate; break } }
+        if ($null -eq $row) { continue }
+        foreach ($c in $couplings) {
+            if ($c.Pin -ne $row.Id) { continue }
+            $path = Join-Path $tree $c.File
+            $oldLiteral = $c.Literal.Replace('{pin}', $row.Value)
+            $newLiteral = $c.Literal.Replace('{pin}', $change.Version)
+            if (-not (Test-Path -LiteralPath $path)) {
+                $missingCoupled += ("  {0} -> {1} (no such file)" -f $change.Arg, $c.File)
+            } elseif (-not ([System.IO.File]::ReadAllText($path)).Contains($oldLiteral)) {
+                $missingCoupled += ("  {0} -> {1} (does not carry '{2}')" -f $change.Arg, $c.File, $oldLiteral)
+            } else {
+                $coupledEdits += @{ Path = $path; File = $c.File; Old = $oldLiteral; New = $newLiteral }
+            }
+        }
+    }
+
+    if ($missingCoupled.Count -gt 0) {
+        Write-Error ("these pins are coupled to a literal this run cannot locate:`n{0}" -f ($missingCoupled -join "`n"))
+        Write-Error "A pin and the literals coupled to it move together or not at all. Nothing was written."
         exit 1
     }
 
@@ -327,9 +378,23 @@ try {
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText((Resolve-Path -LiteralPath $Dockerfile), $content, $utf8NoBom)
 
+    # Every coupled literal was located above, so these edits cannot half-succeed on a missing file.
+    foreach ($edit in $coupledEdits) {
+        $text = [System.IO.File]::ReadAllText($edit.Path)
+        if (-not $text.Contains($edit.Old)) {
+            Write-Error ("refusing to edit {0}: '{1}' is no longer present" -f $edit.File, $edit.Old)
+            exit 1
+        }
+        [System.IO.File]::WriteAllText($edit.Path, $text.Replace($edit.Old, $edit.New), $utf8NoBom)
+    }
+
     Write-Host ""
     Write-Host "Updated ${Dockerfile}:"
     foreach ($change in $changes) { Write-Host ("  ARG {0}={1}" -f $change.Arg, $change.Version) }
+    if ($coupledEdits.Count -gt 0) {
+        Write-Host "...and the literals coupled to those pins:"
+        foreach ($edit in $coupledEdits) { Write-Host ("  {0}  ->  {1}" -f $edit.File, $edit.New) }
+    }
     Write-Host ""
     Write-Host "Review the diff, then rebuild - the rebuild is deliberately a separate step:"
     Write-Host ""

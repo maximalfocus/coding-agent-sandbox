@@ -15,6 +15,11 @@
 # This is not an auto-updater. It writes nothing without --apply, and it never rebuilds: run
 # ./run.sh yourself once you have reviewed the diff.
 #
+# Some pins are the same fact written in two files - the Claude CLI version is also the refresh
+# User-Agent in mitm/filter_addon.py. Those move together or not at all: the coupled literals are
+# located before anything is written, and one that cannot be found is a refusal rather than a
+# partial apply. docs/pin-acceptance.md declares them; --coupled is how this script reads them.
+#
 # Two kinds of pin are handled. The three npm-published CLIs are version-only. Herdr is pinned by
 # release AND per-architecture sha256, so moving it means downloading each artifact and deriving its
 # checksum from the bytes received.
@@ -223,6 +228,16 @@ fi
 PIN_CHECK="$(dirname "$0")/check-pin-acceptance.sh"
 [ -x "$PIN_CHECK" ] || die "missing $PIN_CHECK — cannot resolve what these pins carry"
 
+# --dockerfile selects the TREE, and a coupled literal is only ever resolved inside it. There is
+# deliberately no fallback to this checkout: with one, an --apply against a fixture Dockerfile
+# reached out and rewrote the real mitm/filter_addon.py. A tree that does not contain a pin's
+# coupled literal is a tree where that pin cannot be moved, which is what "together or not at all"
+# means when taken seriously.
+PIN_TREE="$(cd "$(dirname "$DOCKERFILE")" && pwd)"
+[ -f "$PIN_TREE/docs/pin-acceptance.md" ] \
+    || die "no docs/pin-acceptance.md beside $DOCKERFILE — a pin cannot be moved in a tree whose inventory is elsewhere"
+export PIN_ACCEPTANCE_ROOT="$PIN_TREE"
+
 # Every ARG this run could write, including the checksums a herdr move brings with it.
 writable_args=
 for change in $changes; do
@@ -249,6 +264,51 @@ if [ -n "$unmapped" ]; then
     echo >&2
     echo "These pins have no row in docs/pin-acceptance.md:$unmapped" >&2
     echo "Record what verification rests on each before moving it. Nothing was written." >&2
+    exit 1
+fi
+
+# --- couplings: a pin written in two files moves as one, or not at all -------
+# Some pins are the same fact in two places - claude-code.version is the CLI version in the
+# Dockerfile AND the refresh User-Agent in mitm/filter_addon.py. Writing one and leaving the other
+# is what issue #137 did, and it now also leaves the tree failing check-pin-acceptance.sh. So every
+# coupled literal is located BEFORE anything is written, and one that cannot be found is a refusal
+# rather than a partial apply.
+#
+# The declarations come from check-pin-acceptance.sh --coupled rather than a list kept here, for
+# the same reason --arg exists: one parser, so the tool and the check cannot disagree.
+#
+# A heredoc, not a pipe: the loop must run in THIS shell or coupled_edits would be lost with the
+# subshell, and the refusal below would never see anything.
+coupled_edits=
+missing_coupled=
+for change in $changes; do
+    arg="${change%%=*}"; version="${change#*=}"
+    current="$(pinned_version "$arg")"
+    coupled_rows="$("$PIN_CHECK" --coupled "$arg" 2>/dev/null || true)"
+    [ -n "$coupled_rows" ] || continue
+    while IFS="$(printf '\t')" read -r c_file c_literal; do
+        [ -n "$c_file" ] || continue
+        old_literal="${c_literal//\{pin\}/$current}"
+        new_literal="${c_literal//\{pin\}/$version}"
+        if [ ! -f "$PIN_TREE/$c_file" ]; then
+            missing_coupled="$missing_coupled
+  $arg -> $c_file (no such file)"
+        elif ! grep -Fq -- "$old_literal" "$PIN_TREE/$c_file"; then
+            missing_coupled="$missing_coupled
+  $arg -> $c_file (does not carry '$old_literal')"
+        else
+            coupled_edits="$coupled_edits$PIN_TREE/$c_file|$old_literal|$new_literal
+"
+        fi
+    done <<COUPLED
+$coupled_rows
+COUPLED
+done
+
+if [ -n "$missing_coupled" ]; then
+    echo >&2
+    echo "These pins are coupled to a literal this run cannot locate:$missing_coupled" >&2
+    echo "A pin and the literals coupled to it move together or not at all. Nothing was written." >&2
     exit 1
 fi
 
@@ -323,9 +383,31 @@ done
 mv "$tmp" "$DOCKERFILE"
 trap - EXIT
 
+# Every coupled literal was located above, so these edits cannot half-succeed on a missing file.
+printf '%s' "$coupled_edits" | while IFS='|' read -r c_file old_literal new_literal; do
+    [ -n "$c_file" ] || continue
+    python3 - "$c_file" "$old_literal" "$new_literal" <<'COUPLEDIT'
+import sys
+path, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as handle:
+    text = handle.read()
+if old not in text:
+    raise SystemExit("refusing to edit %s: '%s' is no longer present" % (path, old))
+with open(path, "w") as handle:
+    handle.write(text.replace(old, new))
+COUPLEDIT
+done
+
 echo
 echo "Updated $DOCKERFILE:"
 for change in $changes; do echo "  ARG ${change%%=*}=${change#*=}"; done
+if [ -n "$coupled_edits" ]; then
+    echo "...and the literals coupled to those pins:"
+    printf '%s' "$coupled_edits" | while IFS='|' read -r c_file old_literal new_literal; do
+        [ -n "$c_file" ] || continue
+        echo "  $c_file  ->  $new_literal"
+    done
+fi
 cat <<'NEXT'
 
 Review the diff, then rebuild — the rebuild is deliberately a separate step:

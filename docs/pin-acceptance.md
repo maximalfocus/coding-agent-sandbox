@@ -83,6 +83,46 @@ automated, but it needs a real build on hardware of each architecture; on one ma
 other as not covered rather than passing it. It is not an operator judgement — it is a machine this
 checkout does not have.
 
+## Pins coupled to a second literal
+
+Some pins are not one literal. `claude-code.version` is the worked example: the CLI version in
+`Dockerfile` and the refresh `User-Agent` in `mitm/filter_addon.py` are the *same fact* written in
+two files, and the addon's own comment says it tracks the pinned CLI.
+
+That coupling used to live in this file as a `note`, and a note is not a gate. The opening of this
+document already explains why nothing catches it —
+[`check-provider-contracts.sh`](provider-contracts.md) compares each pin to *its own* source file,
+so two literals that must agree **with each other** can drift apart while both of their rows pass.
+Reproduced on a clean checkout: move the `Dockerfile` pin and its inventory rows, leave
+`mitm/filter_addon.py` behind, and every check in the repository exits 0. That is
+[#137](https://github.com/maximalfocus/coding-agent-sandbox/issues/137)'s original mistake. When it
+did not happen again in
+[#157](https://github.com/maximalfocus/coding-agent-sandbox/issues/157), that was a person reading
+the note — not a property the product held.
+
+So the coupling is declared here instead, and checked.
+
+- The check renders each template from the pin's **current** value and requires the result to be
+  present in the named file. One assertion covers both directions: a coupled literal left behind and
+  one moved alone are equally absent, so neither can pass.
+- `scripts/update-agent-clis.sh` resolves the same declarations through
+  `check-pin-acceptance.sh --coupled` before it writes, and moves a pin together with every literal
+  coupled to it or writes nothing — so no supported path can leave the tree failing this check.
+- A pin with no coupling has no row here. This block records a real relationship between two
+  literals; padding it with every pin would make it the grep index this inventory refuses to be.
+
+Fields are `|`-separated; surrounding whitespace is ignored.
+
+- `pin` — the `id` of a row in the block above.
+- `file` — the repository-relative file holding the coupled literal.
+- `literal` — that literal, with `{pin}` standing for the pin's current value. For an `ARG NAME=value`
+  pin the value is `value`; for any other pin shape it is the whole recorded literal.
+
+```pin-coupling
+# pin | file | literal
+claude-code.version | mitm/filter_addon.py | claude-cli/{pin} (external, cli)
+```
+
 ## Machine-readable pins
 
 Fields are `|`-separated; surrounding whitespace is ignored. Notes must not contain `|`.
