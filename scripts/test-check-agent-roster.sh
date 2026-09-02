@@ -194,6 +194,56 @@ run && fail 'a non-exempt historical record was accepted'
 grep -q 'PROBLEM.md' "$TMP_DIR/out" || fail 'the now-unexempt file was not named'
 ok
 
+# 16b. The same for the check's own negative controls: this file names a retired agent on purpose,
+#      and without its exemption the check refuses itself. That is not hypothetical - it is exactly
+#      how the check shipped red on main in #152, because the residue scan read only TRACKED files
+#      and this file was still untracked when #149 last ran it.
+reset_fixture
+cp "$ROOT/scripts/test-check-agent-roster.sh" "$FIX/scripts/test-check-agent-roster.sh"
+run || fail "the check refuses its own negative controls: $(cat "$TMP_DIR/out")"
+perl -0pi -e 's/^scripts\/test-check-agent-roster\.sh \|.*\n//m' "$FIX/docs/agent-roster.md"
+run && fail 'the negative-control fixtures passed without their exemption'
+grep -q 'test-check-agent-roster.sh' "$TMP_DIR/out" || fail 'the now-unexempt fixtures were not named'
+ok
+
+# 16c. Residue must fail when it is WRITTEN, not one commit later. A scan that reads only tracked
+#      files cannot see the file being added right now, which is the moment residue is introduced -
+#      so an untracked, non-ignored file carrying it must fail, while an IGNORED one (the operator's
+#      .env) must not. This runs against a real git checkout, because that distinction only exists
+#      inside one.
+GITFIX="$TMP_DIR/gittree"
+rm -rf "$GITFIX"
+mkdir -p "$GITFIX"
+for rel in $SURFACES scripts/test-check-agent-roster.sh; do
+    mkdir -p "$GITFIX/$(dirname "$rel")"
+    cp "$ROOT/$rel" "$GITFIX/$rel"
+done
+printf 'ignored-scratch/\n' > "$GITFIX/.gitignore"
+git -C "$GITFIX" init -q
+git -C "$GITFIX" add -A >/dev/null 2>&1
+git -C "$GITFIX" -c user.email=t@example.invalid -c user.name=t commit -qm base >/dev/null 2>&1
+set +e
+AGENT_ROSTER_ROOT="$GITFIX" "$CHECK" > "$TMP_DIR/out" 2>&1
+code=$?
+set -e
+[ "$code" = "0" ] || fail "the git fixture does not pass: $(cat "$TMP_DIR/out")"
+printf 'ARG OPENCODE_VERSION=1.18.25\n' > "$GITFIX/newly-written.env.sample"
+set +e
+AGENT_ROSTER_ROOT="$GITFIX" "$CHECK" > "$TMP_DIR/out" 2>&1
+code=$?
+set -e
+[ "$code" != "0" ] || fail 'residue in an untracked file was not seen, so it could only fail one commit later'
+grep -q 'newly-written.env.sample' "$TMP_DIR/out" || fail 'the untracked residue file was not named'
+rm -f "$GITFIX/newly-written.env.sample"
+mkdir -p "$GITFIX/ignored-scratch"
+printf 'opencode\n' > "$GITFIX/ignored-scratch/notes.txt"
+set +e
+AGENT_ROSTER_ROOT="$GITFIX" "$CHECK" > "$TMP_DIR/out" 2>&1
+code=$?
+set -e
+[ "$code" = "0" ] || fail "an IGNORED file was treated as a grant: $(cat "$TMP_DIR/out")"
+ok
+
 # 17. A malformed roster is an error exit (2), never a pass. Fail closed on the document itself.
 reset_fixture
 append docs/agent-roster.md 'ignored, outside the block'

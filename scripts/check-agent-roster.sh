@@ -88,12 +88,18 @@ block() { # block NAME -> the body of the named fenced block, comments and blank
     ' "$DOC"
 }
 
-# The residue scan governs the SHIPPED product, so it reads what the repository tracks. An
-# operator's untracked .env or scratch file is not a grant and must not fail this check; outside a
-# git checkout (a fixture tree) every file below the root is in scope instead.
-tracked_files() {
+# The residue scan governs the SHIPPED product, so it reads what the repository would ship: tracked
+# files AND untracked ones that are not ignored. Ignored files - the operator's .env, a scratch
+# directory - are not grants and must not fail this check.
+#
+# The untracked half is not a nicety. Reading only `ls-files` meant the scan could not see the file
+# being written right now, which is precisely when residue is introduced, so a regression could only
+# be caught one commit after it was made. That is not hypothetical: it is how this check came to
+# refuse its own negative-control fixtures on main (issue #152). Outside a git checkout (a fixture
+# tree) every file below the root is in scope instead.
+shipped_files() {
     if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        git -C "$ROOT" ls-files
+        git -C "$ROOT" ls-files --cached --others --exclude-standard
     else
         (cd "$ROOT" && find . -type f -not -path './.git/*' | sed 's|^\./||')
     fi
@@ -303,7 +309,7 @@ done
 # --- 6. residue: nothing may still name a retired agent ---------------------
 # The forward checks above catch a surface that ENUMERATES its agents. Prose does not enumerate, so
 # a retired agent's own tokens are what the scan looks for — which is why a retired row keeps them.
-FILES=$(tracked_files)
+FILES=$(shipped_files)
 [[ -n "$FILES" ]] || die "no files to scan below $ROOT"
 
 for row in ${ROWS+"${ROWS[@]}"}; do
