@@ -71,7 +71,6 @@ docker run --rm --user node --env HOME=/home/node --entrypoint sh "$IMAGE" -lc '
   npm --version
   claude --version
   codex --version
-  opencode --version
   pi --version
   bun --version
   playwright --version

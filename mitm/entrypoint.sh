@@ -12,7 +12,7 @@ CA_PEM="$CONFDIR/mitmproxy-ca-cert.pem"
 say() { [ -n "${SANDBOX_QUIET:-}" ] || echo "$@"; }
 
 # Always-on hosts (parity with the default entrypoint's BASE_DOMAINS); GitHub + extras layered on.
-BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev opencode.ai pi.dev)
+BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev pi.dev)
 GITHUB_DOMAINS=(github.com githubusercontent.com)
 TOOL_UPGRADE_DOMAINS=(
     awscli.amazonaws.com bun.sh nodejs.org

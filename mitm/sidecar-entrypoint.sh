@@ -24,7 +24,7 @@ read -r INTERNAL_IF EGRESS_IF INTERNAL_IP <<< "$interface_record"
 say "Interfaces: egress=$EGRESS_IF internal=$INTERNAL_IF internal_ip=$INTERNAL_IP alias=$SIDECAR_INTERNAL_ALIAS"
 
 # --- allowlist (compact parity with mitm/entrypoint.sh) ---
-BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev opencode.ai pi.dev)
+BASE_DOMAINS=(anthropic.com claude.ai claude.com npmjs.org npmjs.com herdr.dev pi.dev)
 TOOL_UPGRADE_DOMAINS=(
     awscli.amazonaws.com bun.sh nodejs.org
     pypi.org files.pythonhosted.org bootstrap.pypa.io astral.sh

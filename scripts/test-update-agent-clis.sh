@@ -82,7 +82,7 @@ STUB
 chmod +x "$TMP_DIR/bin/curl"
 export PATH="$TMP_DIR/bin:$PATH"
 
-ALL_LATEST="@anthropic-ai/claude-code=9.9.9 @openai/codex=8.8.8 opencode-ai=7.7.7 @earendil-works/pi-coding-agent=6.6.6"
+ALL_LATEST="@anthropic-ai/claude-code=9.9.9 @openai/codex=8.8.8 @earendil-works/pi-coding-agent=6.6.6"
 export STUB_HERDR_REPO="herdrdev/herdr"
 STUB_HERDR_TAG_VALUE="v5.5.5"
 STUB_HERDR_ARTIFACT_VALUE="ok"
@@ -109,28 +109,27 @@ STUB_EXISTS_VALUE=""
 df=$(fixture report.Dockerfile)
 run "$df" || fail "report exited non-zero: $(cat "$TMP_DIR/out")"
 cmp -s "$df" "$ROOT/Dockerfile" || fail 'a report modified the Dockerfile'
-for name in claude codex opencode pi; do
+for name in claude codex pi; do
     grep -q "^$name " "$TMP_DIR/out" || fail "report omitted $name"
 done
 grep -q 'unchanged' "$TMP_DIR/out" || fail 'report did not say the file was left alone'
 ok
 
-# 2. A bare --apply moves every pin it owns - the four npm versions and herdr's version plus both
+# 2. A bare --apply moves every pin it owns - the three npm versions and herdr's version plus both
 #    checksums - and touches nothing else. herdr IS in scope here, so downloading is expected and
 #    announced; cases 2e/2f cover the paths where it must not download.
 df=$(fixture apply.Dockerfile)
 run "$df" --apply || fail "apply exited non-zero: $(cat "$TMP_DIR/out")"
 expected="ARG CLAUDE_CODE_VERSION=9.9.9
 ARG CODEX_VERSION=8.8.8
-ARG OPENCODE_VERSION=7.7.7
 ARG PI_VERSION=6.6.6"
-actual=$(grep -E '^ARG (CLAUDE_CODE|CODEX|OPENCODE|PI)_VERSION=' "$df")
+actual=$(grep -E '^ARG (CLAUDE_CODE|CODEX|PI)_VERSION=' "$df")
 [ "$actual" = "$expected" ] || fail "apply wrote the wrong pins:
 $actual"
 grep -q '^ARG HERDR_VERSION=5.5.5$' "$df" || fail 'a bare apply did not move the herdr pin'
 [ "$(wc -l < "$df")" = "$(wc -l < "$ROOT/Dockerfile")" ] || fail 'apply changed the line count'
 # Every OTHER line must be byte-identical - no stray pin, flag, or whitespace edit.
-OWNED='^ARG (CLAUDE_CODE|CODEX|OPENCODE|PI|HERDR)_VERSION=|^ARG HERDR_SHA256_(AMD64|ARM64)='
+OWNED='^ARG (CLAUDE_CODE|CODEX|PI|HERDR)_VERSION=|^ARG HERDR_SHA256_(AMD64|ARM64)='
 if diff <(grep -vE "$OWNED" "$ROOT/Dockerfile") \
         <(grep -vE "$OWNED" "$df") > "$TMP_DIR/other" 2>&1; then :; else
     fail "apply touched lines outside the pins it owns:
@@ -189,7 +188,7 @@ ok
 # 2f. An npm-only apply must not touch the herdr pins at all.
 df=$(fixture npmonly.Dockerfile)
 STUB_HERDR_ARTIFACT_VALUE="missing"
-run "$df" --apply claude codex opencode pi || fail "npm-only apply failed: $(cat "$TMP_DIR/out")"
+run "$df" --apply claude codex pi || fail "npm-only apply failed: $(cat "$TMP_DIR/out")"
 herdr_now=$(sed -n 's/^ARG HERDR_VERSION=//p' "$ROOT/Dockerfile")
 grep -q "^ARG HERDR_VERSION=${herdr_now}\$" "$df" || fail 'an npm-only apply moved the herdr pin'
 STUB_HERDR_ARTIFACT_VALUE="ok"
@@ -222,7 +221,7 @@ ok
 # 6. A registry that cannot be reached is a refusal, NOT "already up to date".
 df=$(fixture offline.Dockerfile)
 set +e
-STUB_LATEST="@anthropic-ai/claude-code= @openai/codex=8.8.8 opencode-ai=7.7.7 @earendil-works/pi-coding-agent=6.6.6" \
+STUB_LATEST="@anthropic-ai/claude-code= @openai/codex=8.8.8 @earendil-works/pi-coding-agent=6.6.6" \
     bash "$SCRIPT" --dockerfile "$df" --apply > "$TMP_DIR/out" 2>&1
 code=$?
 set -e
@@ -254,9 +253,9 @@ grep -Eq '^\s*curl .*ogulcancelik/herdr' "$ROOT/Dockerfile" \
     && fail 'the Dockerfile still downloads Herdr through the renamed owner'
 ok
 
-# 9. The real Dockerfile still carries all four pins, one line each - the script asserts this too,
-#    but a rename here should fail loudly rather than turn the tool into a no-op.
-for arg in CLAUDE_CODE_VERSION CODEX_VERSION OPENCODE_VERSION PI_VERSION \
+# 9. The real Dockerfile still carries every pin the tool owns, one line each - the script asserts
+#    this too, but a rename here should fail loudly rather than turn the tool into a no-op.
+for arg in CLAUDE_CODE_VERSION CODEX_VERSION PI_VERSION \
            HERDR_VERSION HERDR_SHA256_AMD64 HERDR_SHA256_ARM64; do
     count=$(grep -c "^ARG $arg=" "$ROOT/Dockerfile" || true)
     [ "$count" = "1" ] || fail "expected exactly one 'ARG $arg=' line in the Dockerfile, found $count"
@@ -265,7 +264,7 @@ ok
 
 # 10. Every pin the tool can write is mapped in docs/pin-acceptance.md. An unmapped one is the
 #     failure this coupling exists to prevent, so it must be a refusal rather than a warning.
-for arg in CLAUDE_CODE_VERSION CODEX_VERSION OPENCODE_VERSION PI_VERSION \
+for arg in CLAUDE_CODE_VERSION CODEX_VERSION PI_VERSION \
            HERDR_VERSION HERDR_SHA256_AMD64 HERDR_SHA256_ARM64; do
     "$ROOT/scripts/check-pin-acceptance.sh" --arg "$arg" >/dev/null 2>&1 \
         || fail "$arg has no row in docs/pin-acceptance.md, so the updater would refuse to move it"

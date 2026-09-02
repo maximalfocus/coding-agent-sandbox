@@ -42,7 +42,6 @@ try {
     $Catalog = @(
         @{ Name = "claude";   Arg = "CLAUDE_CODE_VERSION"; Package = "@anthropic-ai/claude-code" },
         @{ Name = "codex";    Arg = "CODEX_VERSION";       Package = "@openai/codex" },
-        @{ Name = "opencode"; Arg = "OPENCODE_VERSION";    Package = "opencode-ai" },
         @{ Name = "pi";       Arg = "PI_VERSION";          Package = "@earendil-works/pi-coding-agent" },
         @{ Name = "herdr";    Arg = "HERDR_VERSION";       Package = "github:herdrdev/herdr" }
     )
@@ -64,7 +63,7 @@ try {
         $known = $false
         foreach ($entry in $Catalog) { if ($entry.Name -eq $name) { $known = $true } }
         if (-not $known) {
-            Write-Error "unknown CLI '$name' (expected one of: claude, codex, opencode, pi)"
+            Write-Error "unknown CLI '$name' (expected one of: claude, codex, pi, herdr)"
             exit 1
         }
         if ($selected -contains $name) { Write-Error "'$name' named twice"; exit 1 }
