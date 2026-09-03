@@ -155,7 +155,7 @@ ttyd.sha256.arm64 | ttyd arm64 artifact | Dockerfile | ARG TTYD_SHA256_ARM64=b38
 ttyd.client-bundle | Vendored xterm.js web client | Dockerfile | 85baf6f288791e6012feec6257a8dd3665a449891692e7142debffbe24f99003 | verify-ttyd-client-reproducibility.sh,operator:browser-clipboard | mixed | two clean builds cover bytes; browser select-and-paste remains operator-only
 npm.version | npm | Dockerfile | ARG NPM_VERSION=11.18.0 | verify-npm-bundle.sh | repo | -
 claude-code.version | Claude Code CLI | Dockerfile | ARG CLAUDE_CODE_VERSION=2.1.258 | verify-npm-bundle.sh,check-provider-contracts.sh,operator:live-refresh | mixed | refresh User-Agent in mitm/filter_addon.py must move with it
-codex.version | Codex CLI | Dockerfile | ARG CODEX_VERSION=0.153.0 | verify-npm-bundle.sh,verify-codex-sandbox.sh | repo | the SL-13 verdict was established at 0.140.0 and deliberately still says so
+codex.version | Codex CLI | Dockerfile | ARG CODEX_VERSION=0.153.0 | verify-npm-bundle.sh,verify-codex-sandbox.sh | repo | also anchors the SL-13 verdict; re-establish it with probe-codex-subscription-broker.sh before moving this
 pi.version | Pi CLI | Dockerfile | ARG PI_VERSION=0.84.4 | verify-npm-bundle.sh | repo | -
 herdr.version | Terminal multiplexer | Dockerfile | ARG HERDR_VERSION=0.8.2 | test-osc52-boundary.sh,operator:herdr-selection-copy | mixed | operator half not re-run at this pin
 herdr.sha256.amd64 | Herdr amd64 artifact | Dockerfile | ARG HERDR_SHA256_AMD64=976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4 | host:verify-image-architectures.sh | host | needs a real build on amd64 hardware
