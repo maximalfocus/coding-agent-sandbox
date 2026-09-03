@@ -1,5 +1,12 @@
 # Codex subscription broker feasibility
 
+> **Applicability, as of 2026-09-03.** Everything below was established against Codex `0.140.0` and
+> remains an accurate account of that version. The image now ships `0.153.0`, so this document no
+> longer describes the bundled CLI. Nothing here has been withdrawn — a verdict is not falsified by
+> a version bump — but neither has it been re-established, and `SL-13` stays `Deferred` on the
+> strength of a finding about a version that is no longer shipped. That is the gap; re-running this
+> assessment against the shipped version is separate work.
+
 ## Verdict: NO-GO
 
 As of 2026-08-10, the repository-pinned Codex CLI `0.140.0` does not expose a supported,

@@ -208,7 +208,8 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   [`docs/codex-sandbox.md`](docs/codex-sandbox.md).
 - **Codex subscription credentials are not isolated by the sidecar.** The default Codex login cache
   remains in the agent-mounted `~/.codex` volume and contains reusable access tokens. A pinned
-  feasibility review of Codex `0.140.0` found no supported credential-only broker: managed login
+  feasibility review of Codex `0.140.0` — **not** the `0.153.0` the image now ships, and not
+  re-checked against it — found no supported credential-only broker: managed login
   keeps auth with the Codex process, while the only host-supplied token mode is marked unstable and
   OpenAI-internal and carries access tokens over the App Server client protocol. Running that full
   command/filesystem App Server in the credential sidecar would collapse the sidecar's “no agent

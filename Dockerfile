@@ -155,7 +155,7 @@ RUN npm install -g --allow-scripts=@anthropic-ai/claude-code \
 # Codex CLI (OpenAI) for cross-vendor peer review, pinned at BUILD time. Authenticated separately
 # with your ChatGPT/OpenAI subscription via ./scripts/auth/codex-login.sh; egress is gated by ALLOW_OPENAI.
 # agent-cli: codex
-ARG CODEX_VERSION=0.140.0
+ARG CODEX_VERSION=0.153.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}"
 
 # Pi coding-agent harness, pinned at build time like Claude and Codex. It needs no lifecycle

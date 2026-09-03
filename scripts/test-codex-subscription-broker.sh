@@ -29,15 +29,23 @@ FIXTURE
 chmod +x "$TMP_DIR/wrong-version"
 expect_fail "$TMP_DIR/wrong-version" 'Codex version mismatch'
 
-cat >"$TMP_DIR/missing-schema" <<'FIXTURE'
+# This fixture must clear the probe's version gate in order to reach the assertion it is actually
+# about, so it has to report whatever the Dockerfile currently pins. Hardcoding the version worked
+# only for as long as the pin did not move: adopting 0.153.0 made this negative case fail on
+# "Codex version mismatch" instead of "lacks app-server schema generation" - the right refusal for
+# the wrong reason, which is a green-looking test proving something else. Derive it instead.
+pinned_codex=$(sed -n 's/^ARG CODEX_VERSION=//p' "$ROOT/Dockerfile")
+[[ -n "$pinned_codex" ]] || fail "no CODEX_VERSION pin in the Dockerfile to build the fixture from"
+
+cat >"$TMP_DIR/missing-schema" <<FIXTURE
 #!/usr/bin/env bash
-if [[ "${1:-}" == "--version" ]]; then
-    echo 'codex-cli 0.140.0'
-elif [[ "${1:-}" == "--help" ]]; then
+if [[ "\${1:-}" == "--version" ]]; then
+    echo 'codex-cli $pinned_codex'
+elif [[ "\${1:-}" == "--help" ]]; then
     printf '%s\n' 'login' 'logout' 'app-server [experimental]' '--remote <ADDR>'
-elif [[ "${1:-}" == "login" && "${2:-}" == "--help" ]]; then
+elif [[ "\${1:-}" == "login" && "\${2:-}" == "--help" ]]; then
     printf '%s\n' 'status' '--device-auth' '--with-api-key' '--with-access-token'
-elif [[ "${1:-}" == "app-server" && "${2:-}" == "--help" ]]; then
+elif [[ "\${1:-}" == "app-server" && "\${2:-}" == "--help" ]]; then
     echo '[experimental] Run the app server'
 else
     exit 64
