@@ -10,9 +10,9 @@ reads the machine-readable block at the bottom and reports, per dependency, whet
 agrees with this repository, whether it is known to have drifted, or whether confirming it would
 require something this environment does not have.
 
-Recording a dependency here does **not** guarantee it keeps working. `PRD §7` is explicit that a
-provider may change a contract at any time; the requirement is that such a change is pinned against,
-detected, and fails closed — not that it cannot happen.
+Recording a dependency here does **not** guarantee it keeps working. A provider may change a
+contract at any time; the requirement this project holds itself to is that such a change is pinned
+against, detected, and fails closed — not that it cannot happen.
 
 ## Running the check
 
@@ -156,8 +156,10 @@ editing its errors.
 ## Provenance and re-pinning (`CAS-R174`)
 
 Every value recorded here came from this repository's own source at the commit that added this file.
-None was extracted from a compiled or obfuscated provider artifact, and none may be — `PRD §7` names
-that an explicit non-goal.
+None was extracted from a compiled or obfuscated provider artifact, and none may be: extracting a
+contract value from an artifact a provider did not publish as an interface is an explicit non-goal
+of this project, because a value obtained that way carries no promise it will keep working and no
+way to tell when it stops.
 
 ### The one re-pin performed so far
 
@@ -174,7 +176,7 @@ that an explicit non-goal.
 
 This is the source `CAS-R174` permits — "a provider's own artifacts **or observed traffic**". The value
 is emitted in plain text by the provider's own client, to the user, as part of the documented login
-flow. Nothing was extracted from a compiled or obfuscated artifact, which `PRD §7` forbids.
+flow. Nothing was extracted from a compiled or obfuscated artifact, which this project does not do.
 
 **To obtain it again:** run `/login` in an agent container and read `client_id=` from the URL the CLI
 prints, before approving. An OAuth *client* registration is a public identifier, not a credential.
