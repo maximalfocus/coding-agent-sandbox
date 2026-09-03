@@ -190,15 +190,13 @@ argument or Compose environment value. Audit decisions contain only `INJECT`/red
 events; never capture environment dumps, proxy headers, key files, Pi auth state, or the volume in
 acceptance evidence.
 
-## Codex subscription isolation: NO-GO at 0.140.0
+## Codex subscription isolation: NO-GO at 0.153.0
 
-**The verdict is anchored to `0.140.0`; the image ships `0.153.0`.** The boundary below is still the
-one in force — the sidecar has no OpenAI route to remove — but the *evidence* for it was gathered
-against a version this project no longer bundles, and has not been re-gathered. Re-establishing it
-is a separate feasibility run, not a documentation edit.
+**First established at `0.140.0`, re-established against the shipped `0.153.0` on 2026-09-03** —
+same verdict, same decisive evidence, and the probe needed no change to produce it.
 
 The sidecar intentionally has no OpenAI capability gate, Codex state mount, or OpenAI/ChatGPT route.
-Codex `0.140.0` did not expose a supported credential-only subscription broker. Managed login
+Codex does not expose a supported credential-only subscription broker. Managed login
 keeps reusable auth in the Codex process; the host-managed App Server token mode is explicitly
 unstable/OpenAI-internal, carries replacement access tokens through its client protocol, and belongs
 to a full command/filesystem execution server. Moving that server into this container would violate

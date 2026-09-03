@@ -431,13 +431,11 @@ allowlisted host — your code is sent to OpenAI for inference once `ALLOW_OPENA
 
 > **Credential boundary:** this login remains readable to Codex and other processes running as the
 > agent user. The experimental sidecar does not currently offer Codex subscription isolation.
-> That was established against Codex `0.140.0`, which found no supported credential-only broker:
-> its host-managed token mode is marked internal/unstable and its App Server is also a
-> command/filesystem execution surface. **The image now ships `0.153.0`, and the finding has not
-> been re-checked against it** — so treat the boundary above as the one in force and the *reason*
-> as pinned to a version that is no longer shipped. See the
-> [feasibility decision](docs/codex-subscription-broker-feasibility.md). Either way, do not copy
-> `auth.json`, substitute an API key, or add OpenAI sidecar routes as a workaround.
+> Codex has no supported credential-only broker: its host-managed token mode is marked
+> internal/unstable and its App Server is also a command/filesystem execution surface. First
+> established at `0.140.0` and **re-established against the shipped `0.153.0` on 2026-09-03** —
+> same answer. See the [feasibility decision](docs/codex-subscription-broker-feasibility.md). Do not
+> copy `auth.json`, substitute an API key, or add OpenAI sidecar routes as a workaround.
 
 > **Codex Linux sandbox:** the shipped Docker seccomp profile blocks Codex bubblewrap from creating
 > a nested user namespace. Installing Debian `bubblewrap` only removes the PATH warning; it does not

@@ -55,7 +55,11 @@ chmod +x "$TMP_DIR/missing-schema"
 expect_fail "$TMP_DIR/missing-schema" 'lacks app-server schema generation'
 
 grep -Fq '# Verdict: NO-GO' "$DOC" || fail "document does not record the NO-GO verdict"
-grep -Fq '0.140.0' "$DOC" || fail "document does not pin the assessed Codex version"
+# The ASSESSED version, derived rather than hardcoded. The document legitimately names more than one
+# now - 0.140.0 is where the verdict was first reached, and it stays - so a literal check here would
+# keep passing on the historical mention long after the assessment stopped covering what ships.
+grep -Fq "$pinned_codex" "$DOC" \
+    || fail "document does not record an assessment at the pinned Codex version ($pinned_codex)"
 grep -Fq '6506579001c322927a3e4bd440563267a7ac6c1f' "$DOC" \
     || fail "document does not pin the assessed upstream commit"
 grep -Fq 'OPENAI INTERNAL USE ONLY' "$DOC" \

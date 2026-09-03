@@ -95,18 +95,16 @@ No adapter exists. `SL-13` stands at a documented `NO-GO`, and `CAS-R121` alread
 discipline for this provider before `SL-18` generalised it. What is pinned is the version the verdict
 was reached against, so a CLI bump cannot quietly invalidate the recorded conclusion.
 
-**As of 2026-09-03 the two rows below deliberately disagree.** `codex.cli-version` reads `0.153.0`;
-`codex.verdict-anchor` still reads `0.140.0`, because that is where the verdict was established and
-it has not been re-established since. That gap *is* the recorded state — it is what this pair exists
-to make visible, and the mechanism working rather than a defect to repair.
+**The pair agreed again on 2026-09-03, and how it got there is the point.** Adopting `0.153.0`
+left `codex.cli-version` ahead of `codex.verdict-anchor`, which stayed at `0.140.0` because no
+assessment had been run against the new CLI. The anchor moved only once one had been — the probe was
+re-run against the shipped binary and returned the same `NO-GO`. Both rows now read `0.153.0`.
 
-Two repairs would each destroy the information. Moving the anchor to match the CLI would claim a
-verdict nobody reached. Declaring the pair a **coupling** — the `pin-coupling` block in
-[`pin-acceptance.md`](pin-acceptance.md), which forces a pin and its coupled literals to move
-together — would force that same false claim automatically on every future bump. They are pinned
-*separately* on purpose. Closing the gap means re-running
-`scripts/probe-codex-subscription-broker.sh` against the shipped version and recording what it
-finds, whichever way it comes out.
+They are still pinned **separately** on purpose, and must not be made a `pin-coupling` (the block in
+[`pin-acceptance.md`](pin-acceptance.md) that forces a pin and its coupled literals to move
+together). A coupling would drag the anchor along with every future bump and thereby assert a
+verdict nobody reached — the opposite of what this pair is for. The anchor follows a re-assessment,
+never a rebuild.
 
 | Dependency | Where the value lives | What breaks if it changes |
 |---|---|---|
@@ -239,6 +237,6 @@ pi.deepseek-env-var | Pi | provider selection | docker-compose.sidecar.yml | DEE
 pi.auth-file-schema | Pi | asserted credential schema | - | ~/.pi/agent/auth.json | required | -
 pi.cli-version | Pi | pinned CLI | Dockerfile | ARG PI_VERSION=0.84.4 | na | -
 codex.cli-version | Codex | pinned CLI | Dockerfile | ARG CODEX_VERSION=0.153.0 | na | -
-codex.verdict-anchor | Codex | verdict version anchor | docs/codex-subscription-broker-feasibility.md | 0.140.0 | na | -
+codex.verdict-anchor | Codex | verdict version anchor | docs/codex-subscription-broker-feasibility.md | 0.153.0 | na | -
 codex.cli-login-command | Codex | CLI auth surface | scripts/auth/codex-login.sh,scripts/auth/codex-login.ps1 | codex login --device-auth | required | -
 ```

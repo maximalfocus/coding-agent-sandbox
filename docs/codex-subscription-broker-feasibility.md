@@ -1,17 +1,17 @@
 # Codex subscription broker feasibility
 
-> **Applicability, as of 2026-09-03.** Everything below was established against Codex `0.140.0` and
-> remains an accurate account of that version. The image now ships `0.153.0`, so this document no
-> longer describes the bundled CLI. Nothing here has been withdrawn — a verdict is not falsified by
-> a version bump — but neither has it been re-established, and `SL-13` stays `Deferred` on the
-> strength of a finding about a version that is no longer shipped. That is the gap; re-running this
-> assessment against the shipped version is separate work.
+> **Re-established at `0.153.0` on 2026-09-03.** The verdict below was first reached against
+> `0.140.0`. The pin has since moved thirteen minor versions, so the assessment was re-run against
+> the shipped CLI through the reproduction path recorded further down. **Same verdict, same decisive
+> evidence, and the probe needed no change to produce it.** What follows is therefore a live
+> statement about the bundled Codex, not a historical one. `SL-13` stays `Deferred`.
 
 ## Verdict: NO-GO
 
-As of 2026-08-10, the repository-pinned Codex CLI `0.140.0` does not expose a supported,
-credential-only contract that can keep a personal ChatGPT subscription credential in the egress
-sidecar while Codex continues to execute as the untrusted agent. Do not implement the proposed
+The repository-pinned Codex CLI does not expose a supported, credential-only contract that can keep
+a personal ChatGPT subscription credential in the egress sidecar while Codex continues to execute as
+the untrusted agent. Established at `0.140.0` on 2026-08-10 and re-established at `0.153.0` on
+2026-09-03. Do not implement the proposed
 sidecar adapter by parsing `auth.json`, copying cached credentials, using the external-token App
 Server mode, or substituting an OpenAI API key.
 
@@ -20,7 +20,11 @@ existing default stack supports subscription login. What is not feasible at the 
 the additional security property: **all reusable authentication and refresh state stays in a
 credential-only sidecar that runs no agent code and mounts no workspace**.
 
-## Assessed contract
+## Assessed contract, at `0.140.0`
+
+This table is the **original** evidence, gathered on 2026-08-10. It is kept as recorded rather than
+rewritten; the re-assessment against the shipped `0.153.0` is its own section below, and states what
+changed between the two and what did not.
 
 | Evidence class | Pinned evidence | Finding |
 |---|---|---|
@@ -96,6 +100,44 @@ At reevaluation time, bump the pinned evidence, run the compatibility probe, and
 implementation issue for exact routes, default-off `ALLOW_OPENAI`, login, refresh, two real
 subscription inferences, placeholder-only agent state, logout, and direct-egress denial.
 
+## Re-assessment at `0.153.0` (2026-09-03)
+
+Re-run because the `0.141`–`0.153` release notes carried **named candidates** rather than a vague
+possibility: proxy-aware authentication in `0.143` and `0.146`, host-provided authentication at
+runtime in `0.144`, and managed-authentication enforcement in `0.147`. `SL-08`/`SL-09` are built on
+a credential-injecting proxy, and part of the original `NO-GO` was that Codex did not respect that
+path — so these were worth checking rather than assuming either way.
+
+**They did not change the answer.** The two schema strings that carry the decision are unchanged:
+
+> `v2/LoginAccountParams.json` — *"[UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE. The access
+> token must contain the same scopes that Codex-managed ChatGPT auth tokens have."*
+
+> `v2/AccountUpdatedNotification.json` — *"[UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
+> ChatGPT auth tokens are supplied by an external host app and are only stored in memory. Token
+> refresh must be handled by the external host app."*
+
+The second is worth quoting rather than paraphrasing. In-memory-only tokens whose refresh is owned
+by an external host is **close to the shape a sidecar broker would want**, and it is still
+explicitly not for use. That is the whole finding: the capability exists and the contract withholds
+it. Building on it anyway would be exactly the brittle adaptation `CAS-R121` and `CAS-R174` refuse.
+
+`app-server` also remains `[experimental]` and still exposes `thread/shellCommand`, `command/exec`,
+`fs/readFile`, and `fs/writeFile`. Hosting it in the credential sidecar would still collapse the
+sidecar's defining property — the credential holder runs no agent code and mounts no workspace — so
+the second half of the original reasoning is intact too.
+
+**One contract observation, recorded because something depends on it.** `codex login --device-auth`
+still exists and is still accepted at `0.153.0`, but its `--help` entry now has an empty
+description: the flag is supported and no longer documented. `scripts/auth/codex-login.sh` drives
+it and `codex.cli-login-command` in [`provider-contracts.md`](provider-contracts.md) pins it, so a
+future removal would break the host-side sign-in. Only a live run can observe that, which is why
+that contract is recorded as needing one.
+
+**What would reopen this** is unchanged: a supported, versioned, non-internal credential-only
+interface. A marker moving from `[UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE` to a stable
+one is the single signal to watch, and re-running the probe is how to check it.
+
 ## Reproduce the compatibility evidence
 
 The probe reads the exact `CODEX_VERSION` from `Dockerfile`, rejects any different executable,
@@ -113,10 +155,23 @@ docker run --rm \
 scripts/test-codex-subscription-broker.sh
 ```
 
-Expected final fields for `0.140.0`:
+Expected final fields at `0.153.0`, captured 2026-09-03 through exactly the command above:
 
 ```text
-codex_version=0.140.0
+managed_login_modes=chatgpt,chatgptDeviceCode
+external_mode=chatgptAuthTokens
+external_stability=unstable-openai-internal-only-do-not-use
+external_login_payload=accessToken,chatgptAccountId
+external_refresh_owner=client
+external_refresh_payload=accessToken,chatgptAccountId
+app_server_execution_surface=thread/shellCommand,command/exec,fs/readFile,fs/writeFile
+codex_version=0.153.0
+cli_lifecycle=login,device-auth,status,logout
+remote_execution_transport=experimental-app-server
 verdict=NO-GO
 reason=no-supported-credential-only-subscription-broker
 ```
+
+At `0.140.0` the recorded fields were `codex_version`, `verdict`, and `reason`. The probe has
+reported the fuller set since; the three that carried the decision then carry it now, with
+`codex_version` the only one whose value moved.
