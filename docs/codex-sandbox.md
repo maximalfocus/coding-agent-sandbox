@@ -1,6 +1,6 @@
 # Codex Linux sandbox inside the agent container
 
-Codex 0.140.0 uses bubblewrap (`bwrap`) for its Linux `workspace-write` sandbox. In the shipped Docker profiles, Docker's outer seccomp boundary blocks the nested user-namespace operation bubblewrap needs. This is intentional: the project keeps its primary container boundary rather than broadly relaxing seccomp to add a second inner boundary.
+Codex uses bubblewrap (`bwrap`) for its Linux `workspace-write` sandbox. In the shipped Docker profiles, Docker's outer seccomp boundary blocks the nested user-namespace operation bubblewrap needs. This is intentional: the project keeps its primary container boundary rather than broadly relaxing seccomp to add a second inner boundary.
 
 ## What you will see
 
@@ -15,7 +15,7 @@ Installing Debian bubblewrap on PATH removes the warning but does **not** fix na
 
 ## Measured control matrix
 
-Measured on Docker Desktop/Engine 29.4.0, macOS arm64, with Codex 0.140.0. Other hosts can additionally prohibit unprivileged user namespaces; the verifier classifies only known namespace failures and fails closed on anything else.
+Measured on Docker Desktop/Engine 29.4.0, macOS arm64, first with Codex 0.140.0 and **re-measured unchanged at 0.153.0** on 2026-09-03 by `scripts/verify-codex-sandbox.sh` — same `nested_sandbox=blocked-known`, same `:danger-full-access` fallback, same workspace-write / outside-write / network results. Thirteen minor versions moved none of it, which is the point of re-running rather than assuming either way. Other hosts can additionally prohibit unprivileged user namespaces; the verifier classifies only known namespace failures and fails closed on anything else.
 
 | Controls varied in a disposable diagnostic container | Operational result |
 |---|---|

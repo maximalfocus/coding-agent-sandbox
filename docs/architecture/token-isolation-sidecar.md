@@ -192,8 +192,13 @@ acceptance evidence.
 
 ## Codex subscription isolation: NO-GO at 0.140.0
 
+**The verdict is anchored to `0.140.0`; the image ships `0.153.0`.** The boundary below is still the
+one in force — the sidecar has no OpenAI route to remove — but the *evidence* for it was gathered
+against a version this project no longer bundles, and has not been re-gathered. Re-establishing it
+is a separate feasibility run, not a documentation edit.
+
 The sidecar intentionally has no OpenAI capability gate, Codex state mount, or OpenAI/ChatGPT route.
-Codex `0.140.0` does not expose a supported credential-only subscription broker. Managed login
+Codex `0.140.0` did not expose a supported credential-only subscription broker. Managed login
 keeps reusable auth in the Codex process; the host-managed App Server token mode is explicitly
 unstable/OpenAI-internal, carries replacement access tokens through its client protocol, and belongs
 to a full command/filesystem execution server. Moving that server into this container would violate

@@ -95,6 +95,19 @@ No adapter exists. `SL-13` stands at a documented `NO-GO`, and `CAS-R121` alread
 discipline for this provider before `SL-18` generalised it. What is pinned is the version the verdict
 was reached against, so a CLI bump cannot quietly invalidate the recorded conclusion.
 
+**As of 2026-09-03 the two rows below deliberately disagree.** `codex.cli-version` reads `0.153.0`;
+`codex.verdict-anchor` still reads `0.140.0`, because that is where the verdict was established and
+it has not been re-established since. That gap *is* the recorded state — it is what this pair exists
+to make visible, and the mechanism working rather than a defect to repair.
+
+Two repairs would each destroy the information. Moving the anchor to match the CLI would claim a
+verdict nobody reached. Declaring the pair a **coupling** — the `pin-coupling` block in
+[`pin-acceptance.md`](pin-acceptance.md), which forces a pin and its coupled literals to move
+together — would force that same false claim automatically on every future bump. They are pinned
+*separately* on purpose. Closing the gap means re-running
+`scripts/probe-codex-subscription-broker.sh` against the shipped version and recording what it
+finds, whichever way it comes out.
+
 | Dependency | Where the value lives | What breaks if it changes |
 |---|---|---|
 | Pinned CLI version | `Dockerfile` (`CODEX_VERSION`) | The feasibility verdict no longer describes the shipped CLI. |
@@ -225,7 +238,7 @@ deepseek.key-path | DeepSeek | local secret path | docker-compose.sidecar.yml,mi
 pi.deepseek-env-var | Pi | provider selection | docker-compose.sidecar.yml | DEEPSEEK_API_KEY | required | -
 pi.auth-file-schema | Pi | asserted credential schema | - | ~/.pi/agent/auth.json | required | -
 pi.cli-version | Pi | pinned CLI | Dockerfile | ARG PI_VERSION=0.84.4 | na | -
-codex.cli-version | Codex | pinned CLI | Dockerfile | ARG CODEX_VERSION=0.140.0 | na | -
+codex.cli-version | Codex | pinned CLI | Dockerfile | ARG CODEX_VERSION=0.153.0 | na | -
 codex.verdict-anchor | Codex | verdict version anchor | docs/codex-subscription-broker-feasibility.md | 0.140.0 | na | -
 codex.cli-login-command | Codex | CLI auth surface | scripts/auth/codex-login.sh,scripts/auth/codex-login.ps1 | codex login --device-auth | required | -
 ```
