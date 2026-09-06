@@ -911,6 +911,36 @@ agent is absent from a surface it must appear on. Both are an error exit. The ro
 [`docs/agent-roster.md`](docs/agent-roster.md), and the repository's account of its own history is
 exempt by name rather than rewritten to match.
 
+## One admission policy, compared across everything that implements it
+
+The egress allowlist is **constructed** in five places — the default entrypoint, the two mediation
+entrypoints, and the shell and PowerShell hot-add helpers — and **decided** by two engines,
+tinyproxy's filter and `mitm/filter_addon.py`'s matcher. Nothing used to compare them, so a
+divergence between the stacks could only be found by reading five files.
+
+They already differ. For the DNS-equivalent host `anthropic.com.` the default stack refuses and the
+mediation stack admits, because the addon strips a trailing root dot and the generated pattern
+anchors on `$`:
+
+```bash
+scripts/check-allowlist-parity.sh          # per case: builders, then both engines
+scripts/check-allowlist-parity.sh --quiet
+```
+
+Neither verdict is unsafe — that host is equivalent to one already allowlisted — and no requirement
+chooses between them, so [`docs/allowlist-decisions.md`](docs/allowlist-decisions.md) records the
+row as **undecided** with both verdicts rather than asserting either is correct. The check asserts
+both, so it fails if *either* engine changes its answer.
+
+The engines are executed, never modelled: the default verdict comes from tinyproxy itself running
+the shipped configuration, and the mediation verdict from the addon's own `_matches()`. A check that
+re-implemented the pattern semantics would only be asserting its own opinion of them. Where a
+builder cannot be invoked in isolation, the check compares the hostname predicate instead — that
+predicate is the decision, so a path that changes it fails even though its builder was never run.
+
+`UNEVALUATED` means an engine could not be executed here (the default one needs the built image) and
+is never reported as a pass.
+
 ## Why the firewall's rule order is checked, not just its rules
 
 The firewall's guarantees are a property of rule **order**. Move one line in `init-firewall.sh` —
