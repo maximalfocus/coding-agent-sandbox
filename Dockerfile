@@ -230,6 +230,11 @@ COPY entrypoint.sh    /usr/local/bin/entrypoint.sh
 # entrypoint (auto-load on every boot) and by scripts/skills/skills-setup.sh/.ps1 (host helpers).
 COPY scripts/skills/link-skills.sh /usr/local/bin/sandbox-link-skills
 COPY scripts/network/aws-sso-domains.sh /usr/local/bin/aws-sso-domains
+# Live egress-binding self-test, run by BOTH root entrypoints so the default and mediation
+# stacks cannot drift on it. It probes each private-range constraint through the identity that
+# constraint binds, and asserts the intended REJECT rule matched rather than that a connection
+# merely failed.
+COPY scripts/verify-egress-binding.sh /usr/local/bin/verify-egress-binding
 # First-run setup reminder, sourced by every interactive shell (login shells via profile.d; the
 # /etc/bash.bashrc line below covers interactive non-login shells such as Herdr panes). It prints
 # ~/.sandbox-todo, which the entrypoint writes only while a manual setup step is still unmet.
@@ -240,9 +245,11 @@ RUN printf '\n# Sandbox first-run setup reminder (interactive non-login shells, 
 # with .gitattributes (which forces LF on checkout); also normalize the proxy config copied above.
 RUN sed -i 's/\r$//' /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh \
         /usr/local/bin/sandbox-link-skills /usr/local/bin/aws-sso-domains \
+        /usr/local/bin/verify-egress-binding \
         /etc/profile.d/zz-sandbox-todo.sh /etc/tinyproxy/tinyproxy.conf \
     && chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/entrypoint.sh \
-        /usr/local/bin/sandbox-link-skills /usr/local/bin/aws-sso-domains
+        /usr/local/bin/sandbox-link-skills /usr/local/bin/aws-sso-domains \
+        /usr/local/bin/verify-egress-binding
 
 # Claude's view of your files: only what gets mounted here.
 RUN mkdir -p /workspace && chown node:node /workspace

@@ -239,6 +239,56 @@ else
     no "Docker host gateway is not covered by the agent's private-range rejection"
 fi
 
+# 5b. The agent chain binds by INTERFACE, ADDRESS and PORT rather than by user, so prove the
+#     binding by behaviour and not only by the rule's presence (check 3 asserts the rule exists).
+#     A failed connection is ambiguous on its own — nothing may be listening — so each negative case
+#     asserts the intended REJECT rule's own packet counter moved, which happens only when that rule
+#     actually matched the packet. Each negative tuple differs from the permitted one in exactly one
+#     selector, so a widened rule is caught rather than masked by a second difference.
+reject_pkts() {  # reject_pkts <destination-cidr> -> packets matched by that OUTPUT REJECT
+    rexec "iptables -nvxL OUTPUT | awk -v d='$1' '\$3 == \"REJECT\" && \$9 == d { print \$1; exit }'"
+}
+# Which private-range REJECT covers an address. The sidecar's own address is inside one of these,
+# so changing only the PORT does not fall through to the terminal catch-all - it is rejected by the
+# private-range rule the permitted tuple's pinned ACCEPT sits above. Asserting the catch-all here
+# would be asserting the wrong rule.
+bogon_net_for() {
+    case "$1" in
+        10.*) echo 10.0.0.0/8 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[01].*) echo 172.16.0.0/12 ;;
+        192.168.*) echo 192.168.0.0/16 ;;
+        169.254.*) echo 169.254.0.0/16 ;;
+        *) echo "" ;;
+    esac
+}
+if [ -n "${pinned_ip:-}" ] && [ -n "${gateway:-}" ] && [ -n "${gateway_net:-}" ]; then
+    # permitted tuple: the pinned sidecar address on the proxy port
+    if aexec "timeout 3 socat -u /dev/null TCP:'$pinned_ip':8888" >/dev/null 2>&1; then
+        ok "permitted tuple $pinned_ip:8888 connects"
+    else
+        no "permitted tuple $pinned_ip:8888 does not connect; the agent cannot reach its proxy"
+    fi
+    # negative tuple, one selector changed: same address, different port
+    pinned_net=$(bogon_net_for "$pinned_ip")
+    before=$(reject_pkts "$pinned_net"); aexec "timeout 3 socat -u /dev/null TCP:'$pinned_ip':8889" >/dev/null 2>&1 || true
+    after=$(reject_pkts "$pinned_net")
+    if [ -n "$pinned_net" ] && [ -n "$before" ] && [ -n "$after" ] && [ "$after" -gt "$before" ]; then
+        ok "port-only change $pinned_ip:8889 hit the $pinned_net REJECT ($before -> $after)"
+    else
+        no "port-only change $pinned_ip:8889 did not hit the $pinned_net REJECT ($before -> ${after:-?}); the proxy-port rule is not pinned to one port"
+    fi
+    # negative tuple, one selector changed: same port, different address
+    before=$(reject_pkts "$gateway_net"); aexec "timeout 3 socat -u /dev/null TCP:'$gateway':8888" >/dev/null 2>&1 || true
+    after=$(reject_pkts "$gateway_net")
+    if [ -n "$before" ] && [ -n "$after" ] && [ "$after" -gt "$before" ]; then
+        ok "address-only change $gateway:8888 hit the $gateway_net REJECT ($before -> $after)"
+    else
+        no "address-only change $gateway:8888 did not hit the $gateway_net REJECT ($before -> ${after:-?}); the proxy-port rule is not pinned to one address"
+    fi
+else
+    note "agent-chain selector matrix skipped: the pinned sidecar address or the gateway is unknown"
+fi
+
 # 6. The agent has NO direct internet — only via the proxy. A non-proxied curl must fail.
 if aexec 'env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy curl -s --max-time 6 -o /dev/null https://api.anthropic.com/'; then
     no "agent reached the internet WITHOUT the proxy (egress lockdown broken)"
