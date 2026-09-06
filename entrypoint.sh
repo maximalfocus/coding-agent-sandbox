@@ -179,6 +179,12 @@ if [ "$(id -u)" = "0" ]; then
     fi
     say "  ok: direct IPv6 egress is blocked"
 
+    # Each probe above ran as ROOT, which the terminal catch-all REJECT catches under every
+    # ordering — so none of them can tell whether the rule it is named after is the one that
+    # matched. This exercises the same constraints through the identity that binds them, and
+    # asserts the intended REJECT rule's packet counter moved. See scripts/verify-egress-binding.sh.
+    /usr/local/bin/verify-egress-binding || exit 1
+
     # Host Docker access is an explicit, high-impact opt-in. The override mounts the socket but
     # socket ownership varies by host (Docker Desktop commonly presents gid 0; Linux uses its
     # docker group gid). Add node to that existing numeric group without changing the bind-mounted

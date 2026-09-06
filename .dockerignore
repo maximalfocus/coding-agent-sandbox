@@ -9,9 +9,11 @@ run.ps1
 shell.sh
 shell.ps1
 scripts/
-# …except the two scripts baked INTO the image (see Dockerfile): the shared skills linker and the
-# first-run reminder hint. Re-included from the otherwise host-only scripts/ tree.
+# …except the scripts baked INTO the image (see Dockerfile), re-included from the otherwise
+# host-only scripts/ tree. A script added to the Dockerfile without a line here fails the build
+# with "not found" rather than shipping without it, so keep this list in step with the COPYs.
 !scripts/build-pinned-go-clis.sh
 !scripts/skills/link-skills.sh
 !scripts/skills/sandbox-todo-hint.sh
 !scripts/network/aws-sso-domains.sh
+!scripts/verify-egress-binding.sh

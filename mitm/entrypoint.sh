@@ -203,6 +203,12 @@ if [ "$(id -u)" = "0" ]; then
     fi
     say "  ok: direct IPv6 egress is blocked"
 
+    # Each probe above ran as ROOT, which the terminal catch-all REJECT catches under every
+    # ordering — so none of them can tell whether the rule it is named after is the one that
+    # matched. This exercises the same constraints through the identity that binds them, and
+    # asserts the intended REJECT rule's packet counter moved. See scripts/verify-egress-binding.sh.
+    /usr/local/bin/verify-egress-binding || exit 1
+
     mkdir -p /home/node/.claude && chown -R node:node /home/node/.claude 2>/dev/null || true
 
     # Hand off to the shared node-side entrypoint (cd /workspace, run command or ttyd).
