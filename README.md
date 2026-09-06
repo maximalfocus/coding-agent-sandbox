@@ -911,6 +911,35 @@ agent is absent from a surface it must appear on. Both are an error exit. The ro
 [`docs/agent-roster.md`](docs/agent-roster.md), and the repository's account of its own history is
 exempt by name rather than rewritten to match.
 
+## Why the firewall's rule order is checked, not just its rules
+
+The firewall's guarantees are a property of rule **order**. Move one line in `init-firewall.sh` —
+the proxy-UID `ACCEPT` above the private-range `REJECT`s instead of below them — and the proxy user
+reaches private ranges, cloud metadata and other containers, while every rule is still present.
+
+Nothing noticed. The boot self-test in `entrypoint.sh` probes those constraints **as root**, and
+root is caught by the terminal catch-all `REJECT` under either ordering, so it reports success
+either way; `sidecar-smoketest.sh` asserts `-P OUTPUT DROP`, which is the chain's default rather
+than its order.
+
+So the order is asserted directly, across all three shipped chains, without starting anything:
+
+```bash
+scripts/check-firewall-order.sh          # per chain: policy, terminal reject, accept ordering
+scripts/check-firewall-order.sh --quiet  # only failures
+```
+
+The three chains do not share one shape, and the check is stated so that they can differ without
+either being wrong. `init-firewall.sh` and the sidecar's egress chain put a **broad** accept — one
+selecting by uid alone, so any destination — *after* the private-range rejects. The sidecar's agent
+chain puts **pinned** accepts *before* them on purpose, because the sidecar and the nested daemon
+live on an RFC1918 network; each of those names one interface, one `/32` and one port. Accepts for
+established connections and for loopback are exempt: the first opens no new flow and the second
+cannot leave the container.
+
+Exit `1` is an ordering violation. Exit `2` means a chain could not be read at all, so the invariant
+was never evaluated — never reported as a pass.
+
 ## Where each credential actually lives
 
 Signing an agent in and choosing where its credential lives are two different things, and only the
