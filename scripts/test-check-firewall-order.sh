@@ -134,6 +134,13 @@ mv "$FIX/$DEFAULT_CHAIN.new" "$FIX/$DEFAULT_CHAIN"
 expect_rc 1 'a chain whose last rule is not the catch-all REJECT fails'
 
 reset_fixture
+# Present but no longer last: the catch-all is still there and still rejects everything that
+# reaches it, but a rule appended after it is evaluated first for anything it matches. "Absent"
+# and "not last" are separate failures and the acceptance names both.
+printf 'iptables -A OUTPUT -p tcp --dport 9999 -j ACCEPT\n' >> "$FIX/$DEFAULT_CHAIN"
+expect_rc 1 'a catch-all REJECT that is present but no longer last fails'
+
+reset_fixture
 awk '!(/^[[:space:]]*iptables -A OUTPUT -d "\$net" -j REJECT/)' "$FIX/$DEFAULT_CHAIN" > "$FIX/$DEFAULT_CHAIN.new"
 mv "$FIX/$DEFAULT_CHAIN.new" "$FIX/$DEFAULT_CHAIN"
 expect_rc 1 'a chain with no private/bogon REJECT fails rather than passing vacuously'
