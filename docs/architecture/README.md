@@ -22,9 +22,9 @@ exits this boundary and is documented in [`SECURITY.md`](../../SECURITY.md).
 1. **Containment** — the agent runs inside a Docker sandbox, as an unprivileged user, with Linux
    capabilities dropped, `no-new-privileges`, and memory/PID limits. A compromised or
    prompt-injected agent is confined to the box.
-2. **Data minimization** — of *your machine*, the only thing mounted in is the **one project folder**
-   you choose. SSH keys, cloud credentials, and the rest of your home are never mounted, so they are
-   invisible to it. (Inside the box it can of course read the container's own OS files and its
+2. **Data minimization** — of *your machine*, the main launchers mount only your **personal and work
+   project trees** (`~/personal` and `~/work` by default). SSH keys, cloud credentials, and the rest
+   of your home are never mounted, so they are invisible to it. (Inside the box it can of course read the container's own OS files and its
    `~/.claude` config — which includes the login token; see *Honest boundary*.)
 3. **Fail-closed egress** — all traffic is forced through an allowlist proxy that **decides allow/deny
    by hostname**, and a kernel firewall enforces that **only the proxy's own traffic may leave**
@@ -61,14 +61,14 @@ flowchart TB
   subgraph HOST["🖥️ Developer machine (host)"]
     direction LR
     BROWSER["🌐 Browser → web terminal<br/>(127.0.0.1 only, password)"]
-    PROJ["📁 One project folder"]
+    PROJ["📁 Personal + work project trees"]
     SECRETS["🔑 SSH keys · cloud creds · browser profiles<br/>+ everything else on your machine"]
   end
 
   subgraph BOX["🛡️ Docker sandbox — trust boundary (contains the blast radius)"]
     direction TB
     AGENT["🤖 Claude Code CLI<br/>unprivileged 'node' user · capabilities dropped<br/>no-new-privileges · memory / PID limits"]
-    WS["📂 /workspace<br/>= your project folder — the only part of<br/>your machine mounted in"]
+    WS["📂 /workspace/personal + /workspace/work<br/>= the only host project trees mounted in"]
     PROXY["🚦 Allowlist egress proxy — decides allow / deny by hostname<br/>Run ONE mode:<br/>Default: hostname filter (tinyproxy)<br/>Opt-in: TLS-intercept + content rules (mitmproxy)"]
     FW["🧱 Kernel firewall — FAIL-CLOSED<br/>only the proxy's traffic may exit (service-account gate)<br/>agent's direct DNS · IPv6 · private and cloud-metadata blocked"]
   end

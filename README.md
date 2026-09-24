@@ -6,7 +6,8 @@ container — one-command setup on macOS, Linux, and Windows.*
 Run the **real Claude Code CLI** — on your **Claude subscription**, with the same terminal
 experience you have now — but, by default, locked inside a Docker container that can only:
 
-- **see/edit one folder** you choose (everything else on your machine is invisible), and
+- **see/edit your personal and work project trees** (`~/personal` and `~/work` by default; everything
+  else on your machine is invisible), and
 - **reach the network only where it's allowed**, filtered by **hostname** (Anthropic + npm,
   GitHub when `ALLOW_GITHUB` is on, + domains you add). All egress is forced through an in-container allowlist proxy, and the
   kernel firewall drops any attempt to go around it (direct IPs, DNS, IPv6, private ranges) — so a
@@ -227,9 +228,9 @@ one session — see the [system-design diagram](docs/architecture/system-design.
 These are **live bind mounts**, not copies: whatever the agent edits in `/workspace/personal` **is**
 the file in your host `personal/` folder, instantly. So you and the agent share one source of
 truth — review changes in **VS Code**, inspect or `git diff` them from a host terminal, or open them
-in **Explorer/Finder**. Keeping personal and work as distinct trees means a `work` task never has
-your `personal` code in scope (and vice-versa) — set only the tree(s) you need, leave the other
-unset.
+in **Explorer/Finder**. Both trees are visible in each launcher-started session; to reduce that
+scope, point either variable at a dedicated empty directory rather than leaving it blank (blank
+selects the home default).
 
 > **Security: keep `coding-agent-sandbox/` OUTSIDE `personal/` and `work/`.** This repo is the
 > sandbox's **control plane** — it holds `.env` (the web-terminal password and any `GITHUB_TOKEN`),
@@ -1032,7 +1033,7 @@ here, and a half-applied firewall is worse than none.)
 ```
 your browser ──http://127.0.0.1:7681 (ttyd, password)──▶ ┌──────────── container ─────────────────┐
                                                           │ ttyd → Herdr (as unprivileged node)    │
-your project dir ──bind mount──────────────────────────▶ │ /workspace  (only files it sees)       │
+personal + work trees ──bind mounts───────────────────▶ │ /workspace/{personal,work}             │
                                                           │ ~/.claude   (subscription token)       │
                                                           │ all egress ─▶ tinyproxy (by hostname): │
                                                           │   allow Anthropic·GitHub·npm·extras    │
