@@ -16,11 +16,14 @@ exposure are especially valued. Please don't include real secrets or tokens in y
 This sandbox contains the **blast radius on your own machine** if Claude Code (or a tool/agent
 it runs, or a prompt-injection in some file or web page) does something you didn't intend:
 
-- **Filesystem scope.** The container only mounts the one folder you point it at (`WORKSPACE_DIR`,
-  or the current dir for `claude-safe`) as `/workspace`, plus its own config volume. Whatever you
-  don't mount — the rest of your home, SSH keys, cloud credentials, browser profiles — is **not
-  visible**. The launchers (`run.sh`/`run.ps1` and `claude-safe`) **refuse** to mount `/`, your home,
-  or known credential dirs, so a typo can't widen the mount. (If you bypass them and mount a broad
+- **Filesystem scope.** The main launchers mount the `PERSONAL_DIR` and `WORK_DIR` trees at
+  `/workspace/personal` and `/workspace/work`; blank values default to `~/personal` and `~/work`
+  (the Windows profile equivalents on Windows). An optional `WORKSPACE_DIR` can additionally back
+  the `/workspace` root. `claude-safe` instead mounts its current directory as `/workspace`.
+  Whatever you don't mount — the rest of your home, SSH keys, cloud credentials, browser profiles
+  — is **not visible**. The launchers (`run.sh`/`run.ps1` and `claude-safe`) **refuse** to mount
+  `/`, your home, or known credential dirs, so a typo can't widen the mount. (If you bypass them
+  and mount a broad
   path yourself, that guarantee is only as good as the path you chose.)
 - **Network egress lockdown, by hostname.** All outbound HTTP(S) is forced through an in-container
   allowlist proxy (`tinyproxy`) that permits only approved **domain names** (Anthropic, GitHub, npm,
@@ -56,7 +59,7 @@ it runs, or a prompt-injection in some file or web page) does something you didn
 
 - **Your code is still sent to Anthropic.** The whole point is to let Claude read/edit your
   files, and it does that by sending their contents to the model. This sandbox does **not** make
-  your source private from Anthropic. Don't put secrets you wouldn't share into `WORKSPACE_DIR`.
+  your source private from Anthropic. Don't put secrets you wouldn't share into any mounted tree.
 - **Allowlisted destinations are trusted fully.** Egress to GitHub, npm, and your extra domains
   is open, and a parent domain allows **all** its subdomains (`github.com` ⇒ any `*.github.com`).
   Data *could* still leave via an allowlisted host (e.g. pushing to a GitHub repo you control).
@@ -76,9 +79,10 @@ it runs, or a prompt-injection in some file or web page) does something you didn
 - **Workspace-local Claude config & hooks are executed (and they're inside the box).** Claude Code
   reads project-local settings and hooks (`.claude/settings.json`, hook commands) from the folder
   you mount. Anthropic's write-up flags "pre-trust execution" — config/hooks that ran before the
-  user accepted a trust prompt — as a real vulnerability they had to fix. **Treat `WORKSPACE_DIR`
-  as untrusted:** if it carries a malicious `.claude/`, a hook can run automatically the moment
-  `claude` starts. The sandbox is exactly the right containment for this — the hook is confined to
+  user accepted a trust prompt — as a real vulnerability they had to fix. **Treat every mounted
+  tree as untrusted:** if one carries a malicious `.claude/`, a hook can run automatically the
+  moment `claude` starts. The sandbox is exactly the right containment for this — the hook is
+  confined to
   `/workspace` and the egress allowlist — but combined with the allowed-host exfil path above it's
   a live channel. Review a project's `.claude/` before pointing the sandbox at it, prefer
   `ALLOW_GITHUB=false` and a minimal allowlist for code you don't trust, and mount `:ro` if you
@@ -191,7 +195,7 @@ it runs, or a prompt-injection in some file or web page) does something you didn
 - **Anything inside `/workspace` is fair game.** Within the mounted folder, Claude can overwrite
   or delete files. There is no automatic backup. Use git and commit often; mount a throwaway
   copy if you're testing untrusted instructions. Note too that the bind mount can't distinguish
-  ordinary project files from **hardlinks or secrets already copied under `WORKSPACE_DIR`** — if a
+  ordinary project files from **hardlinks or secrets already copied under a mounted tree** — if a
   file is reachable inside the mounted tree, it's readable. Don't keep credentials in the project.
 - **Container isolation, not a VM.** Docker shares the host kernel. A kernel-level escape is out
   of scope here; this is strong defense-in-depth, not a hypervisor boundary. **gVisor is not an
@@ -250,7 +254,8 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   [`docs/architecture/token-isolation-sidecar.md`](docs/architecture/token-isolation-sidecar.md).
 - The Claude CLI version is pinned and its **runtime auto-updater is disabled** (`DISABLE_AUTOUPDATER=1`),
   so the binary can't change mid-session. Bump `CLAUDE_CODE_VERSION` and rebuild to update it.
-- Mount `WORKSPACE_DIR` read-only (`:ro` in `docker-compose.yml`) if you only want analysis, not edits.
+- Mount the relevant bind(s) read-only (`:ro` in `docker-compose.yml`) if you only want analysis,
+  not edits.
 - **gVisor: investigated, does not work here — do not enable it.** Earlier versions of this document
   recommended installing [gVisor](https://gvisor.dev/) and uncommenting `runtime: runsc`. That advice
   was never exercised and is wrong: the container restart-loops. The agent installs its own

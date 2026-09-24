@@ -6,7 +6,8 @@ container — one-command setup on macOS, Linux, and Windows.*
 Run the **real Claude Code CLI** — on your **Claude subscription**, with the same terminal
 experience you have now — but, by default, locked inside a Docker container that can only:
 
-- **see/edit one folder** you choose (everything else on your machine is invisible), and
+- **see/edit your personal and work project trees** (`~/personal` and `~/work` by default;
+  everything else on your machine is invisible), and
 - **reach the network only where it's allowed**, filtered by **hostname** (Anthropic + npm,
   GitHub when `ALLOW_GITHUB` is on, + domains you add). All egress is forced through an in-container allowlist proxy, and the
   kernel firewall drops any attempt to go around it (direct IPs, DNS, IPv6, private ranges) — so a
@@ -110,7 +111,8 @@ cp .env.example .env          # then edit it (see below)
 ```
 
 In `.env` set at least:
-- `WORKSPACE_DIR` → absolute path to the project you want to code on
+- `PERSONAL_DIR` / `WORK_DIR` → leave blank to mount your home's `personal` and `work` folders
+  (the default), or set absolute paths
 - `TTYD_PASS` → a real password for the web terminal
 
 Then:
@@ -186,7 +188,8 @@ and sidecar stacks, `./scripts/auth/claim-token.sh` moves it into the proxy-owne
 ## Day-to-day
 
 - Code exactly as you do now — `claude`, `/`-commands, editing, running tests — all inside
-  `/workspace`, which **is** your `WORKSPACE_DIR` on the host. Changes appear on your real files.
+  `/workspace/personal` and `/workspace/work`, which **are** your `PERSONAL_DIR` / `WORK_DIR` on the
+  host (`~/personal` and `~/work` by default). Changes appear on your real files.
 - Herdr is the primary terminal environment. Its server persists the workspace session when the
   browser disconnects; reopen the URL to attach a new Herdr client.
 - **What survives a rebuild.** Your Herdr workspace and pane *layout* is on a named volume, so it
@@ -226,9 +229,9 @@ one session — see the [system-design diagram](docs/architecture/system-design.
 These are **live bind mounts**, not copies: whatever the agent edits in `/workspace/personal` **is**
 the file in your host `personal/` folder, instantly. So you and the agent share one source of
 truth — review changes in **VS Code**, inspect or `git diff` them from a host terminal, or open them
-in **Explorer/Finder**. Keeping personal and work as distinct trees means a `work` task never has
-your `personal` code in scope (and vice-versa) — set only the tree(s) you need, leave the other
-unset.
+in **Explorer/Finder**. Both trees are visible in each launcher-started session; to reduce that
+scope, point either variable at a dedicated empty directory rather than leaving it blank (blank
+selects the home default).
 
 > **Security: keep `coding-agent-sandbox/` OUTSIDE `personal/` and `work/`.** This repo is the
 > sandbox's **control plane** — it holds `.env` (the web-terminal password and any `GITHUB_TOKEN`),
@@ -717,7 +720,8 @@ at runtime — enable `ALLOW_TOOL_UPGRADES=true` so that download is allowed.)
 
 Putting the pieces together for the agentic dev workflow, in order:
 
-1. **Configure `.env`** — `WORKSPACE_DIR`, `TTYD_PASS`, `ALLOW_OPENAI=true`, `GITHUB_TOKEN` (+ `GIT_USER_NAME`/`EMAIL`),
+1. **Configure `.env`** — `TTYD_PASS`, `ALLOW_OPENAI=true`,
+   `GITHUB_TOKEN` (+ `GIT_USER_NAME`/`EMAIL`),
    `SKILL_REPOS=<your cdd-skills + peerreview-skills HTTPS URLs>`, and `PEERREVIEW_EVOLVE=off` on every
    machine that should **not** be the evolver (leave it unset on your one primary evolver).
 2. **Start** — `./run.sh` (macOS/Linux) or `start-sandbox.cmd` (Windows).
@@ -732,8 +736,8 @@ Every knob, with its default. Copy `.env.example` → `.env` and set what you ne
 | Variable | Default | What it does |
 |---|---|---|
 | `WORKSPACE_DIR` | *(inert umbrella volume)* | Optional host folder for the `/workspace` **root**. Leave blank to make `/workspace` an inert umbrella that just holds the `work` + `personal` mount points below. |
-| `WORK_DIR` | *(isolated volume)* | Your **work** project tree, mounted at `/workspace/work`. Set an absolute host path (e.g. `/Users/you/work`). _(formerly `PROJECTS_DIR`, still honored.)_ |
-| `PERSONAL_DIR` | *(isolated volume)* | Your **personal** project tree, mounted at `/workspace/personal`. This is also where `scripts/skills/skills-setup.sh` clones skill repos and symlinks them into the skills dir. Guarded like `WORK_DIR`. ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. _(formerly `WS_DIR`, still honored.)_ |
+| `WORK_DIR` | `~/work` | Your **work** project tree, mounted at `/workspace/work`. Blank → your home's `work` folder (`%USERPROFILE%\work` on Windows), created if missing; set an absolute host path to use another. _(formerly `PROJECTS_DIR`, still honored.)_ |
+| `PERSONAL_DIR` | `~/personal` | Your **personal** project tree, mounted at `/workspace/personal`. Blank → your home's `personal` folder (`%USERPROFILE%\personal` on Windows), created if missing. This is also where `scripts/skills/skills-setup.sh` clones skill repos and symlinks them into the skills dir. Guarded like `WORK_DIR`. ⚠️ Every mounted tree's code is sent to Anthropic when read — see `SECURITY.md`. _(formerly `WS_DIR`, still honored.)_ |
 | `TTYD_USER` / `TTYD_PASS` | `coder` / — | Web-terminal login. Must set a real `TTYD_PASS` (it refuses defaults). |
 | `TTYD_PORT` | `7681` | Local port for the browser terminal. |
 | `EXTRA_ALLOWED_DOMAINS` | — | Extra egress hostnames, comma-separated (parent domain covers subdomains). |
@@ -1016,8 +1020,9 @@ for `claude-safe`.
 
 ## Switching projects
 
-Point `WORKSPACE_DIR` at a different path and `docker compose up -d --build`. One sandbox at a
-time; for parallel projects, copy this folder and change `container_name` + `TTYD_PORT`.
+Point `PERSONAL_DIR` / `WORK_DIR` at different paths and re-run `./run.sh` (or `run.ps1`).
+One sandbox at a time; for parallel projects, copy this folder and change `container_name` +
+`TTYD_PORT`.
 
 ## Prefer VS Code?
 
@@ -1031,7 +1036,7 @@ here, and a half-applied firewall is worse than none.)
 ```
 your browser ──http://127.0.0.1:7681 (ttyd, password)──▶ ┌──────────── container ─────────────────┐
                                                           │ ttyd → Herdr (as unprivileged node)    │
-your project dir ──bind mount──────────────────────────▶ │ /workspace  (only files it sees)       │
+personal + work trees ──bind mounts───────────────────▶ │ /workspace/{personal,work}             │
                                                           │ ~/.claude   (subscription token)       │
                                                           │ all egress ─▶ tinyproxy (by hostname): │
                                                           │   allow Anthropic·GitHub·npm·extras    │

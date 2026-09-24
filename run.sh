@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [ ! -f .env ]; then
-    echo "No .env found. Run:  cp .env.example .env  then edit WORKSPACE_DIR + the password."
+    echo "No .env found. Run:  cp .env.example .env  then set TTYD_PASS"
+    echo "(PERSONAL_DIR / WORK_DIR default to ~/personal and ~/work)."
     exit 1
 fi
 
@@ -75,12 +76,16 @@ read_compat() {
     fi
     printf '%s' "$v"
 }
+# Blank -> the host's own ~/personal and ~/work (created if missing), so every OS maps the same
+# two trees without a hard-coded path in .env.
 ps="$(read_compat PERSONAL_DIR WS_DIR)" || exit 1
-if [ -n "$ps" ]; then PERSONAL_DIR="$(validate_mount "$ps" PERSONAL_DIR)" || exit 1; export PERSONAL_DIR
-    echo "  mounting PERSONAL_DIR  -> /workspace/personal  ($PERSONAL_DIR)"; fi
+[ -n "$ps" ] || { ps="$HOME/personal"; mkdir -p "$ps"; }
+PERSONAL_DIR="$(validate_mount "$ps" PERSONAL_DIR)" || exit 1; export PERSONAL_DIR
+echo "  mounting PERSONAL_DIR  -> /workspace/personal  ($PERSONAL_DIR)"
 wk="$(read_compat WORK_DIR PROJECTS_DIR)" || exit 1
-if [ -n "$wk" ]; then WORK_DIR="$(validate_mount "$wk" WORK_DIR)" || exit 1; export WORK_DIR
-    echo "  mounting WORK_DIR      -> /workspace/work  ($WORK_DIR)"; fi
+[ -n "$wk" ] || { wk="$HOME/work"; mkdir -p "$wk"; }
+WORK_DIR="$(validate_mount "$wk" WORK_DIR)" || exit 1; export WORK_DIR
+echo "  mounting WORK_DIR      -> /workspace/work  ($WORK_DIR)"
 
 # Behind a TLS-inspecting proxy (Cloudflare WARP / Zscaler)? Any PEM in certs/ is trusted at build
 # + runtime (see certs/README.md). Advisory only — an empty certs/ is a no-op.

@@ -19,7 +19,7 @@ The launchers and helpers are plain shell / PowerShell — there's no build syst
 
 ```bash
 # macOS / Linux
-cp .env.example .env      # set WORKSPACE_DIR + TTYD_PASS
+cp .env.example .env      # set TTYD_PASS; optionally override PERSONAL_DIR / WORK_DIR
 ./run.sh                  # builds, scans (Trivy), and starts the sandbox
 ```
 

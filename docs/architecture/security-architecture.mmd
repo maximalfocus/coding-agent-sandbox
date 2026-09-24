@@ -2,14 +2,14 @@ flowchart TB
   subgraph HOST["🖥️ Developer machine (host)"]
     direction LR
     BROWSER["🌐 Browser → web terminal<br/>(127.0.0.1 only, password)"]
-    PROJ["📁 One project folder"]
+    PROJ["📁 Personal + work project trees"]
     SECRETS["🔑 SSH keys · cloud creds · browser profiles<br/>+ everything else on your machine"]
   end
 
   subgraph BOX["🛡️ Docker sandbox — trust boundary (contains the blast radius)"]
     direction TB
     AGENT["🤖 Claude Code CLI<br/>unprivileged 'node' user · capabilities dropped<br/>no-new-privileges · memory / PID limits"]
-    WS["📂 /workspace<br/>= your project folder — the only part of<br/>your machine mounted in"]
+    WS["📂 /workspace/personal + /workspace/work<br/>= the only host project trees mounted in"]
     PROXY["🚦 Allowlist egress proxy — decides allow / deny by hostname<br/>Run ONE mode:<br/>Default: hostname filter (tinyproxy)<br/>Opt-in: TLS-intercept + content rules (mitmproxy)"]
     FW["🧱 Kernel firewall — FAIL-CLOSED<br/>only the proxy's traffic may exit (service-account gate)<br/>agent's direct DNS · IPv6 · private and cloud-metadata blocked"]
   end
