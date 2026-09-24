@@ -52,8 +52,8 @@ What it does, in order:
 2. Creates `.env` from `.env.example` and fills in:
    - `WORKSPACE_DIR` — leave blank (an inert umbrella volume); `personal` + `work`
      mount inside it.
-   - `PERSONAL_DIR` → `/workspace/personal` — it **prompts**; default `~/personal`.
-   - `WORK_DIR` → `/workspace/work` — it **prompts**; default `~/work`.
+   - `PERSONAL_DIR` → `/workspace/personal` — it **prompts**; default `~/personal` (also what a blank value means at launch).
+   - `WORK_DIR` → `/workspace/work` — it **prompts**; default `~/work` (also what a blank value means at launch).
    - `TTYD_USER` = `coder`, `TTYD_PASS` = a freshly generated 20-char password.
      **Write the password down** — you log into the web terminal with it.
 3. Builds the image, runs an advisory vulnerability scan (non-blocking), starts the

@@ -96,16 +96,22 @@ function Read-Compat([string]$New, [string]$Old) {
     }
     return $v
 }
+# Blank -> the user's own ~\personal and ~\work (created if missing), so every OS maps the same
+# two trees without a hard-coded path in .env.
 $psRaw = Read-Compat 'PERSONAL_DIR' 'WS_DIR'
-if (-not [string]::IsNullOrWhiteSpace($psRaw)) {
-    $env:PERSONAL_DIR = Resolve-Mount $psRaw 'PERSONAL_DIR'
-    Write-Host "  mounting PERSONAL_DIR  -> /workspace/personal  ($env:PERSONAL_DIR)"
+if ([string]::IsNullOrWhiteSpace($psRaw)) {
+    $psRaw = Join-Path $HOME 'personal'
+    New-Item -ItemType Directory -Force -Path $psRaw | Out-Null
 }
+$env:PERSONAL_DIR = Resolve-Mount $psRaw 'PERSONAL_DIR'
+Write-Host "  mounting PERSONAL_DIR  -> /workspace/personal  ($env:PERSONAL_DIR)"
 $wkRaw = Read-Compat 'WORK_DIR' 'PROJECTS_DIR'
-if (-not [string]::IsNullOrWhiteSpace($wkRaw)) {
-    $env:WORK_DIR = Resolve-Mount $wkRaw 'WORK_DIR'
-    Write-Host "  mounting WORK_DIR      -> /workspace/work  ($env:WORK_DIR)"
+if ([string]::IsNullOrWhiteSpace($wkRaw)) {
+    $wkRaw = Join-Path $HOME 'work'
+    New-Item -ItemType Directory -Force -Path $wkRaw | Out-Null
 }
+$env:WORK_DIR = Resolve-Mount $wkRaw 'WORK_DIR'
+Write-Host "  mounting WORK_DIR      -> /workspace/work  ($env:WORK_DIR)"
 
 # Build, then gate on a supply-chain scan BEFORE starting, so a known-vulnerable image never
 # runs. Set $env:SKIP_TRIVY=1 to bypass (e.g. offline with no scanner DB cached).
