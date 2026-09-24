@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [ ! -f .env ]; then
-    echo "No .env found. Run:  cp .env.example .env  then set TTYD_PASS (personal/work default to your home)."
+    echo "No .env found. Run:  cp .env.example .env  then set TTYD_PASS"
+    echo "(PERSONAL_DIR / WORK_DIR default to ~/personal and ~/work)."
     exit 1
 fi
 

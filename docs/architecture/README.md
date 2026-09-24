@@ -24,7 +24,8 @@ exits this boundary and is documented in [`SECURITY.md`](../../SECURITY.md).
    prompt-injected agent is confined to the box.
 2. **Data minimization** — of *your machine*, the main launchers mount only your **personal and work
    project trees** (`~/personal` and `~/work` by default). SSH keys, cloud credentials, and the rest
-   of your home are never mounted, so they are invisible to it. (Inside the box it can of course read the container's own OS files and its
+   of your home are never mounted, so they are invisible to it. (Inside the box it can of course
+   read the container's own OS files and its
    `~/.claude` config — which includes the login token; see *Honest boundary*.)
 3. **Fail-closed egress** — all traffic is forced through an allowlist proxy that **decides allow/deny
    by hostname**, and a kernel firewall enforces that **only the proxy's own traffic may leave**

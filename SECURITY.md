@@ -21,8 +21,9 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   (the Windows profile equivalents on Windows). An optional `WORKSPACE_DIR` can additionally back
   the `/workspace` root. `claude-safe` instead mounts its current directory as `/workspace`.
   Whatever you don't mount — the rest of your home, SSH keys, cloud credentials, browser profiles
-  — is **not visible**. The launchers (`run.sh`/`run.ps1` and `claude-safe`) **refuse** to mount `/`, your home,
-  or known credential dirs, so a typo can't widen the mount. (If you bypass them and mount a broad
+  — is **not visible**. The launchers (`run.sh`/`run.ps1` and `claude-safe`) **refuse** to mount
+  `/`, your home, or known credential dirs, so a typo can't widen the mount. (If you bypass them
+  and mount a broad
   path yourself, that guarantee is only as good as the path you chose.)
 - **Network egress lockdown, by hostname.** All outbound HTTP(S) is forced through an in-container
   allowlist proxy (`tinyproxy`) that permits only approved **domain names** (Anthropic, GitHub, npm,
@@ -79,8 +80,9 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   reads project-local settings and hooks (`.claude/settings.json`, hook commands) from the folder
   you mount. Anthropic's write-up flags "pre-trust execution" — config/hooks that ran before the
   user accepted a trust prompt — as a real vulnerability they had to fix. **Treat every mounted
-  tree as untrusted:** if one carries a malicious `.claude/`, a hook can run automatically the moment
-  `claude` starts. The sandbox is exactly the right containment for this — the hook is confined to
+  tree as untrusted:** if one carries a malicious `.claude/`, a hook can run automatically the
+  moment `claude` starts. The sandbox is exactly the right containment for this — the hook is
+  confined to
   `/workspace` and the egress allowlist — but combined with the allowed-host exfil path above it's
   a live channel. Review a project's `.claude/` before pointing the sandbox at it, prefer
   `ALLOW_GITHUB=false` and a minimal allowlist for code you don't trust, and mount `:ro` if you
@@ -252,7 +254,8 @@ it runs, or a prompt-injection in some file or web page) does something you didn
   [`docs/architecture/token-isolation-sidecar.md`](docs/architecture/token-isolation-sidecar.md).
 - The Claude CLI version is pinned and its **runtime auto-updater is disabled** (`DISABLE_AUTOUPDATER=1`),
   so the binary can't change mid-session. Bump `CLAUDE_CODE_VERSION` and rebuild to update it.
-- Mount the relevant bind(s) read-only (`:ro` in `docker-compose.yml`) if you only want analysis, not edits.
+- Mount the relevant bind(s) read-only (`:ro` in `docker-compose.yml`) if you only want analysis,
+  not edits.
 - **gVisor: investigated, does not work here — do not enable it.** Earlier versions of this document
   recommended installing [gVisor](https://gvisor.dev/) and uncommenting `runtime: runsc`. That advice
   was never exercised and is wrong: the container restart-loops. The agent installs its own

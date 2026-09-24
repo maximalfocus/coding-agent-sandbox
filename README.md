@@ -6,8 +6,8 @@ container — one-command setup on macOS, Linux, and Windows.*
 Run the **real Claude Code CLI** — on your **Claude subscription**, with the same terminal
 experience you have now — but, by default, locked inside a Docker container that can only:
 
-- **see/edit your personal and work project trees** (`~/personal` and `~/work` by default; everything
-  else on your machine is invisible), and
+- **see/edit your personal and work project trees** (`~/personal` and `~/work` by default;
+  everything else on your machine is invisible), and
 - **reach the network only where it's allowed**, filtered by **hostname** (Anthropic + npm,
   GitHub when `ALLOW_GITHUB` is on, + domains you add). All egress is forced through an in-container allowlist proxy, and the
   kernel firewall drops any attempt to go around it (direct IPs, DNS, IPv6, private ranges) — so a
@@ -111,7 +111,8 @@ cp .env.example .env          # then edit it (see below)
 ```
 
 In `.env` set at least:
-- `PERSONAL_DIR` / `WORK_DIR` → leave blank to mount your home's `personal` and `work` folders (the default), or set absolute paths
+- `PERSONAL_DIR` / `WORK_DIR` → leave blank to mount your home's `personal` and `work` folders
+  (the default), or set absolute paths
 - `TTYD_PASS` → a real password for the web terminal
 
 Then:
@@ -719,7 +720,8 @@ at runtime — enable `ALLOW_TOOL_UPGRADES=true` so that download is allowed.)
 
 Putting the pieces together for the agentic dev workflow, in order:
 
-1. **Configure `.env`** — `TTYD_PASS`, `ALLOW_OPENAI=true`, `GITHUB_TOKEN` (+ `GIT_USER_NAME`/`EMAIL`),
+1. **Configure `.env`** — `TTYD_PASS`, `ALLOW_OPENAI=true`,
+   `GITHUB_TOKEN` (+ `GIT_USER_NAME`/`EMAIL`),
    `SKILL_REPOS=<your cdd-skills + peerreview-skills HTTPS URLs>`, and `PEERREVIEW_EVOLVE=off` on every
    machine that should **not** be the evolver (leave it unset on your one primary evolver).
 2. **Start** — `./run.sh` (macOS/Linux) or `start-sandbox.cmd` (Windows).
@@ -1018,8 +1020,9 @@ for `claude-safe`.
 
 ## Switching projects
 
-Point `PERSONAL_DIR` / `WORK_DIR` at different paths and re-run `./run.sh` (or `run.ps1`). One sandbox at a
-time; for parallel projects, copy this folder and change `container_name` + `TTYD_PORT`.
+Point `PERSONAL_DIR` / `WORK_DIR` at different paths and re-run `./run.sh` (or `run.ps1`).
+One sandbox at a time; for parallel projects, copy this folder and change `container_name` +
+`TTYD_PORT`.
 
 ## Prefer VS Code?
 
